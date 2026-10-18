@@ -167,6 +167,9 @@ jobs:
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureInstallWorkflow \
             --isolated-display "$DISPLAY" --output build/ui-review/install-workflow'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureFileLookupWorkflow \
+            --isolated-display "$DISPLAY" --output build/ui-review/file-lookup'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:

@@ -61,3 +61,21 @@ DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
 The first process verifies that checking configuration transfers no install content, shows encoded/decoded byte cost before a separate Download action, and handles unavailable content, cancellation and workspace changes without retaining a false result. It inspects actual decoded names, tags, filters and source evidence, including programmatic Enter/Escape focus transfer and focus retention while typing a filter. The second process reopens retained bytes without any transport calls, checks workspace isolation, then corrupts the retained object and verifies that failed local integrity checking clears the verified list and coverage without attempting repair over the network. Metadata-only and install-list-verified coverage remain distinct; game files are never acquired.
 
 Thirteen scene-only PNGs include 1280×800 and 200% text scaling. Cost, entry and detail captures deliberately scroll the application body to the inspected section; they do not imply that every section fits simultaneously. Each child has a 90-second application deadline and a 120-second supervisor deadline. A successful run prints `Install UI workflow OK; real services/CAS/SQLite; two JVMs; offline transport forbidden`. Missing images or abnormal termination fail the review. These synthetic Linux rendering checks do not certify live CDN compatibility, other operating systems or assistive technology.
+
+## Exact FileDataID lookup workflow
+
+`CaptureFileLookupWorkflow.java` runs two separate JVMs with the real file-lookup application service, official-source gateway, SQLite catalog, CAS, indexed EN parser, BLTE decoder and streaming root parser. `fixtures/FileLookupFixtureBackend.java` generates independent synthetic EN/root/configuration bytes and injects them through the existing package-private transport seam. It never uses a game installation or sends HTTP, and its temporary catalog/content directory is removed after both processes exit.
+
+Compile all helpers as above, then run:
+
+```bash
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureFileLookupWorkflow --isolated-display :191 --output build/ui-review/file-lookup
+```
+
+The first process verifies visible FileDataID restoration across saved A42 → B7 → A42, and verifies that the real service receives the same ID. Programmatic input Enter checks requirements without authorizing root acquisition. All returned candidates remain explicit: no default is selected and an unknown transfer size disables Download. Known encoded/decoded cost and the separate Download action must fit together at both 100% and 200% text scale. Switching exact workspaces cancels an in-flight root request and suppresses its stale result.
+
+After explicit retention, both synthetic root variants for ID42 remain visible, raw fields and unavailable filenames remain honest, Enter focuses full detail and Escape returns to the table. Source evidence shows the actual retained root separately from configuration proof. ID999 produces only scoped absence after complete verification. The second JVM reopens actual retained bytes with zero transport attempts, verifies exact-workspace membership isolation, then corrupts the physical root while a verified result exists and confirms that local verification failure removes ready coverage and variants without network repair.
+
+Fifteen scene-only PNGs include known/unknown cost, variants, raw detail, source proof, absence, and offline corruption. Screenshots deliberately scroll to the relevant inspected section. Each child has a 90-second application deadline and a 120-second supervisor deadline. Success prints `File lookup UI workflow OK; real services/CAS/SQLite; two JVMs; offline transport forbidden`. These checks use programmatic actions and key events; they do not certify physical keyboard, screen-reader, other-platform or live-CDN compatibility. Metadata lookup never acquires the selected game's file contents, filenames or item records.
