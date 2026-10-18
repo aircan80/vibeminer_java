@@ -521,6 +521,172 @@ class InstallMetadataReuseGatewayTest {
   }
 
   @Test
+  void associatedInstallFreshReadPreservesHistoricalCapabilitiesButStrongReuseStillRefuses()
+      throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var original = setup.actual();
+      var historical =
+          new MetadataContentProof(
+              original.originalAlias(),
+              original.actualEncodingKey(),
+              original.contentKey(),
+              original.declaredDecodedBytes(),
+              Optional.of(
+                  new DecodedContentAttestation(
+                      original.contentKey(),
+                      original.decodedAttestation().orElseThrow().actualDecodedBytes(),
+                      "historical-install-decoded-v0")),
+              Optional.of(
+                  new MetadataStructureAttestation(
+                      MetadataStructureAttestation.Kind.INSTALL, "historical-install-v0")));
+      var association =
+          new MetadataBuildAssociation(
+              setup.declaration(), UUID.randomUUID(), historical, NOW.plusSeconds(1));
+      int requests = setup.requests().get();
+      long before = objects(directory);
+      var result =
+          gateway.inspectAssociatedInstall(
+              declaredPlan(setup), association, LookupBudgets.defaults(), CancellationToken.none());
+      assertEquals("Interface/readme.txt", result.entries().getFirst().name());
+      assertEquals(Optional.of(association), result.association());
+      assertEquals(original.originalAlias().evidence(), result.verification());
+      assertEquals(
+          "historical-install-decoded-v0",
+          result
+              .association()
+              .orElseThrow()
+              .actualRepresentation()
+              .decodedAttestation()
+              .orElseThrow()
+              .verifierRevision());
+      assertEquals(
+          "historical-install-v0",
+          result
+              .association()
+              .orElseThrow()
+              .actualRepresentation()
+              .structuralAttestation()
+              .orElseThrow()
+              .parserRevision());
+      var strongPlan =
+          new MetadataReusePlan(
+              UUID.randomUUID(), UUID.randomUUID(), setup.declaration(), historical);
+      assertEquals(
+          ContentClaimException.Code.UNSUPPORTED_REUSE,
+          assertThrows(
+                  ContentClaimException.class,
+                  () ->
+                      gateway.replay(
+                          strongPlan, LookupBudgets.defaults(), CancellationToken.none()))
+              .code());
+      assertEquals(requests, setup.requests().get());
+      assertEquals(before, objects(directory));
+    }
+  }
+
+  @Test
+  void associatedInstallStillRejectsUnknownOriginalSourceSemantics() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var p = setup.actual();
+      var a = p.originalAlias();
+      var unknown =
+          new VerifiedSourceAlias(
+              new ResolvedSourceIdentity(
+                  a.source().namespace(),
+                  a.source().immutableSourceKey(),
+                  "unknown-source-verifier"),
+              a.object(),
+              new SourceVerificationEvidence(
+                  "unknown-source-verifier", a.evidence().sourceUrl(), a.evidence().verifiedAt()));
+      var proof =
+          new MetadataContentProof(
+              unknown,
+              p.actualEncodingKey(),
+              p.contentKey(),
+              p.declaredDecodedBytes(),
+              p.decodedAttestation(),
+              p.structuralAttestation());
+      var association =
+          new MetadataBuildAssociation(
+              setup.declaration(), UUID.randomUUID(), proof, NOW.plusSeconds(1));
+      assertEquals(
+          ContentClaimException.Code.UNSUPPORTED_REUSE,
+          assertThrows(
+                  ContentClaimException.class,
+                  () ->
+                      gateway.inspectAssociatedInstall(
+                          declaredPlan(setup),
+                          association,
+                          LookupBudgets.defaults(),
+                          CancellationToken.none()))
+              .code());
+    }
+  }
+
+  @Test
+  void associatedInstallRechecksEKeyAndFullCKeyDespiteHistoricalClaims() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var original = setup.actual();
+      var plan = declaredPlan(setup);
+      int requests = setup.requests().get();
+      for (boolean wrongContentKey : new boolean[] {false, true}) {
+        byte[] decoded = manifest();
+        if (wrongContentKey) decoded[decoded.length - 1] ^= 1;
+        byte[] encoded = encode(decoded);
+        var object =
+            setup
+                .store()
+                .publish(
+                    new ByteArrayInputStream(encoded),
+                    new ExpectedObjectChecksum(
+                        ChecksumAlgorithm.SHA256, hash("SHA-256", encoded), encoded.length),
+                    encoded.length,
+                    CancellationToken.none());
+        String ekey = wrongContentKey ? hash("MD5", encoded) : "00000000000000000000000000000000";
+        var source =
+            new ResolvedSourceIdentity(
+                original.originalAlias().source().namespace(),
+                original.contentKey() + ";" + ekey + ";" + decoded.length + ";" + encoded.length,
+                original.originalAlias().source().verificationSemantics());
+        var alias =
+            new VerifiedSourceAlias(
+                source,
+                object,
+                new SourceVerificationEvidence(
+                    source.verificationSemantics(),
+                    CdnRequest.loose(
+                            PinnedBuildSource.resolve(plan.build()), ekey, encoded.length, 4 << 20)
+                        .uri()
+                        .toString(),
+                    NOW));
+        var claim =
+            new MetadataContentProof(
+                alias,
+                ekey,
+                original.contentKey(),
+                original.declaredDecodedBytes(),
+                original.decodedAttestation(),
+                original.structuralAttestation());
+        var association =
+            new MetadataBuildAssociation(
+                setup.declaration(), UUID.randomUUID(), claim, NOW.plusSeconds(1));
+        assertEquals(
+            ContentClaimException.Code.INTEGRITY_FAILURE,
+            assertThrows(
+                    ContentClaimException.class,
+                    () ->
+                        gateway.inspectAssociatedInstall(
+                            plan, association, LookupBudgets.defaults(), CancellationToken.none()))
+                .code());
+      }
+      assertEquals(requests, setup.requests().get());
+    }
+  }
+
+  @Test
   void associatedInstallRejectsWrongPlanContextAndOriginalSource() throws Exception {
     try (var setup = setup(manifest());
         var gateway = new OfficialMetadataReuseGateway(setup.store())) {

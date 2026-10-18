@@ -46,6 +46,10 @@ class MetadataRepairWorkerCompositionTest {
     final ContentClaim claim;
 
     Fixture(Path path) throws Exception {
+      this(path, 0);
+    }
+
+    Fixture(Path path, int history) throws Exception {
       this.path = path;
       store = new FileObjectStore(path.resolve("store"));
       sql = new SqliteCatalog(path.resolve("catalog.sqlite"));
@@ -75,8 +79,36 @@ class MetadataRepairWorkerCompositionTest {
             }
           },
           NONE);
-      original = captured.get();
-      assertNotNull(original.structuralAttestation().orElseThrow());
+      var authenticated = captured.get();
+      assertNotNull(authenticated.structuralAttestation().orElseThrow());
+      // Model older durable capability inventory without inventing physical identity or a new
+      // acquisition.
+      // 1 retains only a prospective receipt; 2 preserves an explicitly historical attestation
+      // revision.
+      original =
+          history == 1
+              ? new MetadataContentProof(
+                  authenticated.originalAlias(),
+                  authenticated.actualEncodingKey(),
+                  authenticated.declaredContentKey(),
+                  authenticated.declaredDecodedBytes(),
+                  Optional.empty(),
+                  Optional.empty())
+              : history == 2
+                  ? new MetadataContentProof(
+                      authenticated.originalAlias(),
+                      authenticated.actualEncodingKey(),
+                      authenticated.declaredContentKey(),
+                      authenticated.declaredDecodedBytes(),
+                      Optional.of(
+                          new DecodedContentAttestation(
+                              authenticated.contentKey(),
+                              authenticated.decodedAttestation().orElseThrow().actualDecodedBytes(),
+                              "historical-decoded-v0")),
+                      Optional.of(
+                          new MetadataStructureAttestation(
+                              MetadataStructureAttestation.Kind.ROOT, "historical-root-v0")))
+                  : authenticated;
       var builds = new SqliteBuildObjectCatalog(sql, store);
       builds.registerSnapshot(plan.build());
       var cfg = plan.configuration();
@@ -93,8 +125,11 @@ class MetadataRepairWorkerCompositionTest {
       var permit = claims.claimWorker(pending.token(), NONE);
       claims.markPublishing(permit, NONE);
       claims.recordVerifiedCompletion(permit, original, NONE);
-      claims.completePublication(permit, original, NONE);
-      claims.finishWorker(permit, ContentWorkerFinishOutcome.RETAINED, NONE);
+      if (history != 1) claims.completePublication(permit, original, NONE);
+      claims.finishWorker(
+          permit,
+          history == 1 ? ContentWorkerFinishOutcome.UNCERTAIN : ContentWorkerFinishOutcome.RETAINED,
+          NONE);
       claim = claims.lookup(slot, NONE).orElseThrow();
       head.length = original.encodedBytes();
       var installs =
@@ -365,82 +400,15 @@ class MetadataRepairWorkerCompositionTest {
   @Test
   void corruptInstallUsesActualAcquisitionProofAndAuditWithoutCanonicalUpgrade() throws Exception {
     try (var f = new Fixture(directory)) {
-      byte[] decoded = new byte[] {'I', 'N', 1, 16, 0, 0, 0, 0, 0, 0};
-      var bytes = new java.io.ByteArrayOutputStream();
-      var data = new java.io.DataOutputStream(bytes);
-      data.writeBytes("BLTE");
-      data.writeInt(0);
-      data.writeByte('N');
-      data.write(decoded);
-      byte[] encoded = bytes.toByteArray();
-      var hash = java.security.MessageDigest.getInstance("MD5");
-      String ckey = java.util.HexFormat.of().formatHex(hash.digest(decoded)),
-          ekey = java.util.HexFormat.of().formatHex(hash.digest(encoded));
-      byte[] config =
-          ("install = "
-                  + ckey
-                  + " "
-                  + ekey
-                  + "\ninstall-size = "
-                  + decoded.length
-                  + " "
-                  + encoded.length
-                  + "\n")
-              .getBytes(java.nio.charset.StandardCharsets.UTF_8);
-      var build = MetadataRepairPlanningTest.build(config, "us.cdn.blizzard.com");
-      var client = new PayloadClient();
-      client.payloads.put(build.buildConfig(), config);
-      client.payloads.put(ekey, encoded);
-      var installs =
-          new OfficialBootstrapArtifactGateway(
-              f.store, new PinnedCdnTransport(client, CLOCK, Duration.ofSeconds(15)), CLOCK);
-      var ordinary = installs.inspectConfiguration(build, NONE);
-      var acquired = new AtomicReference<MetadataContentProof>();
-      installs.acquireInstall(
-          ordinary,
-          new MetadataPublicationObserver() {
-            public void beforePromotion(MetadataContentProof proof, CancellationToken token) {
-              acquired.set(proof);
-            }
-
-            public void afterStructureValidation(
-                MetadataContentProof proof, CancellationToken token) {
-              fail("Install grammar is already complete at first gate");
-            }
-          },
-          NONE);
-      assertEquals(2, client.requests.size());
-      var original = acquired.get();
-      assertNotNull(original.structuralAttestation().orElseThrow());
-      var builds = new SqliteBuildObjectCatalog(f.sql, f.store);
-      builds.registerSnapshot(build);
-      var cfgObject =
-          f.store.publish(
-              new java.io.ByteArrayInputStream(config),
-              new ExpectedObjectChecksum(ChecksumAlgorithm.MD5, build.buildConfig(), config.length),
-              config.length,
-              NONE);
-      var cfgSource = installs.configurationIdentity(build);
-      var cfg =
-          new VerifiedSourceAlias(
-              cfgSource,
-              cfgObject,
-              new SourceVerificationEvidence(
-                  cfgSource.verificationSemantics(),
-                  CdnRequest.configuration(CapturedBuildSource.resolve(build), build.buildConfig())
-                      .uri()
-                      .toString(),
-                  CLOCK.instant()));
-      builds.attachVerifiedObject(
-          build.snapshotId(), "BUILD_CONFIG", cfg.source(), cfg.object(), cfg.evidence(), NONE);
-      var slot = new io.vibeminer.domain.selectedfile.ContentSlotKey("wow", ckey);
-      var reserved = f.claims.reserve(slot, ekey, encoded.length, NONE);
-      var seedPermit = f.claims.claimWorker(reserved.token(), NONE);
-      f.claims.markPublishing(seedPermit, NONE);
-      f.claims.recordVerifiedCompletion(seedPermit, original, NONE);
-      f.claims.completePublication(seedPermit, original, NONE);
-      f.claims.finishWorker(seedPermit, ContentWorkerFinishOutcome.RETAINED, NONE);
-      var old = f.claims.lookup(slot, NONE).orElseThrow();
+      var seed = seedInstall(f, false);
+      var encoded = seed.encoded();
+      var ordinary = seed.ordinary();
+      var original = seed.original();
+      var old = seed.claim();
+      var cfg = seed.config();
+      var installs = seed.gateway();
+      var client = seed.client();
+      var slot = old.slot();
       String sha = original.object().digest().value();
       Path physical =
           directory.resolve("store/objects").resolve(sha.substring(0, 2)).resolve(sha.substring(2));
@@ -515,6 +483,111 @@ class MetadataRepairWorkerCompositionTest {
     }
   }
 
+  record InstallSeed(
+      byte[] encoded,
+      io.vibeminer.application.bootstrap.InstallPlan ordinary,
+      VerifiedSourceAlias config,
+      MetadataContentProof original,
+      ContentClaim claim,
+      OfficialBootstrapArtifactGateway gateway,
+      PayloadClient client) {}
+
+  static InstallSeed seedInstall(Fixture f, boolean historical) throws Exception {
+    byte[] decoded = new byte[] {'I', 'N', 1, 16, 0, 0, 0, 0, 0, 0};
+    var bytes = new java.io.ByteArrayOutputStream();
+    var data = new java.io.DataOutputStream(bytes);
+    data.writeBytes("BLTE");
+    data.writeInt(0);
+    data.writeByte('N');
+    data.write(decoded);
+    byte[] encoded = bytes.toByteArray();
+    var hash = java.security.MessageDigest.getInstance("MD5");
+    String ckey = java.util.HexFormat.of().formatHex(hash.digest(decoded)),
+        ekey = java.util.HexFormat.of().formatHex(hash.digest(encoded));
+    byte[] config =
+        ("install = "
+                + ckey
+                + " "
+                + ekey
+                + "\ninstall-size = "
+                + decoded.length
+                + " "
+                + encoded.length
+                + "\n")
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    var build = MetadataRepairPlanningTest.build(config, "us.cdn.blizzard.com");
+    var client = new PayloadClient();
+    client.payloads.put(build.buildConfig(), config);
+    client.payloads.put(ekey, encoded);
+    var installs =
+        new OfficialBootstrapArtifactGateway(
+            f.store, new PinnedCdnTransport(client, CLOCK, Duration.ofSeconds(15)), CLOCK);
+    var ordinary = installs.inspectConfiguration(build, NONE);
+    var acquired = new AtomicReference<MetadataContentProof>();
+    installs.acquireInstall(
+        ordinary,
+        new MetadataPublicationObserver() {
+          public void beforePromotion(MetadataContentProof proof, CancellationToken token) {
+            acquired.set(proof);
+          }
+
+          public void afterStructureValidation(
+              MetadataContentProof proof, CancellationToken token) {
+            fail("Install grammar is already complete at first gate");
+          }
+        },
+        NONE);
+    assertEquals(2, client.requests.size());
+    var acquiredProof = acquired.get();
+    var original =
+        historical
+            ? new MetadataContentProof(
+                acquiredProof.originalAlias(),
+                acquiredProof.actualEncodingKey(),
+                acquiredProof.declaredContentKey(),
+                acquiredProof.declaredDecodedBytes(),
+                Optional.of(
+                    new DecodedContentAttestation(
+                        acquiredProof.contentKey(),
+                        acquiredProof.decodedAttestation().orElseThrow().actualDecodedBytes(),
+                        "historical-install-decoded-v0")),
+                Optional.of(
+                    new MetadataStructureAttestation(
+                        MetadataStructureAttestation.Kind.INSTALL, "historical-install-v0")))
+            : acquiredProof;
+    assertNotNull(original.structuralAttestation().orElseThrow());
+    var builds = new SqliteBuildObjectCatalog(f.sql, f.store);
+    builds.registerSnapshot(build);
+    var cfgObject =
+        f.store.publish(
+            new java.io.ByteArrayInputStream(config),
+            new ExpectedObjectChecksum(ChecksumAlgorithm.MD5, build.buildConfig(), config.length),
+            config.length,
+            NONE);
+    var cfgSource = installs.configurationIdentity(build);
+    var cfg =
+        new VerifiedSourceAlias(
+            cfgSource,
+            cfgObject,
+            new SourceVerificationEvidence(
+                cfgSource.verificationSemantics(),
+                CdnRequest.configuration(CapturedBuildSource.resolve(build), build.buildConfig())
+                    .uri()
+                    .toString(),
+                CLOCK.instant()));
+    builds.attachVerifiedObject(
+        build.snapshotId(), "BUILD_CONFIG", cfg.source(), cfg.object(), cfg.evidence(), NONE);
+    var slot = new io.vibeminer.domain.selectedfile.ContentSlotKey("wow", ckey);
+    var reserved = f.claims.reserve(slot, ekey, encoded.length, NONE);
+    var seedPermit = f.claims.claimWorker(reserved.token(), NONE);
+    f.claims.markPublishing(seedPermit, NONE);
+    f.claims.recordVerifiedCompletion(seedPermit, original, NONE);
+    f.claims.completePublication(seedPermit, original, NONE);
+    f.claims.finishWorker(seedPermit, ContentWorkerFinishOutcome.RETAINED, NONE);
+    var old = f.claims.lookup(slot, NONE).orElseThrow();
+    return new InstallSeed(encoded, ordinary, cfg, original, old, installs, client);
+  }
+
   static byte[] read(Path path) {
     try {
       return Files.readAllBytes(path);
@@ -528,6 +601,342 @@ class MetadataRepairWorkerCompositionTest {
       return java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
     } catch (Exception e) {
       throw new AssertionError(e);
+    }
+  }
+
+  record Policy(
+      DefaultMetadataRepairService service,
+      OfficialMetadataLocalVerificationGateway local,
+      OfficialMetadataReuseGateway declarations)
+      implements AutoCloseable {
+    public void close() {
+      service.close();
+      local.close();
+      declarations.close();
+    }
+  }
+
+  static Policy policy(Fixture f, LookupTransport transport, Executor executor, AtomicLong nanos) {
+    return policy(f, f.issuer, transport, executor, nanos);
+  }
+
+  static Policy policy(
+      Fixture f,
+      OfficialMetadataRepairGateway issuer,
+      LookupTransport transport,
+      Executor executor,
+      AtomicLong nanos) {
+    // The actual SQL write must occur after publisher retirement, not merely after a facade result.
+    try (var connection = f.sql.connect();
+        var statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TRIGGER IF NOT EXISTS repair_attachment_requires_retirement BEFORE INSERT ON"
+              + " metadata_build_associations WHEN EXISTS(SELECT 1 FROM canonical_content_slots"
+              + " WHERE token=NEW.canonical_token AND worker_nonce IS NOT NULL) BEGIN SELECT"
+              + " RAISE(ABORT,'repair publisher not retired'); END");
+    } catch (java.sql.SQLException failure) {
+      throw new AssertionError(failure);
+    }
+    var local = new OfficialMetadataLocalVerificationGateway(f.store);
+    var declarations = new OfficialMetadataReuseGateway(f.store);
+    return new Policy(
+        new DefaultMetadataRepairService(
+            issuer,
+            new OfficialMetadataRepairExecutionGateway(issuer, f.store, transport, CLOCK),
+            local,
+            declarations,
+            new SqliteBuildObjectCatalog(f.sql, f.store),
+            f.claims,
+            f.audits,
+            new SqliteMetadataAssociationRepository(f.sql, f.store, f.store.contentSession()),
+            f.store,
+            executor,
+            CLOCK,
+            nanos::get),
+        local,
+        declarations);
+  }
+
+  @Test
+  void serviceRepairsMissingRootFillsOnlyMissingCapabilitiesAndFreshReaderReopens()
+      throws Exception {
+    for (int history : new int[] {1, 2}) {
+      Path path = directory.resolve("history-" + history);
+      MetadataBuildAssociation attached;
+      try (var f = new Fixture(path, history);
+          var policy = policy(f, f.wire, Runnable::run, new AtomicLong())) {
+        Files.delete(f.objectPath());
+        int requests = f.wire.requests.size();
+        var issued = policy.service.prepareRoot(f.selection).toCompletableFuture().join();
+        assertTrue(issued.cost().encodedTransferBytes() > 0);
+        assertEquals(1, f.head.requests.size());
+        attached = policy.service.execute(issued).toCompletableFuture().join();
+        assertEquals(f.original.originalAlias(), attached.actualRepresentation().originalAlias());
+        if (history == 2) assertEquals(f.original, attached.actualRepresentation());
+        else {
+          assertTrue(attached.actualRepresentation().decodedAttestation().isPresent());
+          assertTrue(attached.actualRepresentation().structuralAttestation().isPresent());
+        }
+        assertEquals(
+            attached.actualRepresentation(),
+            f.claims.lookup(f.claim.slot(), NONE).orElseThrow().proof().orElseThrow());
+        assertEquals(1, count(f.sql, "retention_scopes"));
+        assertEquals(2, count(f.sql, "build_object_memberships"));
+        assertTrue(f.wire.requests.size() > requests);
+        var next = f.claims.claimWorker(f.claim.token(), NONE);
+        f.claims.finishWorker(next, ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED, NONE);
+      }
+      try (var store = new FileObjectStore(path.resolve("store"))) {
+        var sql = new SqliteCatalog(path.resolve("catalog.sqlite"));
+        var cap = store.contentSession();
+        SqliteCanonicalContentRepository.recoverAtStartup(sql, cap);
+        var repo = new SqliteMetadataAssociationRepository(sql, store, cap);
+        assertEquals(
+            attached,
+            repo.find(
+                    attached.declaration().build().snapshotId(),
+                    MetadataStructureAttestation.Kind.ROOT,
+                    NONE)
+                .orElseThrow());
+        var noHttp = new RootLookupFixture();
+        noHttp.rejectNetwork = true;
+        try (var reader = new OfficialFileLookupGateway(store, noHttp, CLOCK)) {
+          assertEquals(
+              2,
+              reader
+                  .lookupRetained(
+                      attached.declaration().build(),
+                      attached.declaration().configuration(),
+                      attached.actualRepresentation().originalAlias(),
+                      Set.of(42L),
+                      LookupBudgets.defaults(),
+                      NONE)
+                  .variants()
+                  .size());
+          assertTrue(noHttp.requests.isEmpty());
+        }
+      }
+    }
+  }
+
+  @Test
+  void restoredHealthyOriginalAfterConsentUsesLocalReplayWithoutPayloadOrAudit() throws Exception {
+    try (var f = new Fixture(directory, 1);
+        var policy = policy(f, f.wire, Runnable::run, new AtomicLong())) {
+      byte[] bytes = Files.readAllBytes(f.objectPath());
+      Files.delete(f.objectPath());
+      var issued = policy.service.prepareRoot(f.selection).toCompletableFuture().join();
+      int requests = f.wire.requests.size();
+      Files.write(f.objectPath(), bytes);
+      var result = policy.service.execute(issued).toCompletableFuture().join();
+      assertEquals(f.original.originalAlias(), result.actualRepresentation().originalAlias());
+      assertEquals(requests, f.wire.requests.size());
+      assertEquals(0, count(f.sql, "metadata_repair_attempts"));
+      assertEquals(1, count(f.sql, "retention_scopes"));
+    }
+  }
+
+  @Test
+  void serviceRejectsForgedOrExpiredConsentBeforePayloadAuditAndWorkerAdmission() throws Exception {
+    try (var f = new Fixture(directory);
+        var policy = policy(f, f.wire, Runnable::run, new AtomicLong())) {
+      Files.delete(f.objectPath());
+      var issued = policy.service.prepareRoot(f.selection).toCompletableFuture().join();
+      int requests = f.wire.requests.size();
+      var forged =
+          new MetadataRepairPlan(
+              UUID.randomUUID(),
+              issued.reservationToken(),
+              issued.request(),
+              issued.originalProof(),
+              issued.sourceObservation(),
+              issued.cost(),
+              issued.issuedAt(),
+              issued.expiresAt());
+      assertEquals(
+          ContentClaimException.Code.REPLAN_REQUIRED,
+          assertInstanceOf(
+                  ContentClaimException.class,
+                  assertThrows(
+                          CompletionException.class,
+                          () -> policy.service.execute(forged).toCompletableFuture().join())
+                      .getCause())
+              .code());
+      assertEquals(requests, f.wire.requests.size());
+      assertEquals(0, count(f.sql, "metadata_repair_attempts"));
+      assertEquals(0, count(f.sql, "retention_scopes"));
+    }
+    try (var f = new Fixture(directory.resolve("expired"))) {
+      var nanos = new AtomicLong();
+      try (var policy = policy(f, f.wire, Runnable::run, nanos)) {
+        Files.delete(f.objectPath());
+        var issued = policy.service.prepareRoot(f.selection).toCompletableFuture().join();
+        int requests = f.wire.requests.size();
+        nanos.addAndGet(TimeUnit.HOURS.toNanos(1));
+        assertEquals(
+            ContentClaimException.Code.REPLAN_REQUIRED,
+            assertInstanceOf(
+                    ContentClaimException.class,
+                    assertThrows(
+                            CompletionException.class,
+                            () -> policy.service.execute(issued).toCompletableFuture().join())
+                        .getCause())
+                .code());
+        assertEquals(requests, f.wire.requests.size());
+        assertEquals(0, count(f.sql, "metadata_repair_attempts"));
+      }
+    }
+  }
+
+  @Test
+  void actualServiceCancellationKeepsWorkerExclusiveUntilIoRetiresAndNeverAttachesConsumer()
+      throws Exception {
+    try (var f = new Fixture(directory)) {
+      var entered = new CountDownLatch(1);
+      var release = new CountDownLatch(1);
+      var retired = new CountDownLatch(1);
+      var jobs = Executors.newSingleThreadExecutor();
+      var held =
+          new LookupTransport() {
+            public CompletableFuture<AcquiredBytes> configuration(CdnRequest r) {
+              throw new AssertionError();
+            }
+
+            public CompletableFuture<AcquiredRange> range(CdnRangeRequest r) {
+              entered.countDown();
+              boolean interrupted = false;
+              while (true)
+                try {
+                  release.await();
+                  break;
+                } catch (InterruptedException e) {
+                  interrupted = true;
+                }
+              if (interrupted) Thread.currentThread().interrupt();
+              return f.wire.range(r);
+            }
+          };
+      try (var policy = policy(f, held, jobs, new AtomicLong())) {
+        Files.delete(f.objectPath());
+        var issued =
+            policy.service.prepareRoot(f.selection).toCompletableFuture().get(3, TimeUnit.SECONDS);
+        var result = policy.service.execute(issued).toCompletableFuture();
+        try {
+          assertTrue(entered.await(3, TimeUnit.SECONDS));
+          assertTrue(result.cancel(true));
+          assertEquals(
+              ContentClaimException.Code.BUSY,
+              assertThrows(
+                      ContentClaimException.class,
+                      () -> f.claims.claimWorker(f.claim.token(), NONE))
+                  .code());
+          assertEquals(0, count(f.sql, "retention_scopes"));
+        } finally {
+          release.countDown();
+          jobs.execute(retired::countDown);
+          assertTrue(retired.await(3, TimeUnit.SECONDS));
+        }
+        assertEquals(0, count(f.sql, "retention_scopes"));
+        assertEquals(1, count(f.sql, "build_object_memberships"));
+        try (var connection = f.sql.connect();
+            var statement = connection.createStatement();
+            var rows = statement.executeQuery("SELECT kind FROM metadata_repair_events")) {
+          assertTrue(rows.next());
+          assertEquals("CONCLUSIVELY_UNPUBLISHED", rows.getString(1));
+          assertFalse(rows.next());
+        }
+        var next = f.claims.claimWorker(f.claim.token(), NONE);
+        f.claims.finishWorker(next, ContentWorkerFinishOutcome.UNCERTAIN, NONE);
+      } finally {
+        release.countDown();
+        jobs.shutdownNow();
+        assertTrue(jobs.awaitTermination(3, TimeUnit.SECONDS));
+      }
+    }
+  }
+
+  @Test
+  void serviceCorruptInstallPreservesHistoricalCapabilitiesAndFreshAssociatedReopen()
+      throws Exception {
+    MetadataBuildAssociation attached;
+    var storePath = directory.resolve("store");
+    try (var f = new Fixture(directory)) {
+      var seed = seedInstall(f, true);
+      String h = seed.original().object().digest().value();
+      Path physical =
+          storePath.resolve("objects").resolve(h.substring(0, 2)).resolve(h.substring(2));
+      byte[] bad = seed.encoded().clone();
+      bad[bad.length - 1] ^= 1;
+      Files.write(physical, bad);
+      f.head.length = seed.encoded().length;
+      var calls = new AtomicInteger();
+      var transport =
+          new LookupTransport() {
+            public CompletableFuture<AcquiredRange> range(CdnRangeRequest r) {
+              throw new AssertionError();
+            }
+
+            public CompletableFuture<AcquiredBytes> configuration(CdnRequest r) {
+              calls.incrementAndGet();
+              return CompletableFuture.completedFuture(
+                  new AcquiredBytes(
+                      r,
+                      CLOCK.instant(),
+                      seed.encoded(),
+                      java.util.HexFormat.of().formatHex(sha(seed.encoded())),
+                      false));
+            }
+          };
+      try (var issuer =
+              new OfficialMetadataRepairGateway(
+                  seed.gateway(),
+                  f.roots,
+                  new CdnMetadataTransport(f.head, CLOCK, Duration.ofSeconds(15)),
+                  CLOCK,
+                  System::nanoTime);
+          var policy = policy(f, issuer, transport, Runnable::run, new AtomicLong())) {
+        var issued =
+            policy
+                .service
+                .prepareInstall(seed.ordinary(), LookupBudgets.defaults())
+                .toCompletableFuture()
+                .join();
+        attached = policy.service.execute(issued).toCompletableFuture().join();
+        assertEquals(1, calls.get());
+        assertEquals(seed.original(), attached.actualRepresentation());
+        assertEquals(seed.claim(), f.claims.lookup(seed.claim().slot(), NONE).orElseThrow());
+        assertEquals(1, count(f.sql, "retention_scopes"));
+      }
+    }
+    try (var store = new FileObjectStore(storePath)) {
+      var sql = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+      var cap = store.contentSession();
+      SqliteCanonicalContentRepository.recoverAtStartup(sql, cap);
+      var claims = new SqliteCanonicalContentRepository(sql, store, cap);
+      var associations = new SqliteMetadataAssociationRepository(sql, store, cap);
+      var builds = new SqliteBuildObjectCatalog(sql, store);
+      var calls = new AtomicInteger();
+      var noWire = new MetadataRepairPlanningTest.HeadClient();
+      var ordinary =
+          new OfficialBootstrapArtifactGateway(
+              store, new PinnedCdnTransport(noWire, CLOCK, Duration.ofSeconds(15)), CLOCK);
+      try (var local = new OfficialMetadataReuseGateway(store);
+          var service =
+              new io.vibeminer.application.bootstrap.DefaultBootstrapService(
+                  ordinary,
+                  builds,
+                  store,
+                  Runnable::run,
+                  Runnable::run,
+                  null,
+                  claims,
+                  associations,
+                  local)) {
+        var result = service.reopen(attached.declaration().build()).toCompletableFuture().join();
+        assertTrue(result.association().isPresent());
+        assertEquals(attached, result.association().orElseThrow());
+        assertTrue(noWire.requests.isEmpty());
+      }
     }
   }
 

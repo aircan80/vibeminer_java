@@ -130,7 +130,9 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
         List.of(),
         Optional.of(association));
     CapturedBuildSource.resolve(declaredPlanB.build());
-    requireSupported(actual, MetadataStructureAttestation.Kind.INSTALL);
+    // This explicit read establishes current readability from the complete local bytes.
+    // Historical capability revisions remain unchanged and are not replay authority here.
+    requireSupportedSource(actual, MetadataStructureAttestation.Kind.INSTALL);
     long decoded = actual.decodedAttestation().orElseThrow().actualDecodedBytes();
     checkInstallBudget(actual, decoded, budgets);
     CapturedBuildSource.validateDataProof(alias.evidence().sourceUrl(), actual.actualEncodingKey());
@@ -286,18 +288,24 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
 
   private static void requireSupported(
       MetadataContentProof proof, MetadataStructureAttestation.Kind kind) {
-    String semantics =
-        kind == MetadataStructureAttestation.Kind.ROOT ? ROOT_SEMANTICS : INSTALL_SEMANTICS;
+    requireSupportedSource(proof, kind);
     String parser =
         kind == MetadataStructureAttestation.Kind.ROOT
             ? "wow-root-tsfm-v1v2-r1"
             : "install-manifest-v1-r1";
-    if (!proof.originalAlias().source().verificationSemantics().equals(semantics)
-        || !proof.originalAlias().evidence().verifierSemantics().equals(semantics)
-        || !proof.decodedAttestation().orElseThrow().verifierRevision().equals(DECODED_REVISION)
+    if (!proof.decodedAttestation().orElseThrow().verifierRevision().equals(DECODED_REVISION)
         || !proof.structuralAttestation().orElseThrow().parserRevision().equals(parser))
       throw failure(
           UNSUPPORTED_REUSE, "Historical metadata verification capability is unsupported");
+  }
+
+  private static void requireSupportedSource(
+      MetadataContentProof proof, MetadataStructureAttestation.Kind kind) {
+    String semantics =
+        kind == MetadataStructureAttestation.Kind.ROOT ? ROOT_SEMANTICS : INSTALL_SEMANTICS;
+    if (!proof.originalAlias().source().verificationSemantics().equals(semantics)
+        || !proof.originalAlias().evidence().verifierSemantics().equals(semantics))
+      throw failure(UNSUPPORTED_REUSE, "Original metadata source verification is unsupported");
   }
 
   private static void validateConfiguration(
