@@ -149,18 +149,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p build/ui-tool build/ui-review
-          javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/CaptureAtlas.java tools/ui/CaptureWorkspaces.java
+          javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/*.java tools/ui/fixtures/*.java
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureAtlas \
             --isolated-display "$DISPLAY" --output build/ui-review'
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureWorkspaces \
             --isolated-display "$DISPLAY" --output build/ui-review'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureInstallWorkflow \
+            --isolated-display "$DISPLAY" --output build/ui-review/install-workflow'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:
           name: UI-review-${{ matrix.target }}-${{ needs.plan.outputs.version }}-${{ github.sha }}
-          path: build/ui-review/*.png
+          path: build/ui-review/**/*.png
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

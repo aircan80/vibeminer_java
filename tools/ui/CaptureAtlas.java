@@ -132,6 +132,9 @@ public final class CaptureAtlas {
         var rowBounds=first.localToScene(first.getBoundsInLocal());
         var footerBounds=footer.localToScene(footer.getBoundsInLocal());
         if(rowBounds.getMinY()<0 || rowBounds.getMaxY()>footerBounds.getMinY()) throw new IllegalStateException("First build row is below the initial Archive viewport");
+        Node open=button(stage,"Open metadata workspace →");
+        var actionBounds=open.localToScene(open.getBoundsInLocal());
+        if(actionBounds.getMinY()<0 || actionBounds.getMaxY()>footerBounds.getMinY()) throw new IllegalStateException("Primary metadata action is below the initial Archive viewport");
     }
     static void assertProductCount(Stage stage,int expected){
         stage.getScene().getRoot().applyCss();stage.getScene().getRoot().layout();

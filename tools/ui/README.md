@@ -1,6 +1,6 @@
 # Atlas screenshot review tool
 
-`CaptureAtlas.java` launches the real JavaFX interface with synthetic discovery fixtures, opens Research and Archive, and writes baseline PNGs at 1440×1100 and 1280×800, plus selected-workspace and 200% text-scale images. An empty in-memory workspace service preserves the same saved-workspace bar as a fresh production launch; unused writes fail explicitly. The real SQLite persistence check is separate below. At1280×800, the first fixture build row must be visible above the footer in the initial Archive viewport.
+`CaptureAtlas.java` launches the real JavaFX interface with synthetic discovery fixtures, opens Research and Archive, and writes baseline PNGs at 1440×1100 and 1280×800, plus selected-workspace and 200% text-scale images. An empty in-memory workspace service preserves the same saved-workspace bar as a fresh production launch; unused writes fail explicitly. The real SQLite persistence check is separate below. At 1280×800, the first fixture build row and primary metadata action must be visible above the footer in the initial Archive viewport.
 
 It first verifies an empty official product picker and zero automatic discovery calls. An injected synthetic catalog then tests explicit product refresh, current-version capability guards for CDN-only/preload-only/unknown pointers, typed filtering, visible match counts and no-result recovery. It verifies the build refresh actually invokes its injected service rather than silently clicking a disabled control.
 
@@ -37,10 +37,27 @@ After building the installed development distribution and starting an isolated d
 
 ```bash
 set -e
-javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/*.java
+javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/*.java tools/ui/fixtures/*.java
 DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
   -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
   CaptureWorkspaces --isolated-display :191 --output build/ui-review/workspaces
 ```
 
 Each child has a 45-second failure deadline; the supervisor also enforces a 60-second process limit. A successful run prints `SQLite UI restart contracts OK`; missing screenshots or a nonzero exit fail the review. The final removal is confined to the disposable test database. Finish all application/build changes and run `:bootstrap:installDist` before capturing; do not rebuild distribution jars while the review tool is compiling or running.
+
+
+## Retained install-list workflow
+
+`CaptureInstallWorkflow.java` uses two separate JVM launches with the real bootstrap service, configuration gateway, SQLite catalog, CAS, BLTE decoder and install-list parser. Its helper in `fixtures/InstallFixtureBackend.java` supplies deterministic synthetic bytes through the package-private transport seam; no production API is widened and no HTTP request is made. The temporary catalog and objects are separate from user data and deleted after the run.
+
+Compile all helpers with the command above, then run on the same isolated display:
+
+```bash
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureInstallWorkflow --isolated-display :191 --output build/ui-review/install-workflow
+```
+
+The first process verifies that checking configuration transfers no install content, shows encoded/decoded byte cost before a separate Download action, and handles unavailable content, cancellation and workspace changes without retaining a false result. It inspects actual decoded names, tags, filters and source evidence, including programmatic Enter/Escape focus transfer and focus retention while typing a filter. The second process reopens retained bytes without any transport calls, checks workspace isolation, then corrupts the retained object and verifies that failed local integrity checking clears the verified list and coverage without attempting repair over the network. Metadata-only and install-list-verified coverage remain distinct; game files are never acquired.
+
+Thirteen scene-only PNGs include 1280×800 and 200% text scaling. Cost, entry and detail captures deliberately scroll the application body to the inspected section; they do not imply that every section fits simultaneously. Each child has a 90-second application deadline and a 120-second supervisor deadline. A successful run prints `Install UI workflow OK; real services/CAS/SQLite; two JVMs; offline transport forbidden`. Missing images or abnormal termination fail the review. These synthetic Linux rendering checks do not certify live CDN compatibility, other operating systems or assistive technology.
