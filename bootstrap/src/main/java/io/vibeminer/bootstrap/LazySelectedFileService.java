@@ -52,6 +52,14 @@ final class LazySelectedFileService implements SelectedFileService {
         LazySelectedFileService::classify);
   }
 
+  @Override
+  public CompletionStage<SelectedFileAssociation> inspectOffline(
+      FileVariantAssociation variant, SelectedFileBudgets budgets) {
+    return owner.dispatchResources(
+        runtime -> runtime.selectedFiles().inspectOffline(variant, budgets),
+        LazySelectedFileService::classify);
+  }
+
   /** One idempotent owner manages all content services; delegate resources remain borrowed. */
   @Override
   public void close() {

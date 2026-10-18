@@ -54,4 +54,31 @@ class SelectedFileContractsTest {
                 9,
                 Optional.empty()));
   }
+
+  @Test
+  void legacyServicesFailUnsupportedInsteadOfInventingAnOfflineEncoding() {
+    var legacy =
+        (SelectedFileService)
+            java.lang.reflect.Proxy.newProxyInstance(
+                SelectedFileService.class.getClassLoader(),
+                new Class<?>[] {SelectedFileService.class},
+                (proxy, method, args) -> {
+                  if (method.isDefault())
+                    return java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args);
+                  throw new AssertionError("No descriptor or source operation may be invented");
+                });
+    var variant =
+        SelectedFileFixture.variant(SelectedFileFixture.build("one"), SelectedFileFixture.C);
+    var failure =
+        assertThrows(
+            java.util.concurrent.CompletionException.class,
+            () ->
+                legacy
+                    .inspectOffline(variant, SelectedFileBudgets.defaults())
+                    .toCompletableFuture()
+                    .join());
+    assertEquals(
+        SelectedFileException.Code.UNSUPPORTED,
+        assertInstanceOf(SelectedFileException.class, failure.getCause()).code());
+  }
 }

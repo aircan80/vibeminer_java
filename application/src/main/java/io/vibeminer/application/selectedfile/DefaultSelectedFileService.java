@@ -299,37 +299,79 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       SelectedFileDescriptor descriptor, SelectedFileBudgets budgets) {
     Objects.requireNonNull(descriptor);
     Objects.requireNonNull(budgets);
+    return submit(token -> inspectOfflineBlocking(descriptor, budgets, token, MISSING_LOCAL));
+  }
+
+  @Override
+  public CompletionStage<SelectedFileAssociation> inspectOffline(
+      FileVariantAssociation variant, SelectedFileBudgets budgets) {
+    Objects.requireNonNull(variant);
+    Objects.requireNonNull(budgets);
     return submit(
         token -> {
-          var value =
-              files
-                  .findAssociation(
-                      descriptor.association().build().snapshotId(), descriptor.role(), token)
-                  .orElseThrow(
-                      () -> error(MISSING_LOCAL, "Selected-file association is not retained"));
-          if (!value.descriptor().role().equals(descriptor.role())
-              || !value.snapshotId().equals(descriptor.association().build().snapshotId()))
-            throw error(INTEGRITY_FAILURE, "Stored descriptor differs from exact selection");
-          var build = descriptor.association().build();
-          if (!retained(build, "BUILD_CONFIG", token).equals(value.configuration())
-              || !retained(build, "ROOT_MANIFEST", token).equals(value.root()))
-            throw error(INTEGRITY_FAILURE, "Stored dependency provenance changed");
           var canonical =
               files
-                  .lookup(value.representation().slot(), token)
-                  .orElseThrow(() -> error(RECOVERY_REQUIRED, "Canonical representation missing"));
-          if (canonical.status() != CanonicalReservation.Status.RETAINED
-              || !canonical.representation().orElseThrow().equals(value.representation()))
+                  .lookup(variant.slot(), token)
+                  .orElseThrow(
+                      () ->
+                          error(
+                              NOT_FOUND, "No retained representation for this exact root variant"));
+          if (!canonical.slot().equals(variant.slot()))
             throw error(
-                INTEGRITY_FAILURE, "Stored association is not the canonical representation");
-          if (value.representation().encoded().object().length()
-              > budgets.maximumEncodedFileBytes())
-            throw error(BUDGET_EXCEEDED, "Retained file exceeds offline read budget");
-          var checked = gateway.inspectRetained(value, budgets, token);
-          if (!value.representation().equals(checked))
-            throw error(INTEGRITY_FAILURE, "Offline verification replaced the original receipt");
-          return value;
+                INTEGRITY_FAILURE, "Canonical lookup returned another declared content slot");
+          switch (canonical.status()) {
+            case PENDING, PUBLISHING ->
+                throw error(BUSY, "The selected content is still being retained");
+            case RECOVERY ->
+                throw error(
+                    RECOVERY_REQUIRED,
+                    "Interrupted publication must be reconciled before offline inspection");
+            case RETAINED -> {}
+          }
+          var descriptor =
+              new SelectedFileDescriptor(
+                  variant,
+                  canonical.actualEncodingKey(),
+                  canonical
+                      .representation()
+                      .orElseThrow()
+                      .encoded()
+                      .source()
+                      .verificationSemantics());
+          return inspectOfflineBlocking(descriptor, budgets, token, NOT_FOUND);
         });
+  }
+
+  private SelectedFileAssociation inspectOfflineBlocking(
+      SelectedFileDescriptor descriptor,
+      SelectedFileBudgets budgets,
+      CancellationToken token,
+      SelectedFileException.Code absentCode) {
+    var value =
+        files
+            .findAssociation(
+                descriptor.association().build().snapshotId(), descriptor.role(), token)
+            .orElseThrow(() -> error(absentCode, "Selected-file association is not retained"));
+    if (!value.descriptor().role().equals(descriptor.role())
+        || !value.snapshotId().equals(descriptor.association().build().snapshotId()))
+      throw error(INTEGRITY_FAILURE, "Stored descriptor differs from exact selection");
+    var build = descriptor.association().build();
+    if (!retained(build, "BUILD_CONFIG", token).equals(value.configuration())
+        || !retained(build, "ROOT_MANIFEST", token).equals(value.root()))
+      throw error(INTEGRITY_FAILURE, "Stored dependency provenance changed");
+    var canonical =
+        files
+            .lookup(value.representation().slot(), token)
+            .orElseThrow(() -> error(RECOVERY_REQUIRED, "Canonical representation missing"));
+    if (canonical.status() != CanonicalReservation.Status.RETAINED
+        || !canonical.representation().orElseThrow().equals(value.representation()))
+      throw error(INTEGRITY_FAILURE, "Stored association is not the canonical representation");
+    if (value.representation().encoded().object().length() > budgets.maximumEncodedFileBytes())
+      throw error(BUDGET_EXCEEDED, "Retained file exceeds offline read budget");
+    var checked = gateway.inspectRetained(value, budgets, token);
+    if (!value.representation().equals(checked))
+      throw error(INTEGRITY_FAILURE, "Offline verification replaced the original receipt");
+    return value;
   }
 
   private void validateChoice(CandidateChoice choice, CancellationToken token) {

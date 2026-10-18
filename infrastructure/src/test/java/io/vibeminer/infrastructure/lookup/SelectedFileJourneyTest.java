@@ -138,6 +138,16 @@ class SelectedFileJourneyTest {
         assertEquals(
             second,
             await(service.inspectOffline(second.descriptor(), SelectedFileBudgets.defaults())));
+        assertEquals(
+            first,
+            await(
+                service.inspectOffline(
+                    first.descriptor().association(), SelectedFileBudgets.defaults())));
+        assertEquals(
+            second,
+            await(
+                service.inspectOffline(
+                    second.descriptor().association(), SelectedFileBudgets.defaults())));
         assertEquals(requestCount, fixture.requests.size());
         var digest = first.representation().encoded().object().digest().value();
         var object =
@@ -167,6 +177,15 @@ class SelectedFileJourneyTest {
                         association.descriptor(), SelectedFileBudgets.defaults())));
     assertEquals(
         expected, assertInstanceOf(SelectedFileException.class, failure.getCause()).code());
+    var fromVariant =
+        assertThrows(
+            CompletionException.class,
+            () ->
+                await(
+                    service.inspectOffline(
+                        association.descriptor().association(), SelectedFileBudgets.defaults())));
+    assertEquals(
+        expected, assertInstanceOf(SelectedFileException.class, fromVariant.getCause()).code());
   }
 
   private static void assertDependencyPin(SqliteCatalog sql, SelectedFileAssociation association)

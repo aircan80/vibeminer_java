@@ -4,7 +4,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.selectedfile.*;
+import io.vibeminer.domain.*;
+import io.vibeminer.domain.selectedfile.*;
 import java.lang.reflect.Proxy;
+import java.time.Instant;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -127,6 +131,96 @@ class LazySelectedFileServiceTest {
     assertTrue(job.isCancelled());
     facade.close();
     assertEquals(1, closed.get());
+  }
+
+  @Test
+  void variantOfflineOverloadForwardsExactContextAndDoesNotAffectAnotherConsumer()
+      throws Exception {
+    var build =
+        new BuildSnapshot(
+            "wow",
+            "Synthetic",
+            "Published",
+            "us",
+            "one",
+            "a".repeat(32),
+            "b".repeat(32),
+            Instant.EPOCH,
+            true);
+    var variant =
+        new FileVariantAssociation(
+            build,
+            new ResolvedSourceIdentity("test.root", "root", "v1"),
+            42,
+            "c".repeat(32),
+            2,
+            3,
+            4,
+            5,
+            6,
+            Optional.empty());
+    var budgets = SelectedFileBudgets.defaults();
+    var firstJob = new CompletableFuture<SelectedFileAssociation>();
+    var secondJob = new CompletableFuture<SelectedFileAssociation>();
+    var jobs =
+        new ConcurrentLinkedQueue<CompletableFuture<SelectedFileAssociation>>(
+            List.of(firstJob, secondJob));
+    var invoked = new CountDownLatch(2);
+    var firstInvoked = new CountDownLatch(1);
+    var closed = new AtomicInteger();
+    var delegate =
+        (SelectedFileService)
+            Proxy.newProxyInstance(
+                SelectedFileService.class.getClassLoader(),
+                new Class<?>[] {SelectedFileService.class},
+                (proxy, method, args) -> {
+                  assertEquals("inspectOffline", method.getName());
+                  assertEquals(FileVariantAssociation.class, method.getParameterTypes()[0]);
+                  assertSame(variant, args[0]);
+                  assertSame(budgets, args[1]);
+                  var job = jobs.remove();
+                  invoked.countDown();
+                  firstInvoked.countDown();
+                  return job;
+                });
+    var owner =
+        new LazyBootstrapService(
+            () ->
+                new LazyBootstrapService.Resources() {
+                  public BootstrapService service() {
+                    throw new AssertionError("No install action");
+                  }
+
+                  public SelectedFileService selectedFiles() {
+                    return delegate;
+                  }
+
+                  public void close() {
+                    closed.incrementAndGet();
+                  }
+                });
+    var facade = new LazySelectedFileService(owner);
+    try {
+      var first = facade.inspectOffline(variant, budgets).toCompletableFuture();
+      assertTrue(firstInvoked.await(2, TimeUnit.SECONDS));
+      var second = facade.inspectOffline(variant, budgets).toCompletableFuture();
+      assertTrue(invoked.await(2, TimeUnit.SECONDS));
+      assertTrue(first.cancel(true));
+      assertTrue(firstJob.isCancelled());
+      assertFalse(secondJob.isCancelled());
+      secondJob.complete(null);
+      assertNull(second.get(2, TimeUnit.SECONDS));
+    } finally {
+      facade.close();
+    }
+    assertEquals(1, closed.get());
+    var failure =
+        assertThrows(
+            CompletionException.class,
+            () -> facade.inspectOffline(variant, budgets).toCompletableFuture().join());
+    assertEquals(
+        SelectedFileException.Code.CLOSED,
+        assertInstanceOf(SelectedFileException.class, failure.getCause()).code());
   }
 
   private static LazyBootstrapService.Resources resources(

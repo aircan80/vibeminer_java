@@ -368,6 +368,13 @@ final class SelectedFileFixture {
             new EncodedCandidate(B, OptionalLong.of(12), OptionalLong.empty()));
     int preparations, probes, searches, acquisitions, inspections;
     boolean looseMissing, missingPhysical, corruptPhysical;
+    boolean forbidSourceActions;
+
+    void sourceAllowed() {
+      if (forbidSourceActions)
+        throw new AssertionError("Offline inspection attempted source action");
+    }
+
     SelectedFileException probeFailure;
     EncodedAcquisitionFailure acquisitionFailure;
     boolean failAfterPublication;
@@ -384,6 +391,7 @@ final class SelectedFileFixture {
         FileVariantAssociation variant,
         SelectedFileBudgets budgets,
         CancellationToken token) {
+      sourceAllowed();
       preparations++;
       var plan =
           new CandidatePlan(
@@ -444,6 +452,7 @@ final class SelectedFileFixture {
 
     public LooseProbe probeLoose(CandidateChoice choice, CancellationToken token) {
       choice(choice, token);
+      sourceAllowed();
       probes++;
       if (probeFailure != null) throw probeFailure;
       if (looseMissing) {
@@ -462,6 +471,7 @@ final class SelectedFileFixture {
     public ArchiveSearchResult searchArchives(
         Loose404Permit permit, ArchiveSearchBudgets budget, CancellationToken token) {
       validateLoose404Permit(permit, token);
+      sourceAllowed();
       searches++;
       return new ArchiveSearchResult(Optional.empty(), 1, 5, false);
     }
@@ -473,6 +483,7 @@ final class SelectedFileFixture {
 
     public ContentRepresentation acquireEncoded(
         LocatedFilePlan plan, EncodedPublicationObserver observer, CancellationToken token) {
+      sourceAllowed();
       acquisitions++;
       enteringAcquisition.run();
       if (acquisitionFailure != null) throw acquisitionFailure;

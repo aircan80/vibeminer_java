@@ -2,6 +2,7 @@ package io.vibeminer.application.selectedfile;
 
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.selectedfile.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /** Explicit stages; no UI, transport, storage implementation or protocol parser dependencies. */
@@ -16,7 +17,19 @@ public interface SelectedFileService extends AutoCloseable {
 
   CompletionStage<SelectedFileAssociation> retain(SelectedFilePlan plan);
 
-  CompletionStage<SelectedFileAssociation> inspectOffline(SelectedFileDescriptor descriptor, SelectedFileBudgets budgets);
+  CompletionStage<SelectedFileAssociation> inspectOffline(
+      SelectedFileDescriptor descriptor, SelectedFileBudgets budgets);
+
+  /**
+   * Offline convenience for callers that have a retained root variant but no current EKey/session.
+   */
+  default CompletionStage<SelectedFileAssociation> inspectOffline(
+      FileVariantAssociation variant, SelectedFileBudgets budgets) {
+    return CompletableFuture.failedFuture(
+        new SelectedFileException(
+            SelectedFileException.Code.UNSUPPORTED,
+            "Offline variant lookup is not supported by this service"));
+  }
 
   @Override
   void close();
