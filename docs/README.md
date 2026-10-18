@@ -2,13 +2,10 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Published [alpha.4](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.4) is exact `891a9c49776649924ac289873336b45071662dba`, with all four packages and 12 assets independently verified. It adds selected encoded retention/offline reopen and scoped physical Item preparation, pages and exact-ID lookup. See [release notes](releases/v0.1.0-alpha.4.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Names, repair and GC remain unfinished; explicit local retained-A reuse is wired in accepted unreleased `7ffc822`, with exact-source local Linux qualification passed and four-platform qualification passed at `f3c4d46`. Ordinary B acquisition still refuses. Accepted `ed6394b` adds a dedicated associated-install reader (1,035 clean Java cases and 24 Python checks); its local Linux package/self-storage/JavaFX smoke passed; later runtime wiring is accepted, without a newer exact-revision four-platform claim.
+Published [alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.5) is exact `f3c4d46e42451bfc7941959b862143a462a3ddd6` (annotated tag `2cc1af4`). All four native packages and all 12 freshly downloaded assets were independently verified against manifests, SHA-256, targets and byte counts; [publication run 39119447852](https://github.com/aircan80/vibeminer/actions/runs/39119447852) passed. See [release notes](releases/v0.1.0-alpha.5.md) for scope. Explicit retained metadata reuse is released; names, repair execution and GC remain unfinished. Later source foundations do not alter the exact release contents.
 
 
-Post-release schema-11 repair-audit persistence and execution-port contracts are accepted foundations only. Runtime reuse wiring/facade lifecycle is accepted source; exact-source local Linux package/visual/native checks passed; four-platform qualification passed at `f3c4d46`; names application work is in progress. The [central plan](PLAN.md#delivered-baseline-and-current-work) records successful `20e371d` CI separately from these newer changes.
-
-Latest source build `f3c4d46` passed 1,113 Java cases, distribution assembly, 24 helper checks and workflow/action lint. Its [native CI](https://github.com/aircan80/vibeminer/actions/runs/39119132354) passed all four targets and eight Linux UI workflows. [Alpha.5 candidate notes](releases/v0.1.0-alpha.5.md) describe the release in preparation; final assets/publication are not yet verified, so alpha.4 remains the published release.
-
+- [Verified alpha.5 release notes](releases/v0.1.0-alpha.5.md)
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
 - [Layered architecture and contracts](ARCHITECTURE.md)

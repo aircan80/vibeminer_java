@@ -18,6 +18,8 @@ Closed shared-acquisition slice #32 coordinates source requests over this byte-s
 
 ## Delivered catalog and active publisher ownership
 
+Current verified release is [alpha.5](releases/v0.1.0-alpha.5.md), exact `f3c4d46`, including explicit retained-metadata reuse and offline association inspection. Later read-only/repair-integration foundations are unreleased; no repair execution or GC is enabled. Historical source checkpoints below retain their original validation scope.
+
 `BuildObjectCatalog`/`SqliteBuildObjectCatalog` share schema ownership with canonical selected-file and metadata repositories through `SqliteCatalog`. Actual source aliases, verification receipts and immutable exact-build memberships follow verified CAS publication. Filesystem promotion and SQLite commits remain separate resources.
 
 Publisher ownership originally integrated at `6fac722` with additive conflict inventory/worker nonce and exclusive-store one-shot startup fencing. Current `891a9c4` additionally contains SQLite schema-10 metadata-association foundations and shared physical Item derived-index persistence. Preserve immutable physical bytes, original receipts, pins and legacy tokens; a schema association does not activate representation-aware runtime reuse.

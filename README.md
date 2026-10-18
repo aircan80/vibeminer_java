@@ -8,11 +8,11 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 ## Available now
 
-[VibeMiner 0.1.0-alpha.4](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.4) is published at `891a9c49776649924ac289873336b45071662dba`. All four packages and 12 final assets were independently verified. Packages bundle Java for Windows x64, macOS ARM64, macOS Intel and Linux x64; they are unsigned and not notarized.
+[VibeMiner 0.1.0-alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.5) is published at `f3c4d46e42451bfc7941959b862143a462a3ddd6`. All four packages and 12 final assets were independently verified. Packages bundle Java for Windows x64, macOS ARM64, macOS Intel and Linux x64; they are unsigned and not notarized.
 
-This release provides official discovery, saved offline metadata, install-list inspection, exact FileDataID root lookup, explicit selected encoded-file retention and exact-variant offline reopening. Database → Item adds explicit offline preparation, physical Item-ID pages/lookup and four attributed integer candidates for the admitted cohort. Copies and other sections remain unindexed; encoded verification and admitted row interpretation do not establish a full decoded Item CKey. See [verified release notes](docs/releases/v0.1.0-alpha.4.md) for precise scope and validation.
+This release adds explicit local retained-metadata reuse: replay canonical A, preserve a new build’s declared B separately and attach/reopen the association offline without alternate-B acquisition. Discovery, saved metadata, install/root inspection, selected encoded retention and scoped physical Item pages/lookup remain available. See [verified release notes](docs/releases/v0.1.0-alpha.5.md) for exact scope and checks.
 
-Names, general search/filtering, metadata repair, GC, comparisons, exports and complete historical archives remain unfinished. Later repair planning, execution ports, schema-11 audit and reuse services are unreleased source. Explicit local retained-A reuse is wired in accepted `7ffc822` with exact-source local Linux qualification passed and newer four-platform checks pending; ordinary B acquisition still refuses, and audit persistence does not execute repair. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
+Names, general search/filtering, metadata repair execution, GC, comparisons, exports and complete historical archives remain unfinished. Complete encoded verification does not establish a full decoded Item CKey. Later read-only/repair-integration foundations are not included in the release. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
 
 
 ## What it will do

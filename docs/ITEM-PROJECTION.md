@@ -3,6 +3,8 @@
 **Status: #81 physical-row backend, runtime and Atlas view are published in verified [alpha.4](releases/v0.1.0-alpha.4.md), exact `891a9c4`, with all four native targets passed.** This is the bounded #20 slice, not all table/search acceptance. Final Item UI acceptance exercised 85 assertions across two JVMs; [central evidence](PLAN.md#delivered-baseline-and-current-work) records the exact test/package/protocol/image limits. The [exact cohort](ITEM-COHORT.md) and contracts below define admitted physical rows, four candidate integer fields and copies-unindexed coverage. Full decoded-table CKeys, names and general search are not claimed.
 
 
+The same admitted physical Item scope remains available in current verified [alpha.5](releases/v0.1.0-alpha.5.md); its later source and package qualification do not expand table/name coverage.
+
 ## User outcome and exact context
 
 From an already retained supported Item encoded object, explicitly prepare the admitted zero-key section, page its physical records, look up an exact Item record ID and inspect four attributed integer candidates with source evidence. Preparation and subsequent queries operate offline, with zero HTTP. Missing required retained evidence is an actionable missing-local outcome, never permission to acquire or repair content automatically.
