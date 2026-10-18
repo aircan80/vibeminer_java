@@ -17,6 +17,12 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.itemnames.ItemNamesService itemNames() {
+      throw new io.vibeminer.application.itemnames.ItemNamesException(
+          io.vibeminer.application.itemnames.ItemNamesException.Code.UNSUPPORTED,
+          "This content runtime does not provide physical Item names");
+    }
+
     default io.vibeminer.application.content.MetadataRepairService metadataRepair() {
       throw new io.vibeminer.application.content.ContentClaimException(
           io.vibeminer.application.content.ContentClaimException.Code.UNSUPPORTED_REUSE,

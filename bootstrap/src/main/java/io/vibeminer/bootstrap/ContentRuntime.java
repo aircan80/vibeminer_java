@@ -11,6 +11,7 @@ import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.DefaultItemProjectionService;
 import io.vibeminer.application.item.ItemProjectionBackend;
 import io.vibeminer.application.item.ItemProjectionService;
+import io.vibeminer.application.itemnames.*;
 import io.vibeminer.application.lookup.DefaultFileLookupService;
 import io.vibeminer.application.lookup.FileLookupService;
 import io.vibeminer.application.selectedfile.DefaultSelectedFileService;
@@ -24,7 +25,9 @@ import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataAssociationRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataRepairAuditRepository;
 import io.vibeminer.infrastructure.item.RetainedItemProjectionSourceReader;
+import io.vibeminer.infrastructure.item.SqliteItemNamesBackend;
 import io.vibeminer.infrastructure.item.SqliteItemProjectionBackend;
+import io.vibeminer.infrastructure.itemnames.RetainedSparseNameProjectionSourceReader;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
 import io.vibeminer.infrastructure.lookup.OfficialMetadataLocalVerificationGateway;
 import io.vibeminer.infrastructure.lookup.OfficialMetadataRepairExecutionGateway;
@@ -59,6 +62,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final MetadataRepairService metadataRepair;
   private final OfficialMetadataRepairGateway repairIssuer;
   private final OfficialMetadataLocalVerificationGateway repairLocal;
+  private final ExecutorService namesWorkers;
+  private final ItemNamesService itemNames;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -84,7 +89,11 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       ExecutorService repairWorkers,
       MetadataRepairService metadataRepair,
       OfficialMetadataRepairGateway repairIssuer,
-      OfficialMetadataLocalVerificationGateway repairLocal) {
+      OfficialMetadataLocalVerificationGateway repairLocal,
+      ExecutorService namesWorkers,
+      ItemNamesService itemNames) {
+    this.namesWorkers = namesWorkers;
+    this.itemNames = itemNames;
     this.repairWorkers = repairWorkers;
     this.metadataRepair = metadataRepair;
     this.repairIssuer = repairIssuer;
@@ -134,6 +143,21 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       Supplier<HttpClient> clientFactory,
       BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator,
       BiFunction<ObjectStore, MetadataReuseGateway, MetadataReuseGateway> metadataDecorator) {
+    return open(
+        dataDirectory,
+        clientFactory,
+        itemDecorator,
+        metadataDecorator,
+        (store, backend) -> backend);
+  }
+
+  /** Names backend decorator only for actual-worker/lease lifecycle tests. */
+  static ContentRuntime open(
+      Path dataDirectory,
+      Supplier<HttpClient> clientFactory,
+      BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator,
+      BiFunction<ObjectStore, MetadataReuseGateway, MetadataReuseGateway> metadataDecorator,
+      BiFunction<ObjectStore, ItemNamesBackend, ItemNamesBackend> namesDecorator) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
     var storeSession = store.contentSession();
     HttpClient client = null;
@@ -145,6 +169,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     var itemWorkers = workers("vibeminer-item-projection", 2);
     var metadataWorkers = workers("vibeminer-metadata-reuse", 2);
     var repairWorkers = workers("vibeminer-metadata-repair", 2);
+    var namesWorkers = workers("vibeminer-item-names", 2);
     try {
       var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
       SqliteCanonicalContentRepository.recoverAtStartup(sharedCatalog, storeSession);
@@ -224,6 +249,15 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           new DefaultItemProjectionService(
               java.util.Objects.requireNonNull(itemDecorator.apply(store, itemBackend)),
               itemWorkers);
+      var sparseReader =
+          new RetainedSparseNameProjectionSourceReader(
+              store, selectedCatalog, selectedGateway, Clock.systemUTC());
+      var namesBackend =
+          new SqliteItemNamesBackend(sharedCatalog, storeSession, itemReader, sparseReader);
+      var itemNames =
+          new DefaultItemNamesService(
+              java.util.Objects.requireNonNull(namesDecorator.apply(store, namesBackend)),
+              namesWorkers);
       return new ContentRuntime(
           store,
           client,
@@ -242,13 +276,16 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           repairWorkers,
           metadataRepair,
           repairIssuer,
-          repairLocal);
+          repairLocal,
+          namesWorkers,
+          itemNames);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
       acquisition.shutdownNow();
       itemWorkers.shutdownNow();
       metadataWorkers.shutdownNow();
       repairWorkers.shutdownNow();
+      namesWorkers.shutdownNow();
       if (repairIssuer != null) repairIssuer.close();
       if (repairLocal != null) repairLocal.close();
       if (client != null) client.shutdownNow();
@@ -293,8 +330,14 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   @Override
+  public ItemNamesService itemNames() {
+    return itemNames;
+  }
+
+  @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    itemNames.close();
     metadataRepair.close();
     metadataReuse.close();
     itemProjection.close();
@@ -306,6 +349,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     itemWorkers.shutdownNow();
     metadataWorkers.shutdownNow();
     repairWorkers.shutdownNow();
+    namesWorkers.shutdownNow();
     client.shutdownNow();
     var interrupted = new AtomicBoolean(Thread.interrupted());
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -315,7 +359,13 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       var itemsStopped = await(itemWorkers, deadline, interrupted);
       var metadataStopped = await(metadataWorkers, deadline, interrupted);
       var repairsStopped = await(repairWorkers, deadline, interrupted);
-      if (!jobsStopped || !transfersStopped || !itemsStopped || !metadataStopped || !repairsStopped)
+      var namesStopped = await(namesWorkers, deadline, interrupted);
+      if (!jobsStopped
+          || !transfersStopped
+          || !itemsStopped
+          || !metadataStopped
+          || !repairsStopped
+          || !namesStopped)
         throw new IllegalStateException(
             "Content workers have not stopped; active storage remains protected");
       repairIssuer.close();
