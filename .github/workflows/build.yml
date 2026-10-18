@@ -213,6 +213,11 @@ jobs:
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureItemNameSearchWorkflow \
             --isolated-display "$DISPLAY" --output build/ui-review/item-name-search'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureItemEvidenceExportWorkflow \
+            --isolated-display "$DISPLAY" --output build/ui-review/item-evidence-export'
+          build/export-validator/bin/python tools/exports/native_oracle.py \
+            build/ui-review/item-evidence-export
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:
@@ -220,6 +225,8 @@ jobs:
           path: |
             build/ui-review/**/*.png
             build/ui-review/**/*.txt
+            build/ui-review/item-evidence-export/exports/*.json
+            build/ui-review/item-evidence-export/exports/expectations.tsv
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
