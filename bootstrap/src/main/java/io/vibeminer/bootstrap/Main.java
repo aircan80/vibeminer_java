@@ -21,12 +21,7 @@ public final class Main {
     private Main() { }
     public static void main(String[] args) {
         if (List.of(args).contains("--self-test")) {
-            var builds = FixtureDiscovery.builds();
-            if (builds.size() != 2 || builds.getFirst().snapshotId().equals(builds.getLast().snapshotId())) {
-                throw new IllegalStateException("Identity self-test failed");
-            }
-            verifyMetadataRuntime(builds.getFirst());
-            System.out.println("VibeMiner self-test OK (bundled runtime; SQLite metadata; synthetic identity; no network)");
+            PackageSelfTest.run();
             return;
         }
         var official = new OfficialDiscoveryService();
@@ -40,36 +35,30 @@ public final class Main {
             new ArrayBlockingQueue<>(64), runnable -> {
                 var thread = new Thread(runnable, "vibeminer-workspaces"); thread.setDaemon(true); return thread;
             });
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            workspaceExecutor.shutdown();
-            try { if (!workspaceExecutor.awaitTermination(5, TimeUnit.SECONDS)) workspaceExecutor.shutdownNow(); }
-            catch (InterruptedException interrupted) { workspaceExecutor.shutdownNow(); Thread.currentThread().interrupt(); }
-        }, "vibeminer-shutdown"));
+        var dataDirectory = AppDataDirectory.resolve();
+        var content = new LazyBootstrapService(() -> ContentRuntime.open(dataDirectory));
+        var shutdown = new Thread(() -> shutdown(content, workspaceExecutor), "vibeminer-shutdown");
+        Runtime.getRuntime().addShutdownHook(shutdown);
         var workspaceService = new DefaultWorkspaceService(new SqliteWorkspaceRepository(
-            AppDataDirectory.resolve().resolve("catalog.sqlite")), workspaceExecutor, Clock.systemUTC());
-        AtlasApplication.configure(discovery, workspaceService, new OfficialProductDiscoveryService(), List.of(args).contains("--fixtures"));
-        javafx.application.Application.launch(AtlasApplication.class, args);
-    }
-    private static void verifyMetadataRuntime(BuildSnapshot build) {
-        java.nio.file.Path temporary = null;
+            dataDirectory.resolve("catalog.sqlite")), workspaceExecutor, Clock.systemUTC());
         try {
-            temporary = java.nio.file.Files.createTempDirectory("vibeminer-package-selftest-");
-            var database = temporary.resolve("catalog.sqlite");
-            var repository = new SqliteWorkspaceRepository(database);
-            var workspace = io.vibeminer.domain.Workspace.create(build, "enUS", "Package fixture", java.time.Instant.EPOCH);
-            repository.save(workspace);
-            if (!new SqliteWorkspaceRepository(database).find(workspace.id()).orElseThrow().equals(workspace)) {
-                throw new IllegalStateException("Bundled SQLite metadata self-test failed");
-            }
-        } catch (java.io.IOException failure) {
-            throw new IllegalStateException("Cannot create package self-test storage", failure);
+            AtlasApplication.configure(discovery, workspaceService, new OfficialProductDiscoveryService(), content, List.of(args).contains("--fixtures"));
+            javafx.application.Application.launch(AtlasApplication.class, args);
         } finally {
-            if (temporary != null) {
-                try (var files = java.nio.file.Files.walk(temporary)) {
-                    for (var path : files.sorted(java.util.Comparator.reverseOrder()).toList()) java.nio.file.Files.delete(path);
-                } catch (java.io.IOException failure) { throw new IllegalStateException("Cannot clean package self-test storage", failure); }
-            }
+            shutdown(content, workspaceExecutor);
+            try { Runtime.getRuntime().removeShutdownHook(shutdown); }
+            catch (IllegalStateException alreadyShuttingDown) { /* The registered hook owns the same idempotent shutdown. */ }
         }
+    }
+    private static void shutdown(LazyBootstrapService content, java.util.concurrent.ExecutorService workspaces) {
+        try { content.close(); }
+        catch (RuntimeException failure) { System.err.println("VibeMiner content shutdown: " + failure.getMessage()); }
+        workspaces.shutdown();
+        boolean interrupted = Thread.interrupted();
+        try {
+            if (!workspaces.awaitTermination(5, TimeUnit.SECONDS)) workspaces.shutdownNow();
+        } catch (InterruptedException failure) { interrupted = true; workspaces.shutdownNow(); }
+        finally { if (interrupted) Thread.currentThread().interrupt(); }
     }
 
 }

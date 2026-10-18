@@ -79,3 +79,15 @@
 .validation-error { -fx-text-fill: #9b3e33; -fx-font-weight: bold; }
 
 .workspace-feedback { -fx-padding: 10 32; -fx-background-color: #e5eee6; -fx-border-color: transparent transparent #c8d7c6 transparent; }
+
+.discovery-sources { -fx-padding: 15 18; }
+.fixture-inline { -fx-font-size: 0.8571em; -fx-text-fill: #795b2d; -fx-padding: 8 12; -fx-background-color: #f5ecd9; -fx-background-radius: 4; }
+
+.install-files-pane { -fx-padding: 16 18; -fx-background-color: #fffef9; -fx-border-color: #dcded4; -fx-border-radius: 6; -fx-background-radius: 6; }
+.install-cost-card { -fx-padding: 12 16; -fx-background-color: #e5eee6; -fx-border-color: #c3d5c6; -fx-border-radius: 5; -fx-background-radius: 5; }
+.install-cost { -fx-font-family: "Serif"; -fx-font-size: 1.5714em; }
+.install-operation-title { -fx-font-weight: bold; -fx-text-fill: #27796e; }
+.titled-pane > .title { -fx-background-color: #eef1e8; -fx-border-color: #dcded4; -fx-padding: 9 12; }
+.titled-pane > .content { -fx-background-color: #fffef9; -fx-border-color: #dcded4; -fx-padding: 14; }
+
+.install-files-pane .table-row-cell { -fx-cell-size: 3.0714em; }
