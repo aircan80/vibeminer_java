@@ -40,6 +40,15 @@ final class LazyItemNamesService implements ItemNamesService {
   }
 
   @Override
+  public CompletionStage<ItemNamesSearchPage> search(
+      PreparedItemNames pair,
+      ItemNameLiteralQuery query,
+      Optional<ItemNamesSearchCursor> cursor,
+      int size) {
+    return dispatch(runtime -> runtime.itemNames().search(pair, query, cursor, size));
+  }
+
+  @Override
   public void close() {
     if (closed.compareAndSet(false, true)) requests.forEach(request -> request.cancel(true));
   }

@@ -206,6 +206,104 @@ class LazyItemNamesServiceTest {
     assertEquals(1, closes.get());
   }
 
+  @Test
+  void closedSearchCannotInitializeTheBorrowedRuntime() {
+    var initialized = new AtomicInteger();
+    try (var owner =
+        new LazyBootstrapService(
+            () -> {
+              initialized.incrementAndGet();
+              throw new AssertionError("Closed search must not initialize resources");
+            })) {
+      var facade = new LazyItemNamesService(owner);
+      facade.close();
+      var failure =
+          assertThrows(
+              CompletionException.class,
+              () ->
+                  facade
+                      .search(null, null, java.util.Optional.empty(), 10)
+                      .toCompletableFuture()
+                      .join());
+      assertEquals(
+          ItemNamesException.Code.CLOSED,
+          assertInstanceOf(ItemNamesException.class, failure.getCause()).code());
+      assertEquals(0, initialized.get());
+    }
+  }
+
+  @Test
+  void closeDuringSearchCreationCancelsLateSourceWithoutClosingSiblingOwner() throws Exception {
+    var factoryGate = new CountDownLatch(1);
+    var creating = new CountDownLatch(1);
+    var returnSource = new CountDownLatch(1);
+    var sourceCancelled = new CountDownLatch(1);
+    var resourceCloses = new AtomicInteger();
+    var source =
+        new CompletableFuture<ItemNamesSearchPage>() {
+          public boolean cancel(boolean interrupt) {
+            boolean result = super.cancel(interrupt);
+            if (isCancelled()) sourceCancelled.countDown();
+            return result;
+          }
+        };
+    var delegate =
+        (ItemNamesService)
+            Proxy.newProxyInstance(
+                ItemNamesService.class.getClassLoader(),
+                new Class<?>[] {ItemNamesService.class},
+                (proxy, method, args) -> {
+                  if (method.getName().equals("search")) {
+                    creating.countDown();
+                    await(returnSource);
+                    return source;
+                  }
+                  if (method.getName().equals("close"))
+                    throw new AssertionError("Facade cannot close borrowed delegate");
+                  return CompletableFuture.completedFuture(null);
+                });
+    var owner =
+        new LazyBootstrapService(
+            () -> {
+              await(factoryGate);
+              return new LazyBootstrapService.Resources() {
+                public BootstrapService service() {
+                  throw new AssertionError();
+                }
+
+                public ItemNamesService itemNames() {
+                  return delegate;
+                }
+
+                public void close() {
+                  resourceCloses.incrementAndGet();
+                }
+              };
+            });
+    var facade = new LazyItemNamesService(owner);
+    try {
+      var request = facade.search(null, null, java.util.Optional.empty(), 10).toCompletableFuture();
+      factoryGate.countDown();
+      assertTrue(creating.await(2, TimeUnit.SECONDS));
+      facade.close();
+      assertTrue(request.isCancelled());
+      assertEquals(1, sourceCancelled.getCount(), "Source future is not bound yet");
+      returnSource.countDown();
+      assertTrue(sourceCancelled.await(2, TimeUnit.SECONDS));
+      assertEquals(0, resourceCloses.get());
+      var sibling = new LazyItemNamesService(owner);
+      assertNull(sibling.prepare(null).toCompletableFuture().join());
+      sibling.close();
+      assertEquals(0, resourceCloses.get());
+    } finally {
+      factoryGate.countDown();
+      returnSource.countDown();
+      facade.close();
+      owner.close();
+    }
+    assertEquals(1, resourceCloses.get());
+  }
+
   private static LazyBootstrapService.Resources resources(
       CompletableFuture<PreparedItemNames> job, AtomicInteger closed) {
     var service =
