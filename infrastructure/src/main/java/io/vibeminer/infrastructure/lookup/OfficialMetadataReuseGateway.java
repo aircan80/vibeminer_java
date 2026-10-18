@@ -45,6 +45,28 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
             Clock.systemUTC());
   }
 
+  /** Derives declarations from local exact configuration bytes, without EN or payload access. */
+  @Override
+  public MetadataDeclaration readDeclaration(
+      BuildSnapshot build,
+      VerifiedSourceAlias retainedConfiguration,
+      MetadataStructureAttestation.Kind kind,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
+    ensureOpen();
+    Objects.requireNonNull(build);
+    Objects.requireNonNull(retainedConfiguration);
+    Objects.requireNonNull(kind);
+    Objects.requireNonNull(budgets);
+    Objects.requireNonNull(cancellation);
+    cancellation.throwIfCancellationRequested();
+    requireConfigurationOrigin(build, retainedConfiguration);
+    try (var lease = store.openRead(retainedConfiguration.object().digest(), cancellation)) {
+      return readConfigurationDeclaration(
+          build, retainedConfiguration, kind, budgets, cancellation, lease);
+    }
+  }
+
   @Override
   public void validateDeclaration(
       MetadataDeclaration declaration, LookupBudgets budgets, CancellationToken cancellation) {
@@ -170,29 +192,62 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
       LookupBudgets budgets,
       CancellationToken token,
       ObjectReadLease lease) {
+    var expected =
+        readConfigurationDeclaration(
+            declaration.build(),
+            declaration.configuration(),
+            declaration.kind(),
+            budgets,
+            token,
+            lease);
+    if (!expected.equals(declaration))
+      throw failure(
+          INTEGRITY_FAILURE, "Metadata declaration differs from exact retained configuration");
+  }
+
+  private static void requireConfigurationOrigin(
+      BuildSnapshot build, VerifiedSourceAlias configuration) {
+    if (!build.productId().equals("wow"))
+      throw failure(
+          UNSUPPORTED_REUSE, "Metadata declarations require the reviewed raw wow namespace");
+    var identity =
+        new ResolvedSourceIdentity(
+            "tact.config.raw-md5", build.buildConfig(), "tact-config-raw-md5-v1");
+    if (!configuration.source().equals(identity))
+      throw failure(INTEGRITY_FAILURE, "Retained configuration belongs to a different exact build");
+  }
+
+  private static MetadataDeclaration readConfigurationDeclaration(
+      BuildSnapshot build,
+      VerifiedSourceAlias configuration,
+      MetadataStructureAttestation.Kind kind,
+      LookupBudgets budgets,
+      CancellationToken token,
+      ObjectReadLease lease) {
+    requireConfigurationOrigin(build, configuration);
     token.throwIfCancellationRequested();
-    CapturedBuildSource.resolve(declaration.build());
+    CapturedBuildSource.resolve(build);
     CapturedBuildSource.validateConfigurationProof(
-        declaration.configuration().evidence().sourceUrl(), declaration.build().buildConfig());
+        configuration.evidence().sourceUrl(), build.buildConfig());
     int maximum = (int) Math.min(1L << 20, budgets.maximumConfigurationBytes());
-    byte[] bytes = read(lease, declaration.configuration().object(), maximum, token);
+    byte[] bytes = read(lease, configuration.object(), maximum, token);
     try {
       var config =
           new TactConfigParser()
               .parse(
                   bytes,
-                  declaration.build().buildConfig(),
+                  build.buildConfig(),
                   new TactConfigParser.Limits(
                       maximum, 8192, 16384, 256, Long.MAX_VALUE, Long.MAX_VALUE),
                   token::isCancellationRequested);
       MetadataDeclaration expected;
-      if (declaration.kind() == MetadataStructureAttestation.Kind.INSTALL) {
+      if (kind == MetadataStructureAttestation.Kind.INSTALL) {
         var install = config.installBootstrap();
         expected =
             new MetadataDeclaration(
-                declaration.build(),
-                declaration.configuration(),
-                declaration.kind(),
+                build,
+                configuration,
+                kind,
                 new ContentSlotKey("wow", install.contentKey()),
                 Optional.of(install.encodingKey()),
                 OptionalLong.of(install.encodedSize()),
@@ -203,18 +258,16 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
           throw failure(UNSUPPORTED_REUSE, "Configuration lacks supported exact root declaration");
         expected =
             new MetadataDeclaration(
-                declaration.build(),
-                declaration.configuration(),
-                declaration.kind(),
+                build,
+                configuration,
+                kind,
                 new ContentSlotKey("wow", root.getFirst()),
                 Optional.empty(),
                 OptionalLong.empty(),
                 OptionalLong.empty());
       }
-      if (!expected.equals(declaration))
-        throw failure(
-            INTEGRITY_FAILURE, "Metadata declaration differs from exact retained configuration");
       token.throwIfCancellationRequested();
+      return expected;
     } catch (TactConfigException invalid) {
       throw new ContentClaimException(
           invalid.reason() == TactConfigException.Reason.UNSUPPORTED

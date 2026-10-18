@@ -374,4 +374,101 @@ class InstallMetadataReuseGatewayTest {
       assertEquals(ContentClaimException.Code.UNSUPPORTED_REUSE, failure.code());
     }
   }
+
+  @Test
+  void readInstallDeclarationDerivesEveryKnownBFactWithoutReadingActualA() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var digest = setup.actual().object().digest().value();
+      Files.delete(
+          directory
+              .resolve("objects")
+              .resolve(digest.substring(0, 2))
+              .resolve(digest.substring(2)));
+      int requests = setup.requests().get();
+      var expected = setup.declaration();
+      var observed =
+          gateway.readDeclaration(
+              expected.build(),
+              expected.configuration(),
+              expected.kind(),
+              LookupBudgets.defaults(),
+              CancellationToken.none());
+      assertEquals(expected, observed);
+      assertEquals(requests, setup.requests().get());
+      assertEquals(expected.configuration(), observed.configuration());
+    }
+  }
+
+  @Test
+  void readDeclarationRejectsForeignConfigurationIdentityAndWrongRawMd5() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var d = setup.declaration();
+      var original = d.configuration();
+      var foreign =
+          new VerifiedSourceAlias(
+              new ResolvedSourceIdentity(
+                  "tact.config.raw-md5", "0".repeat(32), "tact-config-raw-md5-v1"),
+              original.object(),
+              original.evidence());
+      assertThrows(
+          ContentClaimException.class,
+          () ->
+              gateway.readDeclaration(
+                  d.build(),
+                  foreign,
+                  d.kind(),
+                  LookupBudgets.defaults(),
+                  CancellationToken.none()));
+      var wrongBytes =
+          new VerifiedSourceAlias(original.source(), setup.actual().object(), original.evidence());
+      var failure =
+          assertThrows(
+              ContentClaimException.class,
+              () ->
+                  gateway.readDeclaration(
+                      d.build(),
+                      wrongBytes,
+                      d.kind(),
+                      LookupBudgets.defaults(),
+                      CancellationToken.none()));
+      assertEquals(ContentClaimException.Code.INTEGRITY_FAILURE, failure.code());
+    }
+  }
+
+  @Test
+  void readDeclarationRechecksCapturedExactBuildAndCancellation() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var d = setup.declaration();
+      var b = d.build();
+      var changed =
+          new BuildSnapshot(
+              b.productId(),
+              b.editionLabel(),
+              b.channel(),
+              b.region(),
+              "unobserved-version",
+              b.buildConfig(),
+              b.cdnConfig(),
+              b.observedAt(),
+              b.fixture(),
+              b.evidence());
+      assertThrows(
+          io.vibeminer.infrastructure.acquisition.SourceContextException.class,
+          () ->
+              gateway.readDeclaration(
+                  changed,
+                  d.configuration(),
+                  d.kind(),
+                  LookupBudgets.defaults(),
+                  CancellationToken.none()));
+      assertThrows(
+          CancellationException.class,
+          () ->
+              gateway.readDeclaration(
+                  b, d.configuration(), d.kind(), LookupBudgets.defaults(), () -> true));
+    }
+  }
 }

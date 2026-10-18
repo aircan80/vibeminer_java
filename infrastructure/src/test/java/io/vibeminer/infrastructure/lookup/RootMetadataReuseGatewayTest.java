@@ -213,4 +213,25 @@ class RootMetadataReuseGatewayTest {
       assertEquals(ContentClaimException.Code.UNSUPPORTED_REUSE, failure.code());
     }
   }
+
+  @Test
+  void readRootDeclarationKeepsEncodingAndSizeUnknownWithoutEnOrPayload() throws Exception {
+    try (var setup = setup(false);
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var expected = setup.declaration();
+      int requests = setup.fixture().requests.size();
+      var observed =
+          gateway.readDeclaration(
+              expected.build(),
+              expected.configuration(),
+              expected.kind(),
+              LookupBudgets.defaults(),
+              CancellationToken.none());
+      assertEquals(expected, observed);
+      assertTrue(observed.preferredEncodingKey().isEmpty());
+      assertTrue(observed.declaredEncodedBytes().isEmpty());
+      assertTrue(observed.declaredDecodedBytes().isEmpty());
+      assertEquals(requests, setup.fixture().requests.size());
+    }
+  }
 }
