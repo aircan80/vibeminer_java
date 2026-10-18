@@ -8,6 +8,12 @@ import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class ArchitectureTest {
+    @Test void protocolHasNoTransportPersistenceOrApplicationDependencies() {
+        var classes = new ClassFileImporter().importPackages("io.vibeminer.protocol");
+        noClasses().should().dependOnClassesThat().resideInAnyPackage("javafx..", "java.net..", "java.sql..",
+            "java.nio.file..", "java.nio.channels..", "io.vibeminer.application..", "io.vibeminer.infrastructure..",
+            "io.vibeminer.desktop..", "io.vibeminer.bootstrap..").check(classes);
+    }
     @Test void coreHasNoFrameworkOrAdapterDependencies() {
         var classes = new ClassFileImporter().importPackages("io.vibeminer");
         noClasses().that().resideInAnyPackage("io.vibeminer.domain..", "io.vibeminer.application..")

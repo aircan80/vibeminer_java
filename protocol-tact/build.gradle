@@ -1,0 +1,2 @@
+// Pure bounded protocol parsing; no acquisition, persistence or UI dependencies.
+dependencies { api project(':domain') }
