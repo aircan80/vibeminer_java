@@ -16,6 +16,7 @@ import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.PublishedProduct;
 import io.vibeminer.domain.Workspace;
+import java.io.IOException;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -30,6 +31,8 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
@@ -303,6 +306,7 @@ public final class AtlasApplication extends Application {
     if (configuredService == null)
       throw new IllegalStateException("Bootstrap must configure discovery before launch");
     this.stage = stage;
+    stage.getIcons().setAll(BrandingImages.ICONS);
     root = new BorderPane();
     content = new StackPane();
     content.getStyleClass().add("content-host");
@@ -441,8 +445,34 @@ public final class AtlasApplication extends Application {
     }
   }
 
+  private static final class BrandingImages {
+    private static final List<Image> ICONS =
+        java.util.stream.IntStream.of(16, 24, 32, 48, 64, 128, 256, 512, 1024)
+            .mapToObj(BrandingImages::load)
+            .toList();
+
+    private static Image load(int size) {
+      String path = "/io/vibeminer/desktop/icons/vibeminer-" + size + ".png";
+      try (var stream = AtlasApplication.class.getResourceAsStream(path)) {
+        if (stream == null) throw new IllegalStateException("Missing application icon " + path);
+        var image = new Image(stream);
+        if (image.isError() || image.getWidth() != size || image.getHeight() != size)
+          throw new IllegalStateException("Invalid application icon " + path, image.getException());
+        return image;
+      } catch (IOException failure) {
+        throw new IllegalStateException("Cannot read application icon " + path, failure);
+      }
+    }
+  }
+
   private Node header() {
-    Label mark = label("◈", "brand-mark");
+    ImageView mark = new ImageView(BrandingImages.ICONS.get(2));
+    mark.setId("vibeminer-brand-icon");
+    mark.setFitWidth(32);
+    mark.setFitHeight(32);
+    mark.setPreserveRatio(true);
+    mark.setSmooth(true);
+    mark.setAccessibleText("VibeMiner Excavate logo");
     VBox brand =
         new VBox(label("VibeMiner", "brand"), label("ATLAS RESEARCH WORKBENCH", "brand-subtitle"));
     mode = label("", "mode-badge");

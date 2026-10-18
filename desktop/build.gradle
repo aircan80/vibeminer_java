@@ -5,3 +5,11 @@ dependencies {
     implementation "org.openjfx:javafx-graphics:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
     implementation "org.openjfx:javafx-base:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
 }
+
+// Canonical artwork stays in branding; package the JavaFX size variants without source duplicates.
+tasks.named('processResources') {
+    from(rootProject.file('branding/icons')) {
+        include 'vibeminer-*.png'
+        into 'io/vibeminer/desktop/icons'
+    }
+}

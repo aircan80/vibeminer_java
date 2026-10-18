@@ -39,24 +39,38 @@ def packageJdk = project(':bootstrap').javaToolchains.launcherFor { languageVers
 def imageRoot = layout.buildDirectory.dir("package-image/${selectedTarget}")
 def outputRoot = layout.buildDirectory.dir("distributions/${selectedTarget}")
 def imageDir = providers.provider { new File(imageRoot.get().asFile, os.contains('mac') ? 'VibeMiner.app' : 'VibeMiner') }
+def nativeIcon = layout.projectDirectory.file("branding/icons/vibeminer.${os.contains('win') ? 'ico' : os.contains('mac') ? 'icns' : 'png'}")
+def iconVerifier = layout.projectDirectory.file('tools/verify_native_icon.py')
+// Development-time packaging verification only; shipped launchers do not require Python.
+def verifyNativeIcon = { File image = null ->
+    providers.exec {
+        commandLine os.contains('win') ? 'python' : 'python3', iconVerifier.asFile,
+            '--target', selectedTarget, '--source', nativeIcon.asFile
+        if (image != null) args '--image', image
+    }.result.get().assertNormalExitValue()
+}
 
 tasks.register('packageImage') {
     dependsOn ':bootstrap:installDist'
     inputs.property('appVersion', version.toString())
     inputs.property('packageVersion', packageVersion)
     inputs.dir(bootstrapLibs)
+    inputs.file(nativeIcon)
+    inputs.file(iconVerifier)
+    inputs.property('distributionTarget', selectedTarget)
     outputs.dir(imageRoot)
     doLast {
         if (hostTarget == 'unsupported') throw new GradleException("Unsupported native packaging host: ${os}/${arch}")
         if (selectedTarget != hostTarget) throw new GradleException("Native packaging requires matching host: ${hostTarget}, requested ${selectedTarget}")
         if (!packageVersion.matches('[0-9]+\\.[0-9]+\\.[0-9]+')) throw new GradleException('packageVersion must be numeric major.minor.patch')
+        verifyNativeIcon()
         delete imageRoot
         def javaHome = packageJdk.get().metadata.installationPath.asFile
         def jpackage = new File(javaHome, "bin/jpackage${os.contains('win') ? '.exe' : ''}")
         def packaging = providers.exec {
             ignoreExitValue = true
             commandLine jpackage.absolutePath, '--type', 'app-image', '--name', 'VibeMiner',
-                '--input', bootstrapLibs.get().asFile,
+                '--input', bootstrapLibs.get().asFile, '--icon', nativeIcon.asFile,
                 '--main-jar', "bootstrap-${version}.jar", '--main-class', 'io.vibeminer.bootstrap.Main',
                 '--app-version', nativePackageVersion.get(), '--vendor', 'VibeMiner', '--dest', imageRoot.get().asFile,
                 '--java-options', '--enable-native-access=ALL-UNNAMED',
@@ -70,6 +84,7 @@ tasks.register('packageImage') {
         def diagnostics = packaging.standardError.asText.get().trim()
         if (diagnostics) logger.lifecycle(diagnostics)
         if (result.exitValue != 0) throw new GradleException("jpackage failed (${result.exitValue}): ${diagnostics}")
+        verifyNativeIcon(imageDir.get())
     }
 }
 
@@ -108,6 +123,7 @@ tasks.register('verifyDistribution') {
             ant.unzip(src: archive, dest: verifyRoot)
         }
         def root = new File(verifyRoot, imageDir.get().name)
+        verifyNativeIcon(root)
         def launcher = new File(root, os.contains('mac') ? 'Contents/MacOS/VibeMiner' : os.contains('win') ? 'VibeMiner.exe' : 'bin/VibeMiner')
         def selfTest = providers.exec { ignoreExitValue = true; commandLine launcher.absolutePath, '--self-test' }
         def selfResult = selfTest.result.get()

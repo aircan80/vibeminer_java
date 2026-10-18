@@ -23,6 +23,8 @@ Ordinary tests use synthetic fixtures and do not depend on live CDN availability
 
 ## Native packages
 
+Packaging verification uses Python 3.11+ on development/CI machines to check the selected Excavate icon in the generated app image. Generated artwork is versioned under `branding/`; ImageMagick is needed only to regenerate it. Packaged applications require neither tool. See [branding assets](branding/README.md).
+
 Each package is built on its matching OS/architecture. Cross-compiling a runtime image from another OS is not supported. Public application versions and artifact names retain their semantic version. For macOS only, the internal native bundle version increments the numeric major by one (`0.1.0` → `1.1.0`), because [JDK 25 requires a positive first CFBundleVersion component](https://github.com/openjdk/jdk25u/blob/master/src/jdk.jpackage/macosx/classes/jdk/jpackage/internal/CFBundleVersion.java). This does not indicate a 1.x feature release.
 
 | Target | GitHub runner | Portable package |
