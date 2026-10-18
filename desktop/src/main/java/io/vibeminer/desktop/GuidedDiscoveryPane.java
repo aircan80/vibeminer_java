@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Orientation;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
@@ -198,7 +199,7 @@ public final class GuidedDiscoveryPane extends VBox {
   private final Label error = copy("", "guided-error");
   private final ListView<BuildRow> rows = new ListView<>();
   private final VBox inspector = new VBox(12);
-  private final Button more = button("Load more builds", "guided-more");
+  private final Button more = button("Next page", "guided-more");
   private final SplitPane results = new SplitPane();
   private final ToggleGroup filterGroup = new ToggleGroup();
 
@@ -222,7 +223,17 @@ public final class GuidedDiscoveryPane extends VBox {
     products.setAccessibleText("Warcraft product: exact product identifier and descriptive name");
     products.setPromptText("Choose a Warcraft product");
     products.setMaxWidth(Double.MAX_VALUE);
-    products.setPrefWidth(460);
+    products.setMinWidth(0);
+    products
+        .prefWidthProperty()
+        .bind(
+            Bindings.createDoubleBinding(
+                () ->
+                    Math.min(
+                        Math.max(0, getWidth() - 56),
+                        Math.max(460, heading.getFont().getSize() * 460 / 30)),
+                widthProperty(),
+                heading.fontProperty()));
     products
         .valueProperty()
         .addListener(
@@ -266,6 +277,33 @@ public final class GuidedDiscoveryPane extends VBox {
     results.getItems().addAll(catalog, inspector);
     results.setDividerPositions(.63);
     results.getStyleClass().add("guided-results");
+    // SplitPaneSkin asks children for prefHeight(-1), losing wrapped text's width bias.
+    // Keep the outer scrollable page tall enough for the inspector at its allocated width.
+    results
+        .prefHeightProperty()
+        .bind(
+            Bindings.createDoubleBinding(
+                () -> {
+                  double inspectorWidth =
+                      inspector.getWidth() > 1
+                          ? inspector.getWidth()
+                          : Math.max(240, getWidth() * .37);
+                  double catalogWidth =
+                      catalog.getWidth() > 1 ? catalog.getWidth() : Math.max(240, getWidth() * .63);
+                  if (results.getOrientation() == Orientation.VERTICAL)
+                    return catalog.prefHeight(Math.max(1, results.getWidth()))
+                        + inspector.prefHeight(Math.max(1, results.getWidth()))
+                        + 20;
+                  return Math.max(
+                          catalog.prefHeight(catalogWidth), inspector.prefHeight(inspectorWidth))
+                      + 2;
+                },
+                inspector.widthProperty(),
+                catalog.widthProperty(),
+                inspector.getChildren(),
+                heading.fontProperty(),
+                results.orientationProperty(),
+                results.widthProperty()));
     results.setMinHeight(Region.USE_PREF_SIZE);
     widthProperty()
         .addListener(
@@ -352,8 +390,11 @@ public final class GuidedDiscoveryPane extends VBox {
     open.setAccessibleText("Open Build " + selected.version() + ". " + selected.openReason());
     open.setOnAction(e -> events.openSelected());
     inspector.getChildren().add(open);
-    if (!selected.openReason().isBlank())
-      inspector.getChildren().add(copy(selected.openReason(), "guided-subtitle"));
+    if (!selected.openReason().isBlank()) {
+      Label reason = copy(selected.openReason(), "guided-subtitle");
+      reason.setId("guided-open-reason");
+      inspector.getChildren().add(reason);
+    }
     Button source = button("Source details", "guided-source-details");
     source.setOnAction(e -> events.sourceDetails());
     inspector.getChildren().add(source);
@@ -391,6 +432,7 @@ public final class GuidedDiscoveryPane extends VBox {
     Label label = new Label(value);
     label.setWrapText(true);
     label.setMinWidth(0);
+    label.setMinHeight(Region.USE_PREF_SIZE);
     label.setMaxWidth(Double.MAX_VALUE);
     label.getStyleClass().add(style);
     return label;

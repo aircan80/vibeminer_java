@@ -362,6 +362,14 @@ public final class CaptureGuidedDiscoveryPane {
           "Truncated product display has no complete tooltip");
     }
     if (openButtons == 1) {
+      for (Node n : node("guided-inspector").lookupAll(".label")) {
+        if (n instanceof Label label && !label.getText().isBlank()) {
+          check(!label.isTextTruncated(), "Inspector text is truncated: " + label.getText());
+          check(
+              label.getHeight() >= label.prefHeight(label.getWidth()) - 1,
+              "Inspector lacks preferred wrapped text height: " + label.getText());
+        }
+      }
       Node open = node("guided-open-build");
       Node focusTarget = open.isDisabled() ? node("guided-source-details") : open;
       focusTarget.requestFocus();

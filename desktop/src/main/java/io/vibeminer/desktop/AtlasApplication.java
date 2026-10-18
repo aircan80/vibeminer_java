@@ -4,6 +4,8 @@ import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.application.ProductDiscoveryService;
 import io.vibeminer.application.WorkspaceService;
 import io.vibeminer.application.bootstrap.BootstrapService;
+import io.vibeminer.application.buildlibrary.BuildLibraryPage;
+import io.vibeminer.application.buildlibrary.BuildLibraryService;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.ItemProjectionService;
@@ -53,9 +55,19 @@ public final class AtlasApplication extends Application {
   private static ItemNamesService configuredNames;
   private static ItemEvidenceService configuredEvidence;
   private static ItemEvidenceDestinationChooser evidenceChooser;
+  private static BuildLibraryService configuredBuildLibrary;
   private ItemEvidenceExportDialog evidenceDialog;
   private io.vibeminer.domain.item.PreparedItemProjection exportItem;
   private io.vibeminer.domain.item.PreparedItemNames exportPair;
+
+  /** Optional guided-library binding. The runtime retains ownership of the borrowed service. */
+  public static synchronized void configureBuildLibrary(BuildLibraryService library) {
+    if (configuredService == null)
+      throw new IllegalStateException("Configure the desktop before its build library");
+    if (configuredBuildLibrary != null)
+      throw new IllegalStateException("Build library has already been configured");
+    configuredBuildLibrary = Objects.requireNonNull(library);
+  }
 
   public static synchronized void configureItemEvidenceDestinationChooser(
       ItemEvidenceDestinationChooser chooser) {
@@ -199,6 +211,7 @@ public final class AtlasApplication extends Application {
     configuredRepair = repair;
     configuredNames = names;
     configuredEvidence = evidence;
+    configuredBuildLibrary = null;
   }
 
   private Stage stage;
@@ -210,6 +223,9 @@ public final class AtlasApplication extends Application {
   private StackPane content;
   private DiscoveryPresentationModel model;
   private DiscoveryPresentationModel.State state;
+  private GuidedDiscoveryPresentationModel guidedModel;
+  private GuidedDiscoveryPane guidedPane;
+  private ScrollPane guidedScroll;
   private ProductPresentationModel productModel;
   private ProductPresentationModel.State productState;
   private String productFilter = "";
@@ -306,6 +322,7 @@ public final class AtlasApplication extends Application {
     if (configuredService == null)
       throw new IllegalStateException("Bootstrap must configure discovery before launch");
     this.stage = stage;
+    if (configuredBuildLibrary != null) destination = "Archive";
     stage.getIcons().setAll(BrandingImages.ICONS);
     root = new BorderPane();
     content = new StackPane();
@@ -343,7 +360,7 @@ public final class AtlasApplication extends Application {
     scene.setOnKeyPressed(
         event -> {
           if (event.isShortcutDown() && event.getCode() == KeyCode.K) {
-            showSearch();
+            if (configuredBuildLibrary == null) showSearch();
             event.consume();
           }
         });
@@ -426,6 +443,36 @@ public final class AtlasApplication extends Application {
               configuredWorkspaces, Platform::runLater, this::onWorkspaceState);
       workspaceState = workspaceModel.state();
     }
+    if (configuredBuildLibrary != null) {
+      guidedModel =
+          new GuidedDiscoveryPresentationModel(
+              configuredBuildLibrary,
+              WarcraftProductLabels.options(),
+              Platform::runLater,
+              this::onGuidedState,
+              entry ->
+                  new GuidedDiscoveryPresentationModel.OpenAdmission(
+                      false, "Build metadata preparation is not connected yet."),
+              entry -> {
+                throw new IllegalStateException("No build-opening capability is configured");
+              },
+              this::guidedSourceDetails);
+      guidedPane =
+          new GuidedDiscoveryPane(
+              guidedModel.viewData(),
+              new GuidedDiscoveryPane.Callbacks(
+                  guidedModel::selectProduct,
+                  guidedModel::filter,
+                  guidedModel::select,
+                  ignored -> guidedModel.openSelected(),
+                  guidedModel::refresh,
+                  guidedModel::more,
+                  ignored -> guidedModel.sourceDetails()));
+      Label aliases = wrap(WarcraftProductLabels.attribution());
+      aliases.getStyleClass().add("secondary");
+      aliases.setId("guided-alias-attribution");
+      guidedPane.getChildren().add(aliases);
+    }
     model =
         new DiscoveryPresentationModel(
             configuredService, Platform::runLater, this::onState, initialFixtureMode);
@@ -433,7 +480,7 @@ public final class AtlasApplication extends Application {
     if (initialFixtureMode) model.showFixtures();
     else onState(state);
     stage.show();
-    if (workspaceModel != null) workspaceModel.load();
+    if (workspaceModel != null && guidedModel == null) workspaceModel.load();
     if (getParameters().getRaw().contains("--smoke-test")) {
       PauseTransition pause = new PauseTransition(Duration.millis(650));
       pause.setOnFinished(
@@ -479,7 +526,9 @@ public final class AtlasApplication extends Application {
     Button search = button("Search workspace", this::showSearch, "quiet-button");
     search.setAccessibleText("Search workspace, shortcut Control or Command K");
     Button settings = button("Settings", () -> navigate("Settings"), "quiet-button");
-    FlowPane actions = new FlowPane(10, 8, mode, search, settings);
+    FlowPane actions = new FlowPane(10, 8, mode);
+    if (configuredBuildLibrary == null) actions.getChildren().add(search);
+    actions.getChildren().add(settings);
     actions.setAlignment(Pos.CENTER_RIGHT);
     actions.setPrefWidth(460);
     actions.setMinWidth(0);
@@ -492,9 +541,15 @@ public final class AtlasApplication extends Application {
   private Node navigationBar() {
     FlowPane nav = new FlowPane(4, 4);
     nav.getStyleClass().add("navigation");
-    for (String name :
-        List.of("Research", "Archive", "Compare", "Database", "Assets", "Notebook", "Activity")) {
-      ToggleButton b = new ToggleButton(name);
+    List<String> destinations =
+        configuredBuildLibrary == null
+            ? List.of(
+                "Research", "Archive", "Compare", "Database", "Assets", "Notebook", "Activity")
+            : List.of("Archive");
+    for (String name : destinations) {
+      ToggleButton b =
+          new ToggleButton(
+              name.equals("Archive") && configuredBuildLibrary != null ? "Discover" : name);
       b.setToggleGroup(navigation);
       b.setUserData(name);
       b.getStyleClass().add("nav-button");
@@ -1103,6 +1158,8 @@ public final class AtlasApplication extends Application {
   }
 
   private void navigate(String name) {
+    if (configuredBuildLibrary != null && !name.equals("Archive") && !name.equals("Settings"))
+      return;
     destination = name;
     navigation.getToggles().forEach(t -> t.setSelected(name.equals(t.getUserData())));
     render();
@@ -1110,6 +1167,37 @@ public final class AtlasApplication extends Application {
 
   private void render() {
     if (state == null) return;
+    if (configuredBuildLibrary != null
+        && !destination.equals("Archive")
+        && !destination.equals("Settings")) destination = "Archive";
+    boolean guided = guidedModel != null && destination.equals("Archive");
+    context.setVisible(configuredBuildLibrary == null);
+    context.setManaged(configuredBuildLibrary == null);
+    if (guided) {
+      savedWorkspaceBar.setVisible(false);
+      savedWorkspaceBar.setManaged(false);
+      workspaceFeedback.setVisible(false);
+      workspaceFeedback.setManaged(false);
+      mode.setText("OFFICIAL BUILD LIBRARY");
+      var guidedState = guidedModel.state();
+      status.setText(guidedState.error().isBlank() ? guidedState.message() : guidedState.error());
+      if (guidedScroll == null) {
+        guidedScroll = new ScrollPane(guidedPane);
+        guidedScroll.setFitToWidth(true);
+        guidedScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        guidedScroll.getStyleClass().add("workspace-scroll");
+        guidedScroll.setId("guided-discovery-scroll");
+      }
+      if (content.getChildren().size() != 1 || content.getChildren().getFirst() != guidedScroll)
+        content.getChildren().setAll(guidedScroll);
+      return;
+    }
+    savedWorkspaceBar.setVisible(configuredWorkspaces != null && configuredBuildLibrary == null);
+    savedWorkspaceBar.setManaged(configuredWorkspaces != null && configuredBuildLibrary == null);
+    mode.setText(
+        configuredBuildLibrary != null
+            ? "OFFICIAL BUILD LIBRARY"
+            : state.fixtureMode() ? "FICTIONAL FIXTURE MODE" : "OFFICIAL METADATA DISCOVERY");
     Node node =
         switch (destination) {
           case "Archive" -> archive();
@@ -1265,6 +1353,7 @@ public final class AtlasApplication extends Application {
   }
 
   private VBox archive() {
+    if (guidedPane != null) return guidedPane;
     VBox page;
     if ((archiveInstallMode && installModel != null || archiveFindMode && lookupModel != null)
         && state.selected() != null) {
@@ -1580,6 +1669,73 @@ public final class AtlasApplication extends Application {
                     + " Complete build archives and cleanup controls remain unavailable. Unmeasured"
                     + " storage totals stay unknown."));
     return page;
+  }
+
+  private void onGuidedState(GuidedDiscoveryPresentationModel.State next) {
+    if (guidedPane != null) guidedPane.update(guidedModel.viewData());
+    if (status != null && destination.equals("Archive"))
+      status.setText(next.error().isBlank() ? next.message() : next.error());
+  }
+
+  private void guidedSourceDetails(BuildLibraryPage.Entry entry) {
+    var group = entry.row().group();
+    var key = group.key();
+    var text = new StringBuilder();
+    text.append("Product: ")
+        .append(key.productId())
+        .append("\nSource channel: ")
+        .append(key.channel())
+        .append("\nVersion: ")
+        .append(key.versionLabel())
+        .append("\nUpstream build ID: ")
+        .append(key.upstreamBuildId())
+        .append("\nBuild configuration: ")
+        .append(key.buildConfig())
+        .append("\nCDN configuration: ")
+        .append(key.cdnConfig())
+        .append("\nProduct configuration: ")
+        .append(key.productConfig())
+        .append("\nGroup identity: ")
+        .append(key.identity())
+        .append("\nPreferred metadata reference: ")
+        .append(group.preferredReference().region())
+        .append("\nThis preference is not proof of an available download route.\n");
+    new java.util.TreeMap<>(key.additionalReferences())
+        .forEach((name, value) -> text.append(name).append(": ").append(value).append('\n'));
+    var regions =
+        new java.util.LinkedHashMap<
+            String, io.vibeminer.application.buildlibrary.BuildLibraryReference>();
+    group.references().forEach(ref -> regions.putIfAbsent(ref.region(), ref));
+    for (var ref : regions.values()) {
+      text.append("\nREGION ")
+          .append(ref.region())
+          .append(" · event ")
+          .append(ref.eventId())
+          .append("\nSnapshot: ")
+          .append(ref.snapshotId())
+          .append("\nObserved: ")
+          .append(ref.observedAt());
+      for (var receipt : List.of(ref.versions(), ref.cdns()))
+        text.append("\n")
+            .append(receipt.sourceUrl())
+            .append("\nCaptured: ")
+            .append(receipt.capturedAt())
+            .append(" · bytes: ")
+            .append(receipt.length())
+            .append("\nSHA-256: ")
+            .append(receipt.sha256());
+      text.append("\nCDN row: ")
+          .append(new java.util.TreeMap<>(ref.selectedCdn().values()))
+          .append('\n');
+    }
+    TextArea receipts = new TextArea(text.toString());
+    receipts.setEditable(false);
+    receipts.setWrapText(true);
+    receipts.setPrefRowCount(16);
+    receipts.setAccessibleText("Exact build identity and preserved regional source receipts");
+    dialog(
+        "Build source · " + key.versionLabel(),
+        new VBox(12, wrap(WarcraftProductLabels.sources()), receipts));
   }
 
   private void onProductState(ProductPresentationModel.State next) {
@@ -2509,6 +2665,7 @@ public final class AtlasApplication extends Application {
   }
 
   private void showSearch() {
+    if (configuredBuildLibrary != null) return;
     destination = "Search";
     navigation.getToggles().forEach(t -> t.setSelected(false));
     render();
@@ -2823,6 +2980,7 @@ public final class AtlasApplication extends Application {
   public void stop() {
     if (evidenceDialog != null) evidenceDialog.close();
     if (model != null) model.close();
+    if (guidedModel != null) guidedModel.close();
     if (workspaceModel != null) workspaceModel.close();
     if (productModel != null) productModel.close();
     if (installModel != null) installModel.close();
