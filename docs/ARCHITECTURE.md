@@ -4,47 +4,45 @@ Formalized architecture for issue #12. These contracts are implementation requir
 
 ## Current implementation and release boundary
 
-[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) (`42b8be9`) delivers the Atlas shell, metadata discovery and SQLite saved-source workspaces. The four verified package targets do not imply mining/retention support. The post-release official product catalogue (`971862b`) and layout fix (`5f1dfb0`) are committed source changes, whose final layout review passed.
+Published [v0.1.0-alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) remains exact source `2382261`: Atlas discovery, saved offline metadata, install-list inspection and root FileDataID metadata lookup. Later source `47b2b43` adds selected encoded-file candidate/retention controls and exact-variant offline reopening; all four native targets passed [CI run 39111231067](https://github.com/aircan80/vibeminer/actions/runs/39111231067). That checkpoint also has 722 clean Java cases, Linux bundled-runtime checks, six native UI harnesses, nine offline protocol entrypoints and 17 exact image-reference comparisons. These source capabilities are not retroactively part of alpha.3.
 
-Delivered backend slices #31–#35 and #38 add pure `protocol-tact` BLTE N/Z and bounded IN parsing, a narrow `protocol-db2` structural header inspector, bounded pinned configuration/loose-object transport and `CoalescingAcquisitionService`. Acquisition is application policy over a `VerifiedSourceAcquirer` port; transport/protocol adapters perform byte mechanics and verification. Shared consumers cancel independently. A recorded small real BLTE/IN proof establishes one exact path, not general content resolution or item decoding.
+Application services separately own install-list, root lookup and selected-file policy, bounded jobs, cancellation, canonical acquisition consent and offline behavior. Infrastructure gateways own source validation, HTTP, binary mechanics and persistence through application ports. Shared acquisition preserves independent consumer cancellation and actual verification receipts. The lazy bootstrap runtime composes shared storage/catalog/transport/workers; metadata-only startup does not acquire a content-store lock or issue content HTTP.
 
-The #36 catalog is implemented and independently reviewed: `BuildObjectCatalog`/`SqliteBuildObjectCatalog` share one schema/migration owner, `SqliteCatalog`. Canonical domain `ResolvedSourceIdentity`, `SourceVerificationEvidence` and `VerifiedSourceAlias` values carry actual acquisition evidence through shared transfers, local reuse and restart. Alias and exact-build membership publication is transactional after verified physical publication; conflicting mappings fail closed.
+`BuildObjectCatalog`/`SqliteBuildObjectCatalog` share `SqliteCatalog` migration ownership. Immutable source aliases, actual URL/time/verifier receipts and exact-build memberships publish transactionally after verified immutable CAS bytes. Selected-file reservations and associations preserve canonical encoding decisions and source origins across restart. A completed encoded object is not proof of its decoded CKey. The bounded #79 production-service diagnostic established encoded Item retention and fresh-instance zero-HTTP reopen, with temporary cleanup, rather than general row research or full archives.
 
-The #37 application `DefaultBootstrapService` owns jobs, cancellation, coalescing, catalog membership and offline policy through `BootstrapArtifactGateway`. Infrastructure `OfficialBootstrapArtifactGateway` owns bounded source/HTTP/format/CAS mechanics. Bootstrap composes a lazy content runtime with distinct job/transfer pools; metadata-only startup takes no content-store lock and makes no HTTP request. Nineteen scoped backend and six lifecycle checks passed independent review. A real 23,106-byte install object was retained and reopened with fresh services and zero HTTP. Two-process synthetic UI checks passed; final copy/layout and native-package validation remain pending.
+#80 shared canonical claim contracts and typed proof codec are delivered source, while root/install guard integration remains in progress; global cross-workflow canonical enforcement is not yet claimed complete. #81 now has a pure physical Item projection parser in `3f19b89`, with attributed four-field numeric candidates and explicit scope. The later `fad1f0c` local full check passed 743 cases; this newer parser source has not yet received its own four-platform checkpoint. Derived index/application preparation and the production Item table UI remain unfinished. Neither the two-record diagnostic nor this pure parser establishes general names, search, complete decoded-table CKeys, comparisons or GC.
 
-`ObjectStore`/`FileObjectStore` provide bounded verified publication and read leases independently of JavaFX and HTTP. Workspace persistence and source evidence remain separate from proof of complete retained content. Storage, integrity, unsupported-format, unavailable-source, cancellation and missing-local outcomes remain distinct; raw provenance is retained rather than reconstructed as an assumed successful request. Full retention/GC, generic file resolution, DB2 records, schema/search and comparison contracts below remain intended requirements.
+The formal contracts below preserve remaining acceptance. Missing-local, corrupt, unsupported, incompatible, cancelled and unavailable outcomes remain distinct; raw provenance is retained rather than reconstructed as a hypothetical successful request.
 
 ## Architectural position
 
-Use a modular monolith, a single process with explicit dependency inversion. Organize code by bounded responsibility inside layers rather than one package per technical noun. Begin with five Gradle modules; add boundaries when a real slice needs them. Avoid a service framework, event bus, plugin loader, generic repository framework or one module per screen. Gradle projects are compilation boundaries; defer JPMS descriptors until the JavaFX/runtime packaging spike proves the dependency graph supports them. A runnable bundled runtime is an early requirement, not a reason to design every future module upfront.
+Use a modular monolith: one process, eight Gradle compilation boundaries and explicit dependency inversion. Organize bounded responsibilities inside those layers; avoid a service framework, event bus, speculative plugin loader, generic repository framework or one module per screen. Current modules are `domain`, `application`, `infrastructure`, `desktop`, `bootstrap`, `protocol-tact`, `protocol-db2` and `format-wow`. Add boundaries only when a concrete slice justifies them; no adapter split is required by this document. JPMS descriptors remain a separately validated packaging decision.
 
-Dependencies (arrow means compile dependency):
+Current production compile dependencies (arrows mean compile dependencies; direct domain dependencies are shown even when also reachable transitively):
 
-```
-bootstrap -> desktop -> application -> domain
-bootstrap -> infrastructure -> application -> domain
-infrastructure -> domain
-```
-
-- `domain`: immutable identities, value types, capability/completeness states, invariant checks. Only JDK; no HTTP, SQL, JavaFX, filesystem access or concurrency runtime. Does not know application ports.
-- `application`: use cases, input/output DTOs, policy orchestration, job/cancellation contracts and outbound ports. Depends only on domain and JDK. Owns interfaces needed by use cases; never a static service locator. DTOs expose no JavaFX properties, JDBC results, HTTP responses or adapter exceptions.
-- `infrastructure`: initially separate `discovery`, `transport`, `protocol`, `persistence` packages. Implements ports with JDK HTTP and SQLite. Protocol parsing is pure byte-to-model work, not an HTTP/SQL operation. Introduce format/storage submodules at the milestones below rather than letting this temporary assembly grow indefinitely.
-- `desktop`: Atlas JavaFX views, presenters/viewmodels, UI-only observable state, navigation and rendering. Talks only to application inputs/outputs. No direct SQL/HTTP/filesystem mining. A file chooser may collect an explicit export/archive destination; actual file operations remain adapters.
-- `bootstrap`: explicit construction/wiring, configuration, startup/shutdown, executable packaging. The sole place with visibility into UI and concrete adapters. No business policy.
-
-Target adapter extraction as acquisition responsibilities grow (not all separate Gradle projects exist):
-
-```
-infrastructure-discovery -> application, domain, protocol-tact
-infrastructure-http      -> application, domain
-infrastructure-storage   -> application, domain
-protocol-tact            -> domain
-bootstrap                -> all required adapters + desktop
+```text
+bootstrap      -> desktop, infrastructure, application, domain
+desktop        -> application, domain
+application    -> domain
+infrastructure -> application, domain, protocol-tact, format-wow
+protocol-tact  -> domain
+format-wow     -> protocol-db2
+protocol-db2   -> JDK only
+domain         -> JDK only
 ```
 
-`protocol-tact` owns supported configuration/BLTE/IN parsing; root, encoding and archive-index support remains to be added as required. Parsers accept bounded byte input/streams and explicit resource limits, return format models, perform no source lookup, database access, job scheduling or hidden downloads. Product resolver orchestration stays in application, which obtains indexes/content through ports and invokes an explicit decoding port implemented by the protocol adapter.
+`format-wow` exposes `protocol-db2` with a Gradle `api` dependency; infrastructure therefore also sees its pure DB2 models transitively. No inverse dependency from `protocol-db2` to `format-wow` exists. Test-only dependencies used by bootstrap architecture/integration checks do not change the production graph.
 
-When DB2/search becomes real, add `format-wow` (pure parser/schema matching), `infrastructure-query` (SQLite prepared queries/index persistence) and application use cases. Format code cannot call HTTP, SQL or JavaFX. Search/storage adapters do not infer WoW semantics. Add comparison as application policies/domain structures first; its own module only if size and stable reuse justify it. Avoid blanket `implementation` dependencies between every project.
+- `domain`: immutable identities, provenance/proof values, capability/completeness and invariant checks. No application ports, HTTP, JDBC, JavaFX, filesystem work or adapter dependencies.
+- `application`: explicit use cases, policy, plain immutable projections, cancellation/job contracts and outbound ports; domain/JDK only. No concrete protocol parsers, transport responses, SQL or UI controls in its API.
+- `infrastructure`: implementations of application ports for official transport, protocol orchestration, SQLite, CAS, schema-resource loading and source evidence. Application owns policy; adapters own byte/persistence mechanics. Pure parsing belongs in the existing pure modules.
+- `desktop`: Atlas JavaFX views/presenters, navigation, UI-only observables and generation-aware state. No direct HTTP/JDBC, mining filesystem work or concrete protocol calls; explicit export/path selection supplies inputs to use cases rather than performing mining I/O.
+- `bootstrap`: construction, configuration, lazy shared runtime, owned worker/resource lifecycle and package entrypoint. The only layer composing UI and concrete adapters; no research or storage policy.
+- `protocol-tact`: bounded configuration, BLTE, IN, root, EN and archive-index parsing/verification primitives. No HTTP, SQL, filesystem acquisition, application or JavaFX dependencies. Parsers consume explicit bounded inputs and return models/proofs rather than fetching hidden dependencies.
+- `protocol-db2`: bounded WDC5 headers/section/storage metadata, fixed/sparse indices, bit and numeric primitives. JDK only; no application, HTTP, SQL, JavaFX or inverse WoW-format dependency.
+- `format-wow`: pure WoW-specific interpretation contracts and bounded physical Item projection composed over `protocol-db2`. It does not fetch schemas/content, persist rows, schedule jobs or mutate UI. Infrastructure loads attributed pinned schema resources; exact candidate selection remains distinct from validated whole-table semantics.
+
+Search/index publication and comparison remain future use-case/adaptor slices; their required behavior is specified below, not an instruction to add empty Gradle modules. Keep paging/storage separate from parsing and preserve build membership separately from shared derived artifact identity. Ordinary CI enforces allowed dependencies and parser purity; sharing a model never authorizes networking, persistence or UI access from a pure parser.
 
 ## Identity and provenance contracts
 

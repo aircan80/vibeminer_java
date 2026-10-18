@@ -1,6 +1,7 @@
 package io.vibeminer.application.lookup;
 
 import io.vibeminer.application.CancellationToken;
+import io.vibeminer.application.content.MetadataPublicationObserver;
 import io.vibeminer.domain.*;
 import java.util.Optional;
 import java.util.Set;
@@ -39,4 +40,22 @@ public interface FileLookupGateway {
       Set<Long> ids,
       LookupBudgets budgets,
       CancellationToken cancellation);
+
+  default VerifiedSourceAlias acquireRoot(
+      RootSelectionPlan selection, MetadataPublicationObserver observer, CancellationToken token) {
+    throw new FileLookupException(
+        FileLookupException.Code.UNSUPPORTED, "Guarded root publication is unsupported");
+  }
+
+  default RootLookupResult lookupRetained(
+      BuildSnapshot build,
+      VerifiedSourceAlias configuration,
+      VerifiedSourceAlias root,
+      Set<Long> ids,
+      LookupBudgets budgets,
+      MetadataPublicationObserver observer,
+      CancellationToken token) {
+    throw new FileLookupException(
+        FileLookupException.Code.UNSUPPORTED, "Attested root replay is unsupported");
+  }
 }
