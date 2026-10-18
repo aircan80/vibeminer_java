@@ -1,0 +1,15 @@
+# Item section metadata diagnostic (#57)
+
+`ItemSectionMetadataProbe` inspects only WDC5 section, field and column-storage declarations. It uses the pure `Wdc5MetadataInspector` (#55), whose layout reference is DBCD commit `e732093f8864240fc5884bd1bba6b02f3dfc0d56`, `DBCD.IO/Readers/WDC5Reader.cs` and `DBCD.IO/Common/DBStructs.cs` (MIT). No external parser code or game data is bundled.
+
+Compile the new probe and self-test alongside the existing protocol tools, with production classes for infrastructure, application, domain, protocol-tact and protocol-db2 on the classpath. Run `ItemSectionMetadataProbe --self-test` to use generated fixtures exclusively. There is no default live operation. `--live` must be separately authorized before execution.
+
+The live scope is fixed to the previously recorded #51 mapping for FDID 841626: EKey `a928b6c9c7ce92d85b638400f81b2fc2`, archive `31236b924da7e06973fb5603c537fa7b`, child offset 45,153,828, child encoded length 738,344, declared decoded length 2,139,665. This is explicit prior evidence, not a newly authenticated archive-index result.
+
+A successful run makes exactly three requests: archive HEAD, a 1,428-byte child BLTE header, and the first 2,949-byte encoded chunk. The response-body total is **4,377 bytes**, with **7,152 decoded bytes** of work. HTTP/TLS overhead is excluded. Defaults cap response bodies at 64 KiB, requests at 16, each work buffer at 4 MiB, decoded work at 4 MiB, and elapsed time at one minute. Requests are sequential, with cancellation/deadline checks and conservative accounting after failures. No fallback, index scan, config refresh, extra chunk, local game read or payload write occurs.
+
+HEAD validates current archive extent only. The child header is authenticated against its expected EKey; the first chunk is verified against the checksum in that authenticated header. Exact source/range identity is checked. The observed Item table/layout/schema identifiers must agree with the explicit expected identity. Metadata inspection validates bounded declared geometry, not the contents of sections or auxiliary values. Raw encryption-key identifiers and storage union values are declarations; a nonzero key does not establish whether a section is available.
+
+Output reports every section, field and storage descriptor, plus explicit limitations: no revalidation of the prior archive-index mapping, no full archive verification, no full table CKey verification, no row decoding, and no schema-semantic validation. Failure cannot publish the successful metadata marker. Insufficient first-chunk metadata causes refusal rather than additional acquisition.
+
+The offline self-test covers exact three-request costs and coordinates, raw encryption-key preservation, header/chunk corruption, short HEAD extent, substituted HEAD/range identity, incomplete descriptor prefix, wrong table identity, wire/request/decode preflight limits, deadline and cancellation. All fixtures are authored in memory; offline execution makes zero network requests.
