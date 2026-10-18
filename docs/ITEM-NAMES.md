@@ -1,6 +1,6 @@
 # Bounded Item names and exact-context join
 
-**Status: approved #21 design with a pure bounded ItemSparse name projector (11 tests) and independently accepted domain contracts in `c609f7d` (13 new plus 8 existing cases); production name preparation/index/application/view remains undelivered.** The prerequisite [physical Item projection](ITEM-PROJECTION.md) is published in verified [alpha.4](releases/v0.1.0-alpha.4.md); its verified four-platform checkpoint is tracked centrally in [the plan](PLAN.md#delivered-baseline-and-current-work). No general name search, complete readable table or newly acquired content is established by the pure projector.
+**Status: accepted #21 pure projector/domain foundations and application use cases in `11c5c10`; retained-source reader, shared name index and production view remain undelivered.** The application slice passed 14 cases and 3 independent adversarial checks. These are synthetic/fake-port contracts, not a names-search application or accepted end-to-end name preparation. The prerequisite physical Item view is published in [alpha.4](releases/v0.1.0-alpha.4.md); see [central source status](PLAN.md#delivered-baseline-and-current-work) for later unreleased checkpoints. No complete readable table or new content acquisition is claimed.
 
 
 ## Research outcome and source selection

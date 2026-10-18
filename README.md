@@ -12,7 +12,7 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 This release provides official discovery, saved offline metadata, install-list inspection, exact FileDataID root lookup, explicit selected encoded-file retention and exact-variant offline reopening. Database → Item adds explicit offline preparation, physical Item-ID pages/lookup and four attributed integer candidates for the admitted cohort. Copies and other sections remain unindexed; encoded verification and admitted row interpretation do not establish a full decoded Item CKey. See [verified release notes](docs/releases/v0.1.0-alpha.4.md) for precise scope and validation.
 
-Names, general search/filtering, strong alternate-encoding metadata reuse, metadata repair, GC, comparisons, exports and complete historical archives remain unfinished. Later repair planning, execution ports, schema-11 audit and reuse services are unreleased foundations; runtime reuse acceptance is pending, and audit persistence does not execute repair. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
+Names, general search/filtering, metadata repair, GC, comparisons, exports and complete historical archives remain unfinished. Later repair planning, execution ports, schema-11 audit and reuse services are unreleased source. Explicit local retained-A reuse is wired in accepted `7ffc822` with exact-source local Linux qualification passed and newer four-platform checks pending; ordinary B acquisition still refuses, and audit persistence does not execute repair. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
 
 
 ## What it will do
