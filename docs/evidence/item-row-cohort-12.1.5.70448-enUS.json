@@ -1,0 +1,493 @@
+{
+  "issue": 68,
+  "observedDate": "2026-10-18",
+  "diagnostic": "ItemRowCohortProbe",
+  "outcome": "SUCCESS",
+  "product": "wow",
+  "build": "12.1.5.70448",
+  "requestedLocale": "enUS",
+  "selectedRootLocaleMask": "0x202",
+  "requestedLocaleBit": "0x2",
+  "priorProofInputs": [
+    "item-header-12.1.5.70448.json",
+    "item-section-metadata-12.1.5.70448.json",
+    "item-sparse-header-12.1.5.70448-enUS.json",
+    "item-sparse-section-metadata-12.1.5.70448-enUS.json",
+    "item-sparse-index-12.1.5.70448-enUS.json"
+  ],
+  "priorCompleteRootContentKey": "e84483ee756c69a7dc5fbff04af81316",
+  "priorRootEncodingAndArchiveIndexReauthenticated": false,
+  "sources": {
+    "item": {
+      "fileDataId": 841626,
+      "contentKey": "1df6b6dbae36878cea020a62b15b9bd6",
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "encodedBytes": 738344,
+      "decodedBytes": 2139665,
+      "archiveKey": "31236b924da7e06973fb5603c537fa7b",
+      "archiveBytes": 55261444,
+      "childOffset": 45153828,
+      "tableHash": "50238EC2",
+      "layoutHash": "996192AA",
+      "selectedSection": 0
+    },
+    "itemSparse": {
+      "fileDataId": 1572924,
+      "contentKey": "bb0ecbdc2fd4988ddd3c1c5e95c34165",
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "encodedBytes": 7988612,
+      "decodedBytes": 62715198,
+      "tableHash": "919BE54E",
+      "layoutHash": "1C17D17F",
+      "selectedSection": 0
+    }
+  },
+  "schema": {
+    "provider": "WoWDBDefs contributors",
+    "status": "community candidate",
+    "revision": "b9a63096cdd99b26967f17f9515377ae62cadfd7",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "sourceUrls": [
+      "https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/Item.dbd",
+      "https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/ItemSparse.dbd"
+    ],
+    "integerCandidateFieldNames": [
+      "ClassID",
+      "SubclassID",
+      "InventoryType",
+      "IconFileDataID"
+    ],
+    "localizedCandidateFieldName": "Display_lang",
+    "localizedStringPrefixCount": 5
+  },
+  "limits": {
+    "responseBodyBytes": 4194304,
+    "requests": 512,
+    "decodedWorkBytes": 8388608,
+    "perChunkBytes": 4194304,
+    "seconds": 120
+  },
+  "plans": [
+    {
+      "phase": "metadata-and-selected-section-indices",
+      "remainingBodyBytes": 1805812,
+      "remainingRequests": 21,
+      "decodedWorkBytes": 4599709,
+      "cumulativePlannedBodyBytes": 1897972,
+      "cumulativePlannedDecode": 4599709,
+      "noBudgetIncrease": true
+    },
+    {
+      "phase": "selected-sparse-records",
+      "remainingBodyBytes": 3126,
+      "remainingRequests": 2,
+      "decodedWorkBytes": 32768,
+      "cumulativePlannedBodyBytes": 1901098,
+      "cumulativePlannedDecode": 4632477,
+      "noBudgetIncrease": true
+    }
+  ],
+  "rows": [
+    {
+      "id": 25,
+      "status": "JOINED_CANDIDATE",
+      "itemPhysicalSourceId": 25,
+      "sparsePhysicalSourceId": 25,
+      "itemCopy": false,
+      "sparseCopy": false,
+      "projectedIntegerCount": 4,
+      "displaySHA256": "a8d2bc5d18567acbc2cd1c6e4c944c7dcc7a17805031a48bca38c0bff00ca595",
+      "exactBuild": "12.1.5.70448",
+      "requestedLocale": "enUS"
+    },
+    {
+      "id": 19019,
+      "status": "JOINED_CANDIDATE",
+      "itemPhysicalSourceId": 19019,
+      "sparsePhysicalSourceId": 19019,
+      "itemCopy": false,
+      "sparseCopy": false,
+      "projectedIntegerCount": 4,
+      "displaySHA256": "b7c5d2222e5b4c53338b945ae8910870c5c3d726afc15de1881986d72ee5524f",
+      "exactBuild": "12.1.5.70448",
+      "requestedLocale": "enUS"
+    }
+  ],
+  "cost": {
+    "requests": 25,
+    "responseBodyBytes": 1901098,
+    "decodedWorkBytes": 4632477,
+    "elapsedNanos": 986542547
+  },
+  "coverage": {
+    "freshHeadersAuthenticated": true,
+    "consumedChunksAuthenticated": true,
+    "completeItemZeroKeySection": true,
+    "completeSparseZeroKeySuffix": true,
+    "selectedSparseRecordPrefixes": true,
+    "requested": 2,
+    "joined": 2,
+    "fullTableContentKeysVerified": false,
+    "otherSectionReadability": "UNKNOWN",
+    "generalSchemaSupport": false,
+    "generalNameSearch": false,
+    "payloadWrites": false,
+    "actualRowContentsIncluded": false
+  },
+  "offlineValidation": {
+    "assertions": 71,
+    "independentConsumedByteTamperCases": 1122,
+    "networkRequests": 0
+  },
+  "verifiedChunks": [
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 0,
+      "encodedBytes": 2949,
+      "decodedBytes": 7152
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 0,
+      "encodedBytes": 1950,
+      "decodedBytes": 5252
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 1,
+      "encodedBytes": 101479,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 2,
+      "encodedBytes": 106894,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 3,
+      "encodedBytes": 98833,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 4,
+      "encodedBytes": 89569,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 5,
+      "encodedBytes": 83309,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 6,
+      "encodedBytes": 84989,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 7,
+      "encodedBytes": 74403,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 8,
+      "encodedBytes": 82313,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+      "index": 9,
+      "encodedBytes": 9181,
+      "decodedBytes": 32135
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3673,
+      "encodedBytes": 91026,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3674,
+      "encodedBytes": 90966,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3675,
+      "encodedBytes": 108665,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3676,
+      "encodedBytes": 142709,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3677,
+      "encodedBytes": 142493,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3678,
+      "encodedBytes": 146828,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3679,
+      "encodedBytes": 130753,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3680,
+      "encodedBytes": 91015,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3681,
+      "encodedBytes": 90977,
+      "decodedBytes": 262144
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 3682,
+      "encodedBytes": 34511,
+      "decodedBytes": 98722
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 1,
+      "encodedBytes": 1247,
+      "decodedBytes": 16384
+    },
+    {
+      "encodingKey": "cab35eb8601260c12a5917c1bdacfda5",
+      "index": 234,
+      "encodedBytes": 1879,
+      "decodedBytes": 16384
+    }
+  ],
+  "rangeReceipts": [
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45153828,
+      "count": 1428,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.315394761Z",
+      "rangeSha256": "ba18e21bbaf4a6778f6be425ea80be65a46ab4a5c0c60cfa981428d103ad29e8"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 0,
+      "count": 90732,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.359939452Z",
+      "rangeSha256": "f72fdba3727f2e0d4cdc8ea052e97563c729e9dcfcdf84ed74fa052c09d59110"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45155256,
+      "count": 2949,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.385656513Z",
+      "rangeSha256": "fd7c774dafcaa5c002fc9df8fe22fba34e6b89ed9089184964372d35e6c3a673"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 90732,
+      "count": 1950,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.401577944Z",
+      "rangeSha256": "72b525e82fdcc646e2f0a28241b3db54f8e0daddd00b424c090b543d5fe03b7f"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45158205,
+      "count": 101479,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.496864383Z",
+      "rangeSha256": "224ccad4f247e70c133ce549cbb444490c3f3bd43640482d17da43a87077f999"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45259684,
+      "count": 106894,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.516198626Z",
+      "rangeSha256": "712efb3d4cc174a567e4af9fae5f506f9d702f430db813d38cd6fcb4244aaedb"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45366578,
+      "count": 98833,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.531251763Z",
+      "rangeSha256": "5dde260c711ec0c233d857265b0d18108f2d3bece8e45bcd86364b7e20174eb9"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45465411,
+      "count": 89569,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.543318943Z",
+      "rangeSha256": "5aa2a345037248f32d609a0775bebb78876da5523e74d557b621f1c09d18d0c7"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45554980,
+      "count": 83309,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.559628773Z",
+      "rangeSha256": "b78fd641966e72ebf2d0b7b0f447aeab815074286a4f5d02f803d5fd6f792c9f"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45638289,
+      "count": 84989,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.584631034Z",
+      "rangeSha256": "df8f027f94ccad01fcb0c6dc072c02fa26eaec0aff0dac8b7ec1f19365827373"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45723278,
+      "count": 74403,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.597175803Z",
+      "rangeSha256": "193246d76e4c081bb6905bb351077e7d7bfeb2d441dd3402093c8cf4665d3ad7"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45797681,
+      "count": 82313,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.613081018Z",
+      "rangeSha256": "a092c2a052d52db4d5adabe5e1ce6148b28fc5ca693592ea0a82b12f0ad0913f"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+      "start": 45879994,
+      "count": 9181,
+      "pinnedWholeBytes": 55261444,
+      "observedAt": "2026-10-18T07:15:41.625108904Z",
+      "rangeSha256": "1bd3512649ed95debb1d6d94010a23932003a67bbbc42414c88cf5126b6dc8f8"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 6905761,
+      "count": 91026,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.641018429Z",
+      "rangeSha256": "27dc0a0eb616eba1fbf1347a792340ecdce10238efe0e75ff705088fc6c24183"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 6996787,
+      "count": 90966,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.656174821Z",
+      "rangeSha256": "69f5b5145f00c4d8e8eeb753fec24d2f100c7da81dd353fd3d077305e91afc8a"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7087753,
+      "count": 108665,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.670596970Z",
+      "rangeSha256": "25628747e8970a2f0b4c99b41f4db8ed925c600c30cdcb0dad8626e9971ecc6c"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7196418,
+      "count": 142709,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.685984760Z",
+      "rangeSha256": "ac3b4e81503e12c45364e339346e249cadf332aaef6816cce60caf95e0a0192e"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7339127,
+      "count": 142493,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.701866223Z",
+      "rangeSha256": "964744d11716f1a2a3ac8816da0b0b49ee03a14108937a342f526f4ed2bbfecb"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7481620,
+      "count": 146828,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.719221576Z",
+      "rangeSha256": "1c85e84eedb64c25211c7b33e24482456831cf7f88841d4158db4d130b3ab9d4"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7628448,
+      "count": 130753,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.738896411Z",
+      "rangeSha256": "dbba58dbc283a63a48290ab56953624d8ecd1c61e9a5ca527fc1bfc7f1dda9d7"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7759201,
+      "count": 91015,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.754169009Z",
+      "rangeSha256": "e147331df1b17cf24d3892ca3c6d1bf13403a9959be2feefb865719f5e116975"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7850216,
+      "count": 90977,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.770045760Z",
+      "rangeSha256": "4be6645d91af03eeecf7bab8a25d7b3a2d86d59b5a3d77dd4096b8481b95e245"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 7941193,
+      "count": 34511,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.782109815Z",
+      "rangeSha256": "a3ca5c67183ff94c8b14d18d2b40db1b965cb04c93e87d4d948db57ca3f4757a"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 92682,
+      "count": 1247,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.882255276Z",
+      "rangeSha256": "749f31209c8f4915109e7aa93557b7990cb5f068b3e34abacb9abc47e22502f1"
+    },
+    {
+      "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+      "start": 514287,
+      "count": 1879,
+      "pinnedWholeBytes": 7988612,
+      "observedAt": "2026-10-18T07:15:41.888767982Z",
+      "rangeSha256": "6ab06c68aa9f0181d4bf8539f7bd686dced25ded9c0f2bee713bdafde7b27f77"
+    }
+  ],
+  "sourceSnapshot": {
+    "baseCommit": "6843b10",
+    "diagnosticFiles": [
+      "tools/protocol/ItemRowCohortProbe.java",
+      "tools/protocol/ItemRowCohortProbeSelfTest.java"
+    ],
+    "note": "New diagnostic sources reviewed and run before their integration commit; base identifies production dependency snapshot."
+  }
+}
