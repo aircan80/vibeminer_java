@@ -113,7 +113,7 @@ public final class DiscoveryHistoryRecords {
   }
 
   /** Body-free reader projection; selection and registration still require exact source replay. */
-  static List<BuildLibraryReference> libraryReferences(byte[] record, long sequence) {
+  public static List<BuildLibraryReference> libraryReferences(byte[] record, long sequence) {
     try {
       var value = metadata(record);
       return value.builds.stream()
