@@ -79,7 +79,7 @@ final class BuildMiningRuntime implements AutoCloseable {
     var metadataBounds = BuildOpeningPolicy.initialCohort().metadata();
     var encodingBounds =
         new SqliteEncodingLookupIndex.Limits(
-            50_000_000, 100_000_000, 8L << 30, 512, 1_000_000, 256, 65536);
+            50_000_000, 100_000_000, 8L << 30, 4096, 1_000_000, 256, 65536);
     var index =
         new SqliteEncodingLookupIndex(
             d.catalog(), d.store(), d.admissions(), d.store().contentSession().epoch());

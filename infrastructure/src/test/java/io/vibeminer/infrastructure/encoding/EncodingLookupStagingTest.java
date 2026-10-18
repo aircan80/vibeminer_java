@@ -19,6 +19,9 @@ class EncodingLookupStagingTest {
   static final FullEncodingInventory.Limits PARSER =
       new FullEncodingInventory.Limits(
           1000000, 10000, 10000, 100, 65536, 4096, 1000, 255, 100, 65536, 1000);
+  static final FullEncodingInventory.Limits DENSE_PARSER =
+      new FullEncodingInventory.Limits(
+          1000000, 10000, 10000, 400, 65536, 4096, 1000, 255, 100, 65536, 1000);
   static final EncodingLookupStaging.Limits LIMITS =
       new EncodingLookupStaging.Limits(10000, 10000, 10000000, 2, 10000, 10, 100);
   SqliteCatalog catalog;
@@ -378,6 +381,176 @@ class EncodingLookupStagingTest {
               .noneMatch(x -> x.toUpperCase(java.util.Locale.ROOT).contains("TEMP B-TREE")),
           details.toString());
     }
+  }
+
+  @Test
+  void largerDurableBatchesPreserveCompleteRowsAndOrderedCandidates() throws Exception {
+    var limits = new EncodingLookupStaging.Limits(100000, 100000, 10000000, 4096, 100, 10, 100);
+    var bytes = denseFixture(100);
+    var g =
+        index.build(
+            "dense",
+            new byte[] {1},
+            "owner",
+            new ByteArrayInputStream(bytes),
+            DENSE_PARSER,
+            limits,
+            () -> {},
+            NONE);
+    assertEquals(2600, count("en_lookup_content"));
+    assertEquals(2600, count("en_lookup_candidates"));
+    assertEquals(4000, count("en_lookup_encoding"));
+    var rows = index.lookup(g, List.of(denseKey(1), denseKey(2600)), limits, NONE);
+    assertEquals(2, rows.size());
+    for (int i = 0; i < rows.size(); i++) {
+      assertEquals(16, rows.get(i).decodedBytes().orElseThrow());
+      assertEquals(
+          List.of(denseKey(i == 0 ? 1 : 2600)),
+          rows.get(i).candidates().stream()
+              .map(EncodingLookupStaging.Candidate::encodingKey)
+              .toList());
+      assertEquals(32, rows.get(i).candidates().getFirst().encodedBytes().orElseThrow());
+    }
+    try (var c = catalog.connect();
+        var q = c.createStatement();
+        var r =
+            q.executeQuery(
+                "SELECT count(*) FROM en_lookup_candidates a JOIN en_lookup_content b"
+                    + " USING(artifact,generation,ckey) JOIN en_lookup_encoding e"
+                    + " USING(artifact,generation,ekey) WHERE a.ordinal=0 AND b.decoded_bytes=16"
+                    + " AND e.encoded_bytes=32")) {
+      assertTrue(r.next());
+      assertEquals(2600, r.getLong(1));
+    }
+  }
+
+  @Test
+  void lateSourceFailureRetiresSeveralLargerCommittedBatches() throws Exception {
+    var limits = new EncodingLookupStaging.Limits(100000, 100000, 10000000, 4096, 100, 10, 100);
+    var called = new AtomicBoolean();
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            index.build(
+                "dense",
+                new byte[] {1},
+                "owner",
+                new ByteArrayInputStream(denseFixture(100)),
+                DENSE_PARSER,
+                limits,
+                () -> {
+                  called.set(true);
+                  assertEquals(2600, assertDoesNotThrow(() -> count("en_lookup_content")));
+                  assertEquals(4000, assertDoesNotThrow(() -> count("en_lookup_encoding")));
+                  throw new IllegalStateException("Late whole-source hash mismatch");
+                },
+                NONE));
+    assertTrue(called.get());
+    for (var table : List.of("artifacts", "content", "candidates", "encoding"))
+      assertEquals(0, count("en_lookup_" + table));
+  }
+
+  @Test
+  void cancellationAfterLargerCommittedBatchRetiresOnlyStaging() throws Exception {
+    var ready =
+        index.build(
+            "ready",
+            new byte[] {1},
+            "owner",
+            new ByteArrayInputStream(fixture()),
+            PARSER,
+            LIMITS,
+            () -> {},
+            NONE);
+    var checks = new java.util.concurrent.atomic.AtomicInteger();
+    var cancelled = new AtomicBoolean();
+    CancellationToken token =
+        () -> {
+          if (cancelled.get()) return true;
+          if (checks.incrementAndGet() % 1024 != 0) return false;
+          try (var c = catalog.connect();
+              var q = c.createStatement();
+              var r =
+                  q.executeQuery(
+                      "SELECT count(*) FROM en_lookup_candidates WHERE artifact='dense'")) {
+            if (r.next() && r.getLong(1) >= 2048) cancelled.set(true);
+          } catch (java.sql.SQLException failure) {
+            throw new IllegalStateException(failure);
+          }
+          return cancelled.get();
+        };
+    var limits = new EncodingLookupStaging.Limits(100000, 100000, 10000000, 4096, 100, 10, 100);
+    var failure =
+        assertThrows(
+            Exception.class,
+            () ->
+                index.build(
+                    "dense",
+                    new byte[] {1},
+                    "owner",
+                    new ByteArrayInputStream(denseFixture(100)),
+                    DENSE_PARSER,
+                    limits,
+                    () -> fail("Cancelled source must not publish"),
+                    token));
+    assertTrue(cancelled.get());
+    assertTrue(
+        failure instanceof java.util.concurrent.CancellationException
+            || failure instanceof IOException);
+    assertEquals(1, count("en_lookup_artifacts"));
+    assertEquals(ready, index.findReady("ready", new byte[] {1}, NONE).orElseThrow());
+    assertEquals(2, count("en_lookup_content"));
+    assertEquals(4, count("en_lookup_candidates"));
+    assertEquals(1, count("en_lookup_encoding"));
+  }
+
+  static byte[] denseBytes(int value) {
+    return java.nio.ByteBuffer.allocate(16).putInt(12, value).array();
+  }
+
+  static String denseKey(int value) {
+    return HexFormat.of().formatHex(denseBytes(value));
+  }
+
+  static byte[] denseFixture(int pages) throws Exception {
+    var bytes = new ByteArrayOutputStream();
+    var out = new DataOutputStream(bytes);
+    out.writeBytes("EN");
+    out.write(new byte[] {1, 16, 16});
+    out.writeShort(1);
+    out.writeShort(1);
+    out.writeInt(pages);
+    out.writeInt(pages);
+    out.writeByte(0);
+    out.writeInt(2);
+    out.write(new byte[] {'n', 0});
+    for (boolean encoded : new boolean[] {false, true}) {
+      var table = new ArrayList<byte[]>();
+      int records = encoded ? 40 : 26;
+      for (int p = 0; p < pages; p++) {
+        var buffer = new ByteArrayOutputStream();
+        for (int n = 1; n <= records; n++) {
+          int id = p * records + n;
+          var row = new DataOutputStream(buffer);
+          if (!encoded) {
+            row.writeByte(1);
+            u40(row, 16);
+          }
+          row.write(denseBytes(id));
+          if (encoded) {
+            row.writeInt(0);
+            u40(row, 32);
+          } else row.write(denseBytes(id));
+        }
+        table.add(Arrays.copyOf(buffer.toByteArray(), 1024));
+      }
+      for (int p = 0; p < pages; p++) {
+        out.write(denseBytes(p * records + 1));
+        out.write(MessageDigest.getInstance("MD5").digest(table.get(p)));
+      }
+      for (var page : table) out.write(page);
+    }
+    return bytes.toByteArray();
   }
 
   long count(String table) throws Exception {
