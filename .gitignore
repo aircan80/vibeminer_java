@@ -36,3 +36,11 @@ Thumbs.db
 # Crash dumps
 core
 core.*
+
+# Build automation tooling and generated release assets
+__pycache__/
+*.py[cod]
+/dist-upload/
+/release-assets/
+/release-files.txt
+/release-notes.md

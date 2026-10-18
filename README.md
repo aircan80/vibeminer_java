@@ -31,7 +31,7 @@ The selected stack is Java with JavaFX, Gradle and embedded SQLite. Keep discove
 
 Blizzard is the default data source. Community filename lists or schema definitions, if introduced, are separate, identified metadata providers rather than silently treated as Blizzard-authored facts. Game-folder discovery, game-install reads and local game-cache imports are excluded.
 
-**Status: interactive UI mockups.** The mining application is not implemented. Open [the three design options](mockups/index.html). All enhancements, defects and implementation work are tracked in [GitHub Issues](https://github.com/aircan80/vibeminer/issues).
+**Status: early Java/JavaFX implementation.** The Atlas shell and official metadata discovery are being bootstrapped; complete mining, shared archives and record decoding are not yet implemented. Open [the design options](mockups/index.html). All enhancements, defects and implementation work are tracked in [GitHub Issues](https://github.com/aircan80/vibeminer/issues). See [the formal documentation](docs/README.md), [building and downloads](BUILDING.md), and [milestones](https://github.com/aircan80/vibeminer/milestones).
 
 ## Research-led workflows
 
