@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.sql.*;
 import java.util.*;
+import java.util.function.LongSupplier;
+import org.sqlite.ProgressHandler;
 
 /** Bounded historical library projection. It never reads source bodies or claims readiness. */
 public final class SqliteBuildLibraryReader implements BuildLibraryReader {
@@ -17,13 +19,27 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
   private final SqliteBuildLibraryRepository library;
   private final SqliteDiscoveryHistoryRepository history;
   private final long pageBytes;
+  private final long maximumSqlInstructions;
+  private final LongSupplier nanoClock;
 
   public SqliteBuildLibraryReader(SqliteCatalog catalog) {
     this(catalog, MAXIMUM_PAGE_METADATA_BYTES);
   }
 
   public SqliteBuildLibraryReader(SqliteCatalog catalog, long maximumPageMetadataBytes) {
+    this(catalog, maximumPageMetadataBytes, 20_000_000L, System::nanoTime);
+  }
+
+  SqliteBuildLibraryReader(
+      SqliteCatalog catalog,
+      long maximumPageMetadataBytes,
+      long maximumSqlInstructions,
+      LongSupplier nanoClock) {
     Objects.requireNonNull(catalog);
+    this.nanoClock = Objects.requireNonNull(nanoClock);
+    if (maximumSqlInstructions < 1 || maximumSqlInstructions > 20_000_000L)
+      throw new IllegalArgumentException("Bounded SQL work required");
+    this.maximumSqlInstructions = maximumSqlInstructions;
     if (maximumPageMetadataBytes < 1 || maximumPageMetadataBytes > MAXIMUM_PAGE_METADATA_BYTES)
       throw new IllegalArgumentException("Metadata projection budget1..64MiB required");
     library = new SqliteBuildLibraryRepository(catalog);
@@ -39,7 +55,7 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
       CancellationToken token) {
     if (query == null || cursor == null || token == null || size < 1 || size > 100)
       throw fail(INVALID_REQUEST, "Exact query and page size1..100 required");
-    return library.tx(
+    return readTx(
         token,
         c -> {
           long revision = revision(c);
@@ -50,9 +66,9 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
           }
           var states = states(c, query.productId());
           String sql =
-              "SELECT g.group_id,r.registration_sequence FROM build_library_groups g JOIN"
-                  + " build_library_registrations r ON r.event_id=g.first_event_id WHERE"
-                  + " g.product_id=?";
+              "SELECT g.group_id,r.registration_sequence,length(g.key_record) FROM"
+                  + " build_library_groups g JOIN build_library_registrations r ON"
+                  + " r.event_id=g.first_event_id WHERE g.product_id=?";
           if (cursor.isPresent())
             sql +=
                 " AND (r.registration_sequence<? OR (r.registration_sequence=? AND g.group_id>?))";
@@ -64,10 +80,19 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
                     " AND EXISTS(SELECT 1 FROM build_library_region_states s JOIN"
                         + " build_library_event_groups e ON e.event_id=s.latest_successful_event_id"
                         + " WHERE s.product_id=g.product_id AND s.check_state='SUCCESS' AND"
-                        + " e.group_id=g.group_id)";
+                        + " e.group_id=g.group_id"
+                        + (query.region().isPresent() ? " AND s.region=?" : "")
+                        + ")";
               };
-          sql += " ORDER BY r.registration_sequence DESC,g.group_id ASC LIMIT ?";
+          if (query.region().isPresent())
+            sql +=
+                " AND EXISTS(SELECT 1 FROM build_library_event_groups e JOIN"
+                    + " discovery_history_events h ON h.event_id=e.event_id"
+                    + " WHERE e.group_id=g.group_id AND h.region=?)";
+          sql += " ORDER BY r.registration_sequence DESC,g.group_id ASC";
+          if (query.search().isEmpty()) sql += " LIMIT ?";
           var candidates = new ArrayList<Candidate>();
+          var budget = new Budget();
           try (var q = c.prepareStatement(sql)) {
             int i = 1;
             q.setString(i++, query.productId());
@@ -76,18 +101,36 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
               q.setLong(i++, cursor.get().beforeFirstRegistrationSequence());
               q.setString(i++, cursor.get().beforeGroupId());
             }
-            q.setInt(i, size + 1);
+            if (query.filter() == BuildLibraryProjection.Filter.CURRENTLY_ADVERTISED
+                && query.region().isPresent()) q.setString(i++, query.region().orElseThrow());
+            if (query.region().isPresent()) q.setString(i++, query.region().orElseThrow());
+            if (query.search().isEmpty()) q.setInt(i, size + 1);
             try (var rows = q.executeQuery()) {
-              while (rows.next()) candidates.add(new Candidate(rows.getString(1), rows.getLong(2)));
+              while (rows.next()) {
+                token.throwIfCancellationRequested();
+                var candidate = new Candidate(rows.getString(1), rows.getLong(2));
+                if (query.search().isPresent()) {
+                  long bytes = rows.getLong(3);
+                  if (bytes < 1 || bytes > BuildLibraryRecords.MAX_KEY_BYTES)
+                    throw fail(CORRUPT_LIBRARY, "Search group key size is invalid");
+                  budget.chargeKey(bytes);
+                  var group =
+                      library
+                          .group(c, candidate.id())
+                          .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Search group disappeared"));
+                  if (!query.matchesKey(group.key())) continue;
+                }
+                candidates.add(candidate);
+                if (candidates.size() == size + 1) break;
+              }
             }
           }
-          var budget = new Budget();
           var cache = new Cache();
           var entries = new ArrayList<BuildLibraryPage.Entry>();
           for (var candidate : candidates) {
             token.throwIfCancellationRequested();
             var entry = entry(c, candidate, states, budget, cache, token);
-            if (!entry.row().matches(query.filter()))
+            if (!query.matches(entry.row()))
               throw fail(CORRUPT_LIBRARY, "Indexed filter differs from checked library facts");
             entries.add(entry);
           }
@@ -111,7 +154,7 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
   public BuildLibraryPage.Entry select(String groupId, CancellationToken token) {
     if (groupId == null || !groupId.matches("[0-9a-f]{64}") || token == null)
       throw fail(INVALID_REQUEST, "Exact group identity required");
-    return library.tx(
+    return readTx(
         token,
         c -> {
           var group =
@@ -200,8 +243,61 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
             grouped,
             group.seen(),
             local(c, candidate.id()),
-            BuildLibraryProjection.advertisement(group.key(), states));
+            BuildLibraryProjection.advertisement(group.key(), states),
+            regionalAdvertisements(group.key(), states));
     return new BuildLibraryPage.Entry(candidate.first(), row);
+  }
+
+  private static Map<String, BuildLibraryProjection.Advertisement> regionalAdvertisements(
+      BuildReferenceGroupKey key, List<BuildLibraryRegionalState> states) {
+    var facts = new TreeMap<String, BuildLibraryProjection.Advertisement>();
+    for (var state : states)
+      facts.put(state.scope().region(), BuildLibraryProjection.advertisement(key, List.of(state)));
+    return Map.copyOf(facts);
+  }
+
+  private <T> T readTx(CancellationToken token, SqliteBuildLibraryRepository.Work<T> operation) {
+    return library.tx(
+        token,
+        c -> {
+          long started = nanoClock.getAsLong();
+          boolean[] interrupted = {false};
+          int interval = (int) Math.min(100, maximumSqlInstructions);
+          ProgressHandler.setHandler(
+              c,
+              interval,
+              new ProgressHandler() {
+                long instructions;
+
+                @Override
+                protected int progress() {
+                  instructions += interval;
+                  if (token.isCancellationRequested()
+                      || instructions > maximumSqlInstructions
+                      || nanoClock.getAsLong() - started
+                          >= java.time.Duration.ofSeconds(30).toNanos()) {
+                    interrupted[0] = true;
+                    return 1;
+                  }
+                  return 0;
+                }
+              });
+          try {
+            T result = operation.run(c);
+            token.throwIfCancellationRequested();
+            if (nanoClock.getAsLong() - started >= java.time.Duration.ofSeconds(30).toNanos())
+              throw fail(LIMIT_EXCEEDED, "Library read exceeded bounded elapsed work");
+            return result;
+          } catch (SQLException failure) {
+            token.throwIfCancellationRequested();
+            if (interrupted[0])
+              throw new BuildLibraryException(
+                  LIMIT_EXCEEDED, "Library read exceeded bounded SQL or elapsed work", failure);
+            throw failure;
+          } finally {
+            ProgressHandler.clearHandler(c);
+          }
+        });
   }
 
   private List<BuildLibraryRegionalState> states(Connection c, String product) throws SQLException {
@@ -291,6 +387,12 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
     final Set<UUID> charged = new HashSet<>();
     long bytes;
     int references;
+
+    void chargeKey(long count) {
+      bytes = Math.addExact(bytes, count);
+      if (bytes > pageBytes)
+        throw fail(LIMIT_EXCEEDED, "Literal search exceeded bounded catalog metadata work");
+    }
 
     void charge(UUID id, int count) {
       if (charged.add(id)) {

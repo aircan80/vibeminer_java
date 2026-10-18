@@ -85,6 +85,175 @@ class SqliteBuildLibraryReaderTest {
   }
 
   @Test
+  void fullCatalogLiteralSearchAndRegionPrecedePaging() throws Exception {
+    var older = observe(save("a".repeat(32), "older"));
+    for (int n = 0; n < 30; n++) {
+      var key = String.format("%032x", n + 1);
+      var source = SqliteDiscoveryHistoryRepositoryTest.event(key);
+      String versions =
+          new String(source.versions().source().bytes(), StandardCharsets.UTF_8)
+              .replace("12.1.test", "different-" + n)
+              .replace("|100|", "|" + (200 + n) + "|");
+      var event =
+          new DiscoveryObservationMapper()
+              .map(
+                  UUID.randomUUID(),
+                  "wow",
+                  "eu",
+                  NOW,
+                  new SourceDocument(
+                      source.versions().source().sourceUrl(),
+                      NOW,
+                      versions.replace("\nus|", "\neu|").getBytes(StandardCharsets.UTF_8)),
+                  new SourceDocument(
+                      source.cdns().source().sourceUrl(),
+                      NOW,
+                      new String(source.cdns().source().bytes(), StandardCharsets.UTF_8)
+                          .replace("\nus|", "\neu|")
+                          .getBytes(StandardCharsets.UTF_8)));
+      observe(
+          new SqliteDiscoveryHistoryRepository(catalog())
+              .append(event, DiscoveryHistoryLimits.defaults(), NONE));
+    }
+    var reader = new SqliteBuildLibraryReader(catalog());
+    var query =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of("12.1.test"), Optional.of("us"));
+    var page = reader.page(query, Optional.empty(), 1, NONE);
+    assertEquals(
+        older.references().getFirst().key(), page.entries().getFirst().row().group().key());
+    assertTrue(page.nextCursor().isEmpty());
+    var global =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of("12.1.test"), Optional.empty());
+    assertEquals(
+        older.references().getFirst().key(),
+        reader.page(global, Optional.empty(), 1, NONE).entries().getFirst().row().group().key());
+    var newest = observe(save("f".repeat(32), "new-matching"));
+    var firstMatch = reader.page(global, Optional.empty(), 1, NONE);
+    assertEquals(
+        newest.references().getFirst().key(), firstMatch.entries().getFirst().row().group().key());
+    var secondMatch = reader.page(global, firstMatch.nextCursor(), 1, NONE);
+    assertEquals(
+        older.references().getFirst().key(), secondMatch.entries().getFirst().row().group().key());
+    assertTrue(secondMatch.nextCursor().isEmpty());
+    var byId =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of("100"), Optional.of("us"));
+    assertEquals(2, reader.page(byId, Optional.empty(), 25, NONE).entries().size());
+    for (String literal : List.of("%", "_", "' OR 1=1 --")) {
+      assertTrue(
+          reader
+              .page(
+                  new BuildLibraryQuery(
+                      "wow",
+                      BuildLibraryProjection.Filter.ALL,
+                      Optional.of(literal),
+                      Optional.empty()),
+                  Optional.empty(),
+                  25,
+                  NONE)
+              .entries()
+              .isEmpty());
+    }
+    assertTrue(
+        reader
+            .page(
+                new BuildLibraryQuery(
+                    "wow",
+                    BuildLibraryProjection.Filter.ALL,
+                    Optional.of("12.1.test"),
+                    Optional.of("eu")),
+                Optional.empty(),
+                25,
+                NONE)
+            .entries()
+            .isEmpty());
+    assertEquals(
+        BuildLibraryException.Code.LIMIT_EXCEEDED,
+        assertThrows(
+                BuildLibraryException.class,
+                () ->
+                    new SqliteBuildLibraryReader(catalog(), 1)
+                        .page(query, Optional.empty(), 1, NONE))
+            .code());
+  }
+
+  @Test
+  void selectedRegionCurrentRequiresThatRegionsSuccessfulCheck() {
+    var repo = new SqliteBuildLibraryRepository(catalog());
+    var euHistorical =
+        saveChanged(SqliteDiscoveryHistoryRepositoryTest.event("a".repeat(32)), "eu", "unknown");
+    var ref = observe(euHistorical).references().getFirst();
+    var us = save("a".repeat(32), "unknown");
+    var usTicket = repo.beginCheck(new BuildLibraryScope("wow", "us"), NOW, NONE);
+    repo.recordObservation(
+        us.eventId(),
+        BuildLibraryRegistration.Kind.SUCCESSFUL_CHECK,
+        Optional.of(usTicket),
+        NOW,
+        NONE);
+    var reader = new SqliteBuildLibraryReader(catalog());
+    var euQuery =
+        new BuildLibraryQuery(
+            "wow",
+            BuildLibraryProjection.Filter.CURRENTLY_ADVERTISED,
+            Optional.empty(),
+            Optional.of("eu"));
+    assertTrue(reader.page(euQuery, Optional.empty(), 25, NONE).entries().isEmpty());
+    assertEquals(
+        BuildLibraryProjection.Advertisement.UNKNOWN,
+        reader.select(ref.key().identity(), NONE).row().regionalAdvertisements().get("eu"));
+    var fresh =
+        saveChanged(SqliteDiscoveryHistoryRepositoryTest.event("a".repeat(32)), "eu", "unknown");
+    var ticket = repo.beginCheck(new BuildLibraryScope("wow", "eu"), NOW, NONE);
+    repo.recordObservation(
+        fresh.eventId(),
+        BuildLibraryRegistration.Kind.SUCCESSFUL_CHECK,
+        Optional.of(ticket),
+        NOW,
+        NONE);
+    assertEquals(1, reader.page(euQuery, Optional.empty(), 25, NONE).entries().size());
+    var failed = repo.beginCheck(new BuildLibraryScope("wow", "eu"), NOW, NONE);
+    repo.recordFailedScope(failed, BuildLibraryRepository.Failure.FAILED, NOW, NONE);
+    assertTrue(reader.page(euQuery, Optional.empty(), 25, NONE).entries().isEmpty());
+    var selected = reader.select(ref.key().identity(), NONE);
+    assertEquals(
+        BuildLibraryProjection.Advertisement.PRESENT_IN_CHECKED_SCOPE,
+        selected.row().advertisement());
+    assertFalse(euQuery.matches(selected.row()));
+  }
+
+  @Test
+  void catalogSearchSqlAndElapsedLimitsNeverBecomeEmptySuccess() {
+    observe(save("a".repeat(32), "unknown"));
+    var query =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of("not-found"), Optional.empty());
+    assertEquals(
+        BuildLibraryException.Code.LIMIT_EXCEEDED,
+        assertThrows(
+                BuildLibraryException.class,
+                () ->
+                    new SqliteBuildLibraryReader(catalog(), 1L << 20, 1, System::nanoTime)
+                        .page(query, Optional.empty(), 25, NONE))
+            .code());
+    var ticks = new java.util.concurrent.atomic.AtomicLong();
+    assertEquals(
+        BuildLibraryException.Code.LIMIT_EXCEEDED,
+        assertThrows(
+                BuildLibraryException.class,
+                () ->
+                    new SqliteBuildLibraryReader(
+                            catalog(),
+                            1L << 20,
+                            20_000_000,
+                            () -> ticks.getAndAdd(java.time.Duration.ofSeconds(31).toNanos()))
+                        .page(query, Optional.empty(), 25, NONE))
+            .code());
+  }
+
+  @Test
   void localFilterPrecedesPagingAndRawHistoryAloneIsNeverLocal() throws Exception {
     var a = save("a".repeat(32), "unknown");
     var aRef = observe(a).references().getFirst();

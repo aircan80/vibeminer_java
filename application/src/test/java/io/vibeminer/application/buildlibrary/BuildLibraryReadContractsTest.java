@@ -47,6 +47,61 @@ class BuildLibraryReadContractsTest {
   }
 
   @Test
+  void literalSearchAndExactRegionAreBoundedCursorIdentity() {
+    var base = new BuildLibraryQuery("wow", BuildLibraryProjection.Filter.ALL);
+    var query =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of("70450"), Optional.of("eu"));
+    var cursor = new BuildLibraryCursor(base.identity(), 1, 5, "a".repeat(64), 25);
+    assertNotEquals(base.identity(), query.identity());
+    assertThrows(IllegalArgumentException.class, () -> cursor.requireContext(query, 25, 1));
+    assertNotEquals(
+        query.identity(),
+        new BuildLibraryQuery(
+                "wow", BuildLibraryProjection.Filter.ALL, Optional.of("70450"), Optional.of("us"))
+            .identity());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new BuildLibraryQuery(
+                "wow",
+                BuildLibraryProjection.Filter.ALL,
+                Optional.of("x".repeat(129)),
+                Optional.empty()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new BuildLibraryQuery(
+                "wow",
+                BuildLibraryProjection.Filter.ALL,
+                Optional.of("bad\u0000"),
+                Optional.empty()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new BuildLibraryQuery(
+                "wow", BuildLibraryProjection.Filter.ALL, Optional.of("\uD800"), Optional.empty()));
+  }
+
+  @Test
+  void pagesCannotClaimLiteralOrRegionalMatchesTheyDoNotContain() {
+    var row = entry(5);
+    for (var query :
+        List.of(
+            new BuildLibraryQuery(
+                "wow",
+                BuildLibraryProjection.Filter.ALL,
+                Optional.of("no-such-version"),
+                Optional.empty()),
+            new BuildLibraryQuery(
+                "wow", BuildLibraryProjection.Filter.ALL, Optional.empty(), Optional.of("eu")))) {
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> new BuildLibraryPage(query, 25, 1, List.of(row), Optional.empty()));
+    }
+  }
+
+  @Test
   void oneLatestEventPerRegionAndBoundedProductScopeAreExplicit() {
     var old = reference("us", 1);
     var newer = reference("us", 2);

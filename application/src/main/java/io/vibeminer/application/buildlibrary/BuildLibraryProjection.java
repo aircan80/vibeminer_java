@@ -22,8 +22,22 @@ public final class BuildLibraryProjection {
       BuildLibraryGrouping.Group group,
       BuildLibrarySeenState seen,
       BuildLibraryLocalFact local,
-      Advertisement advertisement) {
+      Advertisement advertisement,
+      Map<String, Advertisement> regionalAdvertisements) {
+    public Row(
+        BuildLibraryGrouping.Group group,
+        BuildLibrarySeenState seen,
+        BuildLibraryLocalFact local,
+        Advertisement advertisement) {
+      this(group, seen, local, advertisement, Map.of());
+    }
+
     public Row {
+      regionalAdvertisements = Map.copyOf(regionalAdvertisements);
+      if (regionalAdvertisements.size() > 64)
+        throw new IllegalArgumentException("Bounded regional advertisement facts required");
+      for (var region : regionalAdvertisements.keySet())
+        new BuildLibraryScope(group.key().productId(), region);
       Objects.requireNonNull(group);
       Objects.requireNonNull(seen);
       Objects.requireNonNull(local);

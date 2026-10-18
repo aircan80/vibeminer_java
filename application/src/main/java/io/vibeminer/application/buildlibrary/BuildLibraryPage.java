@@ -57,7 +57,7 @@ public record BuildLibraryPage(
               && id.compareTo(previousId) <= 0
           || !ids.add(id)
           || !row.group().key().productId().equals(query.productId())
-          || !row.matches(query.filter()))
+          || !query.matches(row))
         throw new IllegalArgumentException("Library page changed order, product or exact filter");
       previous = entry.firstRegistrationSequence();
       previousId = id;
