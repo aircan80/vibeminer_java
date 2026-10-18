@@ -1,6 +1,6 @@
 # Proposed complete encoded-file retention
 
-**Status: proposed, not implemented.** This decision refines selected-file acquisition under #16. It does not establish decoded files, readable records, item support or new decryption capabilities.
+**Status: production workflow proposed; pure stream verifier implemented in #62.** This decision refines selected-file acquisition under #16. It does not establish decoded files, readable records, item support or new decryption capabilities.
 
 A selected file may be retained as a complete, integrity-verified encoded BLTE object even when its contents cannot be decoded. Existing requirements to verify decoded CKey before publishing decoded-ready data remain in force. Encoded retention is a separate capability with a separate proof scope and membership role.
 
@@ -66,3 +66,9 @@ Disclose metadata-search byte/request/time budgets separately from payload cost.
 - Independently review backend behavior and native UI cost/consent/progress/source-scope presentation before claiming the production workflow. Live checks remain explicit and separate from deterministic CI.
 
 No actual item/table decoding, full archive verification or general format support is implied by this proposal.
+
+## Pure verifier checkpoint (#62)
+
+`EncodedBlteInputStream` now implements the single-pass encoded verification foundation. It replays an authenticated bounded header unchanged, hashes body chunks with bounded reads, and exposes an immutable completion proof only after actual EOF. Its proof distinguishes zero-header whole-object EKey from table-header plus all encoded chunk hashes, and includes independent physical SHA-256. It does not close the caller-owned source or interpret modes.
+
+Eight tests and 12,000 independent generated-stream oracle cases passed review. The zero-header chunk-size bound was added with a failing regression before acceptance; oversized bodies are rejected after eight framing bytes. The production locator, receipt/alias policy, CAS composition, build roles, retention scope and UI remain unimplemented by this pure increment.
