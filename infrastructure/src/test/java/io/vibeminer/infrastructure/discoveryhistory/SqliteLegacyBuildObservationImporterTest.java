@@ -143,7 +143,7 @@ class SqliteLegacyBuildObservationImporterTest {
         assertEquals(row.build(), catalog.readSnapshot(db, row.build().snapshotId()).orElseThrow());
       try (var query = db.createStatement();
           var version = query.executeQuery("PRAGMA user_version")) {
-        assertEquals(14, version.getInt(1));
+        assertEquals(SqliteCatalog.SCHEMA_VERSION, version.getInt(1));
       }
     }
     var retry = run(new SqliteLegacyBuildObservationImporter(catalog()));

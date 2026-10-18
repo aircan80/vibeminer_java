@@ -232,6 +232,7 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
         + groupExpression
         + " AND (EXISTS(SELECT 1 FROM retention_scopes p WHERE p.snapshot_id=x.snapshot_id AND"
         + " p.kind IN ('ROOT_METADATA','INSTALL_METADATA')) OR EXISTS(SELECT 1 FROM"
+        + " build_open_admissions a WHERE a.snapshot_id=x.snapshot_id) OR EXISTS(SELECT 1 FROM"
         + " build_object_memberships m WHERE m.snapshot_id=x.snapshot_id AND (m.role IN"
         + " ('ROOT_MANIFEST','INSTALL_MANIFEST') OR (substr(m.role,1,4)='EF1_' AND"
         + " length(m.role)=47)))))";
@@ -257,12 +258,14 @@ public final class SqliteBuildLibraryReader implements BuildLibraryReader {
                   "SELECT EXISTS(SELECT 1 FROM retention_scopes WHERE snapshot_id=? AND kind IN"
                       + " ('ROOT_METADATA','INSTALL_METADATA')) OR EXISTS(SELECT 1 FROM"
                       + " build_object_memberships WHERE snapshot_id=? AND role IN"
-                      + " ('ROOT_MANIFEST','INSTALL_MANIFEST')),EXISTS(SELECT 1 FROM"
+                      + " ('ROOT_MANIFEST','INSTALL_MANIFEST')) OR EXISTS(SELECT 1 FROM"
+                      + " build_open_admissions a WHERE a.snapshot_id=?),EXISTS(SELECT 1 FROM"
                       + " build_object_memberships WHERE snapshot_id=? AND substr(role,1,4)='EF1_'"
                       + " AND length(role)=47)")) {
             facts.setString(1, snapshot);
             facts.setString(2, snapshot);
             facts.setString(3, snapshot);
+            facts.setString(4, snapshot);
             try (var fact = facts.executeQuery()) {
               prep |= fact.getInt(1) != 0;
               payload |= fact.getInt(2) != 0;

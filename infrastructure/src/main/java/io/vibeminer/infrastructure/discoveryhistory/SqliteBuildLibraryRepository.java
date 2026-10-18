@@ -319,30 +319,41 @@ public final class SqliteBuildLibraryRepository
       BuildLibraryReference reference, Instant at, CancellationToken token) {
     if (reference == null || at == null || token == null)
       throw fail(INVALID_REQUEST, "Exact successfully opened reference/time required");
-    return tx(
-        token,
-        c -> {
-          var registration =
-              registration(c, reference.eventId(), token)
-                  .orElseThrow(() -> fail(NOT_FOUND, "Opened reference was not registered"));
-          if (!registration.references().contains(reference))
-            throw fail(INVALID_REQUEST, "Opened reference differs from its immutable observation");
-          var old =
-              group(c, reference.key().identity())
-                  .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Registered group state is missing"));
-          var updated = BuildLibrarySeenPolicy.acknowledgeOpen(old.seen(), reference, at);
-          if (!updated.equals(old.seen()))
-            try (var q =
-                c.prepareStatement(
-                    "UPDATE build_library_groups SET acknowledged_at=?,seen_sha256=? WHERE"
-                        + " group_id=?")) {
-              q.setString(1, updated.acknowledgedAt().orElseThrow().toString());
-              q.setString(2, seenHash(updated, old.firstRowOrdinal()));
-              q.setString(3, updated.groupId());
-              q.executeUpdate();
-            }
-          return updated;
-        });
+    return tx(token, c -> acknowledgeOpenInTransaction(c, reference, at, token));
+  }
+
+  /** Shared catalog writer transaction only; caller owns commit and cancellation boundary. */
+  public BuildLibrarySeenState acknowledgeOpenInTransaction(
+      Connection c, BuildLibraryReference reference, Instant at, CancellationToken token)
+      throws SQLException {
+    requireRegisteredReferenceInTransaction(c, reference, token);
+    var old =
+        group(c, reference.key().identity())
+            .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Registered group state is missing"));
+    var updated = BuildLibrarySeenPolicy.acknowledgeOpen(old.seen(), reference, at);
+    if (!updated.equals(old.seen()))
+      try (var q =
+          c.prepareStatement(
+              "UPDATE build_library_groups SET acknowledged_at=?,seen_sha256=? WHERE group_id=?")) {
+        q.setString(1, updated.acknowledgedAt().orElseThrow().toString());
+        q.setString(2, seenHash(updated, old.firstRowOrdinal()));
+        q.setString(3, updated.groupId());
+        q.executeUpdate();
+      }
+    return updated;
+  }
+
+  /** Validates event sequence, row, routes and immutable receipts without acknowledging Open. */
+  public void requireRegisteredReferenceInTransaction(
+      Connection c, BuildLibraryReference reference, CancellationToken token) throws SQLException {
+    if (c == null || reference == null || token == null)
+      throw fail(INVALID_REQUEST, "Exact registered reference and transaction required");
+    token.throwIfCancellationRequested();
+    var registered =
+        registration(c, reference.eventId(), token)
+            .orElseThrow(() -> fail(NOT_FOUND, "Opened reference was not registered"));
+    if (!registered.references().contains(reference))
+      throw fail(INVALID_REQUEST, "Opened reference differs from its immutable observation");
   }
 
   @Override
