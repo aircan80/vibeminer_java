@@ -21,6 +21,9 @@ public final class BuildRetentionBindingSchema {
               + " NULL,metadata_scope TEXT NOT NULL,policy TEXT NOT NULL,member_count INTEGER NOT"
               + " NULL CHECK(typeof(member_count)='integer' AND member_count>=0))");
       s.execute(
+          "CREATE INDEX IF NOT EXISTS build_retention_authorized_target ON"
+              + " build_retention_intents(mode,target_id)");
+      s.execute(
           "CREATE INDEX IF NOT EXISTS build_inventory_reference_content ON"
               + " build_inventory_references(generation,ckey)");
       s.execute(

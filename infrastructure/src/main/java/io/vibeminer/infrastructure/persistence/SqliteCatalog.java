@@ -14,7 +14,7 @@ import static io.vibeminer.application.catalog.CatalogException.Code.*;
 
 /** Single schema/migration owner and connection factory for app-owned metadata and object references. */
 public final class SqliteCatalog {
-    public static final int SCHEMA_VERSION = 19;
+    public static final int SCHEMA_VERSION = 20;
     private final Path database;
 
     public SqliteCatalog(Path database) { this.database = database.toAbsolutePath().normalize(); }

@@ -116,6 +116,46 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
     return transaction(cancellation, connection -> read(connection, target));
   }
 
+  /**
+   * Bounded restart projection of prior explicit authorization. Does not open inventory, content,
+   * transport or a newer scope. An empty cursor begins the strict target-identity keyset.
+   */
+  public List<Intent> pageAuthorizedIntents(
+      String afterTargetIdentity, int maximum, CancellationToken cancellation) {
+    if (afterTargetIdentity == null
+        || !afterTargetIdentity.isEmpty() && !afterTargetIdentity.matches("[0-9a-f]{64}")
+        || maximum < 1
+        || maximum > 16)
+      throw fail(INVALID_REQUEST, "Restart page requires a target cursor and size1..16");
+    return transaction(
+        cancellation,
+        c -> {
+          var result = new ArrayList<Intent>();
+          try (var q =
+              c.prepareStatement(
+                  "SELECT * FROM build_retention_intents WHERE mode='DOWNLOAD_ALL' AND target_id>?"
+                      + " ORDER BY target_id LIMIT ?")) {
+            q.setString(1, afterTargetIdentity);
+            q.setInt(2, maximum);
+            try (var rows = q.executeQuery()) {
+              while (rows.next()) {
+                cancellation.throwIfCancellationRequested();
+                var target = target(rows);
+                if (!target.identity().equals(rows.getString("target_id")))
+                  throw fail(CORRUPT_STATE, "Stored authorized target commitment changed");
+                try {
+                  result.add(intent(rows, target));
+                } catch (java.time.DateTimeException | ArithmeticException malformed) {
+                  throw new BuildRetentionException(
+                      CORRUPT_STATE, "Malformed persisted authorization", malformed);
+                }
+              }
+            }
+          }
+          return List.copyOf(result);
+        });
+  }
+
   @Override
   public boolean hasPending(Target target, CancellationToken cancellation) {
     return transaction(

@@ -17,7 +17,7 @@ class RetentionSchemaMigrationTest {
     var path = directory.resolve("catalog.sqlite");
     version18(path);
     try (var c = new SqliteCatalog(path).connect()) {
-      assertEquals(19, scalar(c, "PRAGMA user_version"));
+      assertEquals(SqliteCatalog.SCHEMA_VERSION, scalar(c, "PRAGMA user_version"));
       assertEquals(1, table(c, "build_retention_bindings"));
       assertEquals(1, table(c, "build_retention_sources"));
       assertArrayEquals(new byte[] {1, 2, 3}, evidence(c));
