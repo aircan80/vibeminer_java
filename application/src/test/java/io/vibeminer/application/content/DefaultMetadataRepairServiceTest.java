@@ -28,7 +28,7 @@ class DefaultMetadataRepairServiceTest {
   ContentWorkerPermit owner;
   volatile boolean healthy;
   boolean corrupt, failLocal, skipGrammar, persistThenThrow;
-  RuntimeException storageFailure;
+  RuntimeException storageFailure, configurationFailure, executionFailure;
   CountDownLatch entered, release;
   MetadataRepairPlan issued;
   UUID attempt;
@@ -88,6 +88,7 @@ class DefaultMetadataRepairServiceTest {
             BuildObjectCatalog.class,
             (p, m, a) -> {
               assertEquals("findVerifiedObject", m.getName());
+              if (configurationFailure != null) throw configurationFailure;
               var c = configuration();
               return Optional.of(
                   new BuildObjectReference(
@@ -261,6 +262,7 @@ class DefaultMetadataRepairServiceTest {
             MetadataRepairExecutionGateway.class,
             (p, m, a) -> {
               events.add("GET");
+              if (executionFailure != null) throw executionFailure;
               if (entered != null) {
                 entered.countDown();
                 if (!release.await(10, TimeUnit.SECONDS))
@@ -389,7 +391,8 @@ class DefaultMetadataRepairServiceTest {
     persistThenThrow = true;
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
-      assertInstanceOf(MetadataRepairException.class, failure(s.execute(p)));
+      var outer = assertInstanceOf(MetadataAcquisitionFailure.class, failure(s.execute(p)));
+      assertInstanceOf(MetadataRepairException.class, outer.failure());
       assertTrue(events.contains("audit-fail:UNCERTAIN"));
       assertTrue(events.contains("retire"));
       assertFalse(events.contains("canonical"));
@@ -449,8 +452,69 @@ class DefaultMetadataRepairServiceTest {
   void physicalIoFailureIsNotRepairPermission() {
     storageFailure = new ObjectStoreException(ObjectStoreException.Code.IO_FAILURE, "disk failure");
     try (var s = service(Runnable::run)) {
-      assertSame(storageFailure, failure(s.prepareRoot(root())));
+      var typed = assertInstanceOf(ContentClaimException.class, failure(s.prepareRoot(root())));
+      assertEquals(ContentClaimException.Code.STORAGE_UNAVAILABLE, typed.code());
+      assertSame(storageFailure, typed.getCause());
       assertFalse(events.contains("HEAD"));
+    }
+  }
+
+  @Test
+  void directConfigurationCatalogFailuresBecomeTypedLocalFailures() {
+    for (var code : CatalogException.Code.values()) {
+      configurationFailure = new CatalogException(code, "config failure");
+      try (var s = service(Runnable::run)) {
+        var mapped = assertInstanceOf(ContentClaimException.class, failure(s.prepareRoot(root())));
+        var expected =
+            switch (code) {
+              case MISSING_OBJECT, UNKNOWN_SNAPSHOT -> ContentClaimException.Code.MISSING_LOCAL;
+              case INTEGRITY_FAILURE, CORRUPT_METADATA, INVALID_EVIDENCE ->
+                  ContentClaimException.Code.INTEGRITY_FAILURE;
+              case IMMUTABLE_CONFLICT -> ContentClaimException.Code.REPLAN_REQUIRED;
+              case STORAGE_UNAVAILABLE -> ContentClaimException.Code.STORAGE_UNAVAILABLE;
+            };
+        assertEquals(expected, mapped.code());
+        assertSame(configurationFailure, mapped.getCause());
+        assertFalse(events.contains("HEAD"));
+      }
+    }
+  }
+
+  @Test
+  void directApplicationAndCancellationFailuresRemainExact() {
+    for (RuntimeException exact :
+        List.of(
+            new ContentClaimException(ContentClaimException.Code.BUSY, "local admission"),
+            new MetadataRepairException(
+                MetadataRepairException.Code.UNAVAILABLE, "HEAD unavailable"),
+            new CancellationException("cancelled"))) {
+      configurationFailure = exact;
+      try (var s = service(Runnable::run)) {
+        assertSame(
+            exact,
+            s.prepareRoot(root()).handle((value, failed) -> failed).toCompletableFuture().join());
+        assertFalse(events.contains("HEAD"));
+      }
+    }
+  }
+
+  @Test
+  void remotePublicationFailuresKeepExactOuterCertaintyAndRawCause() {
+    for (var publication : MetadataAcquisitionFailure.Publication.values()) {
+      var remote =
+          new FileLookupException(
+              FileLookupException.Code.INTEGRITY_FAILURE, "remote encoded mismatch");
+      var outer = new MetadataAcquisitionFailure(publication, remote);
+      executionFailure = outer;
+      try (var s = service(Runnable::run)) {
+        var p = prepare(s);
+        assertSame(outer, failure(s.execute(p)));
+        assertSame(remote, outer.failure());
+        assertEquals(publication, outer.publication());
+        assertTrue(events.contains("audit-fail:" + publication));
+        assertFalse(events.contains("attach"));
+      }
+      events.clear();
     }
   }
 
@@ -520,7 +584,10 @@ class DefaultMetadataRepairServiceTest {
     failBeforeGate = new MetadataRepairException(MetadataRepairException.Code.UNAVAILABLE, "404");
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
-      assertSame(failBeforeGate, failure(s.execute(p)));
+      var outer = assertInstanceOf(MetadataAcquisitionFailure.class, failure(s.execute(p)));
+      assertSame(failBeforeGate, outer.failure());
+      assertEquals(
+          MetadataAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED, outer.publication());
       assertTrue(events.contains("audit-fail:CONCLUSIVELY_UNPUBLISHED"));
       assertFalse(events.contains("prospective"));
       assertFalse(events.contains("attach"));
@@ -550,7 +617,8 @@ class DefaultMetadataRepairServiceTest {
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
       var failed = failure(s.execute(p));
-      assertInstanceOf(MetadataRepairException.class, failed);
+      var outer = assertInstanceOf(MetadataAcquisitionFailure.class, failed);
+      assertInstanceOf(MetadataRepairException.class, outer.failure());
       assertEquals(1, failed.getSuppressed().length);
       assertSame(finishFailure, failed.getSuppressed()[0]);
     }

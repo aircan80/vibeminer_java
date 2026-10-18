@@ -139,6 +139,8 @@ public final class OfficialMetadataLocalVerificationGateway
           original.declaredDecodedBytes(),
           fresh.decodedAttestation(),
           fresh.structuralAttestation());
+    } catch (RuntimeException failed) {
+      throw OfficialMetadataReuseGateway.normalize(failed);
     } catch (IOException failed) {
       throw new ContentClaimException(
           STORAGE_UNAVAILABLE, "Cannot read local original metadata", failed);

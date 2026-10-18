@@ -424,7 +424,7 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
     }
   }
 
-  private static RuntimeException normalize(RuntimeException failure) {
+  static RuntimeException normalize(RuntimeException failure) {
     if (failure instanceof ContentClaimException || failure instanceof CancellationException)
       return failure;
     ContentClaimException.Code code;

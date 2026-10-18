@@ -86,11 +86,17 @@ class MetadataLocalVerificationTest {
         var verifier = new OfficialMetadataLocalVerificationGateway(f.store)) {
       var issued = f.gateway.prepareRoot(f.selection, f.rootClaim, CancellationToken.none());
       var original = issued.originalProof();
-      assertThrows(
-          RuntimeException.class,
-          () ->
-              verifier.verifyOriginal(
-                  issued.request(), original, LookupBudgets.defaults(), CancellationToken.none()));
+      assertEquals(
+          ContentClaimException.Code.MISSING_LOCAL,
+          assertThrows(
+                  ContentClaimException.class,
+                  () ->
+                      verifier.verifyOriginal(
+                          issued.request(),
+                          original,
+                          LookupBudgets.defaults(),
+                          CancellationToken.none()))
+              .code());
       publish(f.store, original, f.rootFixture.encodedRoot);
       assertThrows(
           java.util.concurrent.CancellationException.class,
@@ -105,12 +111,60 @@ class MetadataLocalVerificationTest {
       byte[] corrupt = f.rootFixture.encodedRoot.clone();
       corrupt[corrupt.length - 1] ^= 1;
       java.nio.file.Files.write(path, corrupt);
-      assertThrows(
-          RuntimeException.class,
-          () ->
-              verifier.verifyOriginal(
-                  issued.request(), original, LookupBudgets.defaults(), CancellationToken.none()));
+      assertEquals(
+          ContentClaimException.Code.INTEGRITY_FAILURE,
+          assertThrows(
+                  ContentClaimException.class,
+                  () ->
+                      verifier.verifyOriginal(
+                          issued.request(),
+                          original,
+                          LookupBudgets.defaults(),
+                          CancellationToken.none()))
+              .code());
       assertArrayEquals(corrupt, java.nio.file.Files.readAllBytes(path));
+    }
+  }
+
+  @Test
+  void installMissingAndPhysicalCorruptionExposeTypedLocalFailures() throws Exception {
+    try (var f = new MetadataRepairPlanningTest.Fixture(directory);
+        var verifier = new OfficialMetadataLocalVerificationGateway(f.store)) {
+      f.client.length = f.install.encodedBytes();
+      var issued =
+          f.gateway.prepareInstall(
+              f.install, f.installConfiguration, f.installClaim, CancellationToken.none());
+      var original = issued.originalProof();
+      var missing =
+          assertThrows(
+              ContentClaimException.class,
+              () ->
+                  verifier.verifyOriginal(
+                      issued.request(),
+                      original,
+                      LookupBudgets.defaults(),
+                      CancellationToken.none()));
+      assertEquals(ContentClaimException.Code.MISSING_LOCAL, missing.code());
+      assertInstanceOf(ObjectStoreException.class, missing.getCause());
+      publish(f.store, original, MetadataRepairExecutionTest.installBytes());
+      var digest = original.object().digest().value();
+      var path =
+          directory.resolve("objects").resolve(digest.substring(0, 2)).resolve(digest.substring(2));
+      byte[] damaged = java.nio.file.Files.readAllBytes(path);
+      damaged[damaged.length - 1] ^= 1;
+      java.nio.file.Files.write(path, damaged);
+      var corrupt =
+          assertThrows(
+              ContentClaimException.class,
+              () ->
+                  verifier.verifyOriginal(
+                      issued.request(),
+                      original,
+                      LookupBudgets.defaults(),
+                      CancellationToken.none()));
+      assertEquals(ContentClaimException.Code.INTEGRITY_FAILURE, corrupt.code());
+      assertInstanceOf(ObjectStoreException.class, corrupt.getCause());
+      assertEquals(1, f.client.requests.size());
     }
   }
 
@@ -138,11 +192,17 @@ class MetadataLocalVerificationTest {
               original.declaredDecodedBytes(),
               original.decodedAttestation(),
               original.structuralAttestation());
-      assertThrows(
-          io.vibeminer.infrastructure.acquisition.SourceContextException.class,
-          () ->
-              verifier.verifyOriginal(
-                  issued.request(), forged, LookupBudgets.defaults(), CancellationToken.none()));
+      assertEquals(
+          ContentClaimException.Code.INTEGRITY_FAILURE,
+          assertThrows(
+                  ContentClaimException.class,
+                  () ->
+                      verifier.verifyOriginal(
+                          issued.request(),
+                          forged,
+                          LookupBudgets.defaults(),
+                          CancellationToken.none()))
+              .code());
       var request = issued.request();
       var wrong =
           new MetadataContentRequest(
@@ -199,11 +259,17 @@ class MetadataLocalVerificationTest {
                   claim.encodedBytes(),
                   java.util.OptionalLong.of(plan.decodedBytes()));
           fixture.rejectNetwork = true;
-          assertThrows(
-              RuntimeException.class,
-              () ->
-                  verifier.verifyOriginal(
-                      request, original, LookupBudgets.defaults(), CancellationToken.none()));
+          assertEquals(
+              ContentClaimException.Code.INTEGRITY_FAILURE,
+              assertThrows(
+                      ContentClaimException.class,
+                      () ->
+                          verifier.verifyOriginal(
+                              request,
+                              original,
+                              LookupBudgets.defaults(),
+                              CancellationToken.none()))
+                  .code());
           assertTrue(
               f.store.verify(original.object().digest(), CancellationToken.none()).isPresent());
         }

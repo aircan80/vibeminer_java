@@ -307,10 +307,8 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
       return new CompletedSource(merged, completedAudit);
     } catch (RuntimeException failure) {
       if (failure instanceof MetadataAcquisitionFailure scoped) certainty = scoped.publication();
-      var unwrapped =
-          failure instanceof MetadataAcquisitionFailure scoped ? scoped.failure() : failure;
-      primary = unwrapped;
-      throw unwrapped;
+      primary = failure;
+      throw failure;
     } catch (Error failure) {
       primary = failure;
       throw failure;
@@ -594,7 +592,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
               token.throwIfCancellationRequested();
               future.complete(work.run(token));
             } catch (Throwable failure) {
-              future.completeExceptionally(failure);
+              future.completeExceptionally(normalize(failure));
             } finally {
               synchronized (this) {
                 active.remove(future);
@@ -620,6 +618,33 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
       pending = List.copyOf(active);
     }
     for (var future : pending) future.cancel(false);
+  }
+
+  private static Throwable normalize(Throwable failure) {
+    if (failure instanceof io.vibeminer.application.catalog.CatalogException catalog) {
+      var code =
+          switch (catalog.code()) {
+            case MISSING_OBJECT, UNKNOWN_SNAPSHOT -> ContentClaimException.Code.MISSING_LOCAL;
+            case INTEGRITY_FAILURE, CORRUPT_METADATA, INVALID_EVIDENCE ->
+                ContentClaimException.Code.INTEGRITY_FAILURE;
+            case IMMUTABLE_CONFLICT -> ContentClaimException.Code.REPLAN_REQUIRED;
+            case STORAGE_UNAVAILABLE -> ContentClaimException.Code.STORAGE_UNAVAILABLE;
+          };
+      return new ContentClaimException(code, catalog.getMessage(), catalog);
+    }
+    if (failure instanceof io.vibeminer.application.ObjectStoreException stored) {
+      var code =
+          switch (stored.code()) {
+            case MISSING_OBJECT -> ContentClaimException.Code.MISSING_LOCAL;
+            case INTEGRITY_FAILURE -> ContentClaimException.Code.INTEGRITY_FAILURE;
+            case BUSY, STORE_IN_USE -> ContentClaimException.Code.BUSY;
+            case LIMIT_EXCEEDED -> ContentClaimException.Code.UNSUPPORTED_REUSE;
+            case CLOSED -> ContentClaimException.Code.INVALID_STATE;
+            case IO_FAILURE -> ContentClaimException.Code.STORAGE_UNAVAILABLE;
+          };
+      return new ContentClaimException(code, stored.getMessage(), stored);
+    }
+    return failure;
   }
 
   private static ContentClaimException failure(ContentClaimException.Code code, String message) {
