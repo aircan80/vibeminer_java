@@ -12,6 +12,7 @@ Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/
 - [Encoded-file retention proof boundary](ENCODED-RETENTION.md)
 - [Approved selected encoded-file acquisition design](FILE-ACQUISITION.md)
 - [WoW formats, schemas and research search](FORMATS.md)
+- [Exact Item cohort, compatibility and proof coverage](ITEM-COHORT.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
 - [Test strategy and quality gates](TESTING.md)
