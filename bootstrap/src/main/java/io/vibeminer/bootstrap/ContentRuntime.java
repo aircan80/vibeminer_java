@@ -3,6 +3,8 @@ package io.vibeminer.bootstrap;
 import io.vibeminer.application.ObjectStore;
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.bootstrap.DefaultBootstrapService;
+import io.vibeminer.application.buildopening.BuildOpeningService;
+import io.vibeminer.application.buildopening.DefaultBuildOpeningService;
 import io.vibeminer.application.content.DefaultMetadataRepairService;
 import io.vibeminer.application.content.DefaultMetadataReuseService;
 import io.vibeminer.application.content.MetadataRepairService;
@@ -23,9 +25,11 @@ import io.vibeminer.infrastructure.acquisition.PinnedCdnRangeTransport;
 import io.vibeminer.infrastructure.acquisition.PinnedCdnTransport;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
+import io.vibeminer.infrastructure.buildopening.*;
 import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataAssociationRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataRepairAuditRepository;
+import io.vibeminer.infrastructure.discoveryhistory.SqliteDiscoveryHistoryRepository;
 import io.vibeminer.infrastructure.item.RetainedItemProjectionSourceReader;
 import io.vibeminer.infrastructure.item.SqliteItemEvidenceSnapshotBackend;
 import io.vibeminer.infrastructure.item.SqliteItemNamesBackend;
@@ -71,6 +75,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final ExecutorService namesWorkers;
   private final ItemNamesService itemNames;
   private final ItemEvidenceService itemEvidence;
+  private final BuildOpeningService buildOpening;
+  private final OfficialBuildOpeningGateway openingGateway;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -100,7 +106,11 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       OfficialMetadataLocalVerificationGateway repairLocal,
       ExecutorService namesWorkers,
       ItemNamesService itemNames,
-      ItemEvidenceService itemEvidence) {
+      ItemEvidenceService itemEvidence,
+      BuildOpeningService buildOpening,
+      OfficialBuildOpeningGateway openingGateway) {
+    this.buildOpening = buildOpening;
+    this.openingGateway = openingGateway;
     this.itemEvidence = itemEvidence;
     this.namesWorkers = namesWorkers;
     this.itemNames = itemNames;
@@ -195,6 +205,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     OfficialMetadataReuseGateway metadataGateway = null;
     OfficialMetadataRepairGateway repairIssuer = null;
     OfficialMetadataLocalVerificationGateway repairLocal = null;
+    OfficialBuildOpeningGateway openingGateway = null;
+    BuildOpeningService buildOpening = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     var sourceScheduler = new PrioritySourceScheduler(acquisition);
@@ -240,6 +252,34 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           new PinnedCdnRangeTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var lookupGateway =
           new OfficialFileLookupGateway(store, transport, rangeTransport, Clock.systemUTC());
+      var history = new SqliteDiscoveryHistoryRepository(sharedCatalog);
+      var admissions = new BuildMetadataAdmissionRepository(sharedCatalog, store);
+      var metadataSource =
+          new OfficialBuildMetadataSourceWorker(
+              store, contentClaims, catalog, rangeTransport, Clock.systemUTC());
+      openingGateway =
+          new OfficialBuildOpeningGateway(
+              history,
+              admissions,
+              store,
+              catalog,
+              contentClaims,
+              metadataSource,
+              gateway,
+              lookupGateway,
+              transport,
+              acquisition,
+              sourceScheduler,
+              BuildOpeningPolicy.initialCohort(),
+              () -> {
+                try {
+                  return java.nio.file.Files.getFileStore(dataDirectory.resolve("content"))
+                      .getUsableSpace();
+                } catch (java.io.IOException | RuntimeException unavailable) {
+                  return -1;
+                }
+              });
+      buildOpening = new DefaultBuildOpeningService(openingGateway, orchestration);
       var lookup =
           new DefaultFileLookupService(
               lookupGateway,
@@ -335,9 +375,13 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           repairLocal,
           namesWorkers,
           itemNames,
-          itemEvidence);
+          itemEvidence,
+          buildOpening,
+          openingGateway);
     } catch (RuntimeException | Error failure) {
-      orchestration.shutdownNow();
+      if (buildOpening != null) buildOpening.close();
+      if (openingGateway != null) openingGateway.close();
+      orchestration.shutdown();
       sourceScheduler.close();
       acquisition.shutdown();
       itemWorkers.shutdownNow();
@@ -355,6 +399,11 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       }
       throw failure;
     }
+  }
+
+  @Override
+  public BuildOpeningService buildOpening() {
+    return buildOpening;
   }
 
   @Override
@@ -400,6 +449,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    buildOpening.close();
+    openingGateway.close();
     itemEvidence.close();
     itemNames.close();
     metadataRepair.close();
@@ -408,7 +459,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     service.close();
     lookup.close();
     selectedFiles.close();
-    orchestration.shutdownNow();
+    // Run accepted wrappers so each can observe cancellation and complete its public result.
+    orchestration.shutdown();
     sourceScheduler.close();
     // Accepted wrappers must execute their cancellation/retirement callbacks; never drop them.
     acquisition.shutdown();
