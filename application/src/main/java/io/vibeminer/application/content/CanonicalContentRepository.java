@@ -3,6 +3,8 @@ package io.vibeminer.application.content;
 import io.vibeminer.application.CancellationToken;
 import io.vibeminer.domain.content.CanonicalContentProof;
 import io.vibeminer.domain.content.ContentClaim;
+import io.vibeminer.domain.content.ContentWorkerFinishOutcome;
+import io.vibeminer.domain.content.ContentWorkerPermit;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +27,9 @@ public interface CanonicalContentRepository {
       long encodedBytes,
       CancellationToken cancellation);
 
+  /**
+   * Legacy operation: implementations must reject any active worker nonce, including same session.
+   */
   void markPublishing(UUID token, CancellationToken cancellation);
 
   /**
@@ -53,4 +58,46 @@ public interface CanonicalContentRepository {
   void releaseUnpublished(UUID token, CancellationToken cancellation);
 
   void markUncertain(UUID token, CancellationToken cancellation);
+
+  /** Exclusive actual-worker admission. A passive reservation never grants this authority. */
+  default ContentWorkerPermit claimWorker(UUID token, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default void markPublishing(ContentWorkerPermit permit, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default void recordVerifiedCompletion(
+      ContentWorkerPermit permit, CanonicalContentProof proof, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default ContentClaim completePublication(
+      ContentWorkerPermit permit, CanonicalContentProof proof, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default ContentClaim upgradeProof(
+      ContentWorkerPermit permit, CanonicalContentProof proof, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  /**
+   * Called only after the actual source runnable has closed IO and can no longer publish.
+   * Atomically retires this nonce; prospective proof preserves recovery and retained publication
+   * never downgrades.
+   */
+  default void finishWorker(
+      ContentWorkerPermit permit,
+      ContentWorkerFinishOutcome outcome,
+      CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  private static ContentClaimException workerUnsupported() {
+    return new ContentClaimException(
+        ContentClaimException.Code.UNSUPPORTED_REUSE,
+        "Repository does not implement fenced publisher authority");
+  }
 }

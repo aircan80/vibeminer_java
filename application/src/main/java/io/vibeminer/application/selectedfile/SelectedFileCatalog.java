@@ -1,6 +1,8 @@
 package io.vibeminer.application.selectedfile;
 
 import io.vibeminer.application.CancellationToken;
+import io.vibeminer.domain.content.ContentWorkerFinishOutcome;
+import io.vibeminer.domain.content.ContentWorkerPermit;
 import io.vibeminer.domain.retention.RetentionScope;
 import io.vibeminer.domain.selectedfile.*;
 import java.util.Optional;
@@ -15,6 +17,7 @@ public interface SelectedFileCatalog {
   CanonicalReservation reserve(
       ContentSlotKey slot, String encodingKey, long encodedBytes, CancellationToken cancellation);
 
+  /** Legacy operation: any active nonce must cause a fail-closed rejection. */
   void markPublishing(UUID reservationToken, CancellationToken cancellation);
 
   /**
@@ -47,4 +50,52 @@ public interface SelectedFileCatalog {
   /** Typed historical metadata, including when its physical bytes are now missing or corrupt. */
   Optional<SelectedFileAssociation> findAssociation(
       String snapshotId, String role, CancellationToken cancellation);
+
+  /**
+   * Read only an existing immutable association for this exact descriptor. This does not select a
+   * canonical winner or establish current physical readiness. Production readers preserve original
+   * membership/origin evidence even when canonical acquisition is blocked by legacy conflicts.
+   */
+  default Optional<SelectedFileAssociation> findOriginalAssociation(
+      SelectedFileDescriptor descriptor, CancellationToken cancellation) {
+    return findAssociation(
+        descriptor.association().build().snapshotId(), descriptor.role(), cancellation);
+  }
+
+  /** Exclusive actual source-flight authority; never acquired separately by every consumer. */
+  default ContentWorkerPermit claimWorker(UUID reservationToken, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default void markPublishing(ContentWorkerPermit permit, CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default void recordVerifiedCompletion(
+      ContentWorkerPermit permit,
+      ContentRepresentation representation,
+      CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  default ContentRepresentation completePublication(
+      ContentWorkerPermit permit,
+      ContentRepresentation representation,
+      CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  /** Actual flight finally, after all IO cleanup, for every permit held by its frozen fanout. */
+  default void finishWorker(
+      ContentWorkerPermit permit,
+      ContentWorkerFinishOutcome outcome,
+      CancellationToken cancellation) {
+    throw workerUnsupported();
+  }
+
+  private static SelectedFileException workerUnsupported() {
+    return new SelectedFileException(
+        SelectedFileException.Code.UNSUPPORTED,
+        "Catalog does not implement fenced publisher authority");
+  }
 }
