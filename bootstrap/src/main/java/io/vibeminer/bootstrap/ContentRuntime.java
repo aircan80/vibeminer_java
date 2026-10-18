@@ -11,6 +11,7 @@ import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.DefaultItemProjectionService;
 import io.vibeminer.application.item.ItemProjectionBackend;
 import io.vibeminer.application.item.ItemProjectionService;
+import io.vibeminer.application.itemexport.*;
 import io.vibeminer.application.itemnames.*;
 import io.vibeminer.application.lookup.DefaultFileLookupService;
 import io.vibeminer.application.lookup.FileLookupService;
@@ -25,8 +26,10 @@ import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataAssociationRepository;
 import io.vibeminer.infrastructure.content.SqliteMetadataRepairAuditRepository;
 import io.vibeminer.infrastructure.item.RetainedItemProjectionSourceReader;
+import io.vibeminer.infrastructure.item.SqliteItemEvidenceSnapshotBackend;
 import io.vibeminer.infrastructure.item.SqliteItemNamesBackend;
 import io.vibeminer.infrastructure.item.SqliteItemProjectionBackend;
+import io.vibeminer.infrastructure.itemexport.AtomicItemEvidenceWriter;
 import io.vibeminer.infrastructure.itemnames.RetainedSparseNameProjectionSourceReader;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
 import io.vibeminer.infrastructure.lookup.OfficialMetadataLocalVerificationGateway;
@@ -46,6 +49,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 /** Concrete content resources, initialized only by an explicit content action on a worker. */
 final class ContentRuntime implements LazyBootstrapService.Resources {
@@ -64,6 +68,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final OfficialMetadataLocalVerificationGateway repairLocal;
   private final ExecutorService namesWorkers;
   private final ItemNamesService itemNames;
+  private final ItemEvidenceService itemEvidence;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -91,7 +96,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       OfficialMetadataRepairGateway repairIssuer,
       OfficialMetadataLocalVerificationGateway repairLocal,
       ExecutorService namesWorkers,
-      ItemNamesService itemNames) {
+      ItemNamesService itemNames,
+      ItemEvidenceService itemEvidence) {
+    this.itemEvidence = itemEvidence;
     this.namesWorkers = namesWorkers;
     this.itemNames = itemNames;
     this.repairWorkers = repairWorkers;
@@ -158,6 +165,26 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator,
       BiFunction<ObjectStore, MetadataReuseGateway, MetadataReuseGateway> metadataDecorator,
       BiFunction<ObjectStore, ItemNamesBackend, ItemNamesBackend> namesDecorator) {
+    return open(
+        dataDirectory,
+        clientFactory,
+        itemDecorator,
+        metadataDecorator,
+        namesDecorator,
+        (store, backend) -> backend,
+        writer -> writer);
+  }
+
+  /** Export lifecycle seams: borrowed snapshot dependency and stateless output writer only. */
+  static ContentRuntime open(
+      Path dataDirectory,
+      Supplier<HttpClient> clientFactory,
+      BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator,
+      BiFunction<ObjectStore, MetadataReuseGateway, MetadataReuseGateway> metadataDecorator,
+      BiFunction<ObjectStore, ItemNamesBackend, ItemNamesBackend> namesDecorator,
+      BiFunction<ObjectStore, ItemEvidenceSnapshotBackend, ItemEvidenceSnapshotBackend>
+          snapshotDecorator,
+      UnaryOperator<ItemEvidenceWriter> writerDecorator) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
     var storeSession = store.contentSession();
     HttpClient client = null;
@@ -258,6 +285,15 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           new DefaultItemNamesService(
               java.util.Objects.requireNonNull(namesDecorator.apply(store, namesBackend)),
               namesWorkers);
+      var snapshotBackend =
+          new SqliteItemEvidenceSnapshotBackend(
+              sharedCatalog, storeSession, itemReader, sparseReader, Clock.systemUTC());
+      var evidenceWriter = new AtomicItemEvidenceWriter(Clock.systemUTC());
+      var itemEvidence =
+          new DefaultItemEvidenceService(
+              java.util.Objects.requireNonNull(snapshotDecorator.apply(store, snapshotBackend)),
+              java.util.Objects.requireNonNull(writerDecorator.apply(evidenceWriter)),
+              namesWorkers);
       return new ContentRuntime(
           store,
           client,
@@ -278,7 +314,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           repairIssuer,
           repairLocal,
           namesWorkers,
-          itemNames);
+          itemNames,
+          itemEvidence);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
       acquisition.shutdownNow();
@@ -335,8 +372,14 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   @Override
+  public ItemEvidenceService itemEvidence() {
+    return itemEvidence;
+  }
+
+  @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    itemEvidence.close();
     itemNames.close();
     metadataRepair.close();
     metadataReuse.close();

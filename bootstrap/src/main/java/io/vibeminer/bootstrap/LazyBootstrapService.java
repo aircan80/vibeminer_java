@@ -17,6 +17,12 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.itemexport.ItemEvidenceService itemEvidence() {
+      throw new io.vibeminer.application.itemexport.ItemEvidenceException(
+          io.vibeminer.application.itemexport.ItemEvidenceException.Code.UNSUPPORTED,
+          "This content runtime does not provide Item evidence export");
+    }
+
     default io.vibeminer.application.itemnames.ItemNamesService itemNames() {
       throw new io.vibeminer.application.itemnames.ItemNamesException(
           io.vibeminer.application.itemnames.ItemNamesException.Code.UNSUPPORTED,
