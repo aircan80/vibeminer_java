@@ -159,6 +159,7 @@ jobs:
           java -cp "build/protocol-tools:$PROTOCOL_CP" SparseIndexMetadataProbe --self-test
           java -cp "build/protocol-tools:$PROTOCOL_CP" ItemRowCohortProbe --self-test
           java --enable-native-access=ALL-UNNAMED -cp "build/protocol-tools:$PROTOCOL_CP:bootstrap/build/install/bootstrap/lib/*" io.vibeminer.infrastructure.lookup.RootLookupServiceProbe --self-test
+          java --enable-native-access=ALL-UNNAMED -cp "build/protocol-tools:$PROTOCOL_CP:bootstrap/build/install/bootstrap/lib/*" io.vibeminer.infrastructure.lookup.SelectedFileServiceProbe --self-test
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
         run: |
@@ -179,6 +180,9 @@ jobs:
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureSelectedFileCandidates \
             --isolated-display "$DISPLAY" --output build/ui-review/selected-file-candidates'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureSelectedFileRetention \
+            --isolated-display "$DISPLAY" --output build/ui-review/selected-file-retention'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:

@@ -89,6 +89,8 @@ public final class AtlasApplication extends Application {
     private FileLookupPane lookupPane;
     private SelectedFilePresentationModel selectedModel;
     private SelectedFilePresentationModel.State selectedState;
+    private SelectedFileRetentionPresentationModel retentionModel;
+    private SelectedFileRetentionPresentationModel.State retentionState;
     private String selectedFileVariant;
     private String installQuery="";
     private String selectedInstallEntry;
@@ -143,7 +145,7 @@ public final class AtlasApplication extends Application {
         });
         stage.setTitle("VibeMiner · Atlas research workbench"); stage.setMinWidth(940); stage.setMinHeight(650);
         stage.setScene(scene);
-        if(configuredSelected!=null){selectedModel=new SelectedFilePresentationModel(configuredSelected,Platform::runLater,this::onSelectedFileState);selectedState=selectedModel.state();}
+        if(configuredSelected!=null){retentionModel=new SelectedFileRetentionPresentationModel(configuredSelected,Platform::runLater,this::onRetentionState);retentionState=retentionModel.state();selectedModel=new SelectedFilePresentationModel(configuredSelected,Platform::runLater,this::onSelectedFileState);selectedState=selectedModel.state();}
         if(configuredLookup!=null){lookupModel=new FileLookupPresentationModel(configuredLookup,Platform::runLater,this::onLookupState);lookupState=lookupModel.state();}
         if(configuredBootstrap!=null){installModel=new InstallPresentationModel(configuredBootstrap,Platform::runLater,this::onInstallState);installState=installModel.state();}
         if(configuredProducts!=null){productModel=new ProductPresentationModel(configuredProducts,Platform::runLater,this::onProductState);productState=productModel.state();}
@@ -201,7 +203,7 @@ public final class AtlasApplication extends Application {
                 contextItem("EXACT BUILD",b==null?"Not selected":b.versionLabel()),
                 contextItem("LOCALE",b==null?"Not selected":currentLocale+" · view preference"),
                 contextItem("COVERAGE",b==null?"No data loaded":rootVerified?"Root map verified":installVerified?"Install list verified":"Metadata only"),
-                contextItem("CONTENT",b==null?"Not checked":rootVerified?"Game files not acquired":installVerified?"Game files not acquired":"Unverified"));
+                contextItem("CONTENT",b==null?"Not checked":retentionState!=null&&retentionState.receipt()!=null&&retentionState.receipt().descriptor().association().build().snapshotId().equals(b.snapshotId())?"Selected encoded file verified; decoded unverified":configuredSelected!=null?"Selected file not checked":rootVerified?"Game files not acquired":installVerified?"Game files not acquired":"Unverified"));
         Button change=button(b==null?"Choose a build →":"Change build",()->{archiveInstallMode=false;archiveFindMode=false;navigate("Archive");},"context-action");context.getChildren().add(change);
         if(b!=null&&installModel!=null){Button files=button("Install files",()->openInstallFiles(b),"context-action");files.setId("open-install-files");context.getChildren().add(files);}
     }
@@ -223,10 +225,16 @@ public final class AtlasApplication extends Application {
     }
     private void onSelectedFileState(SelectedFilePresentationModel.State next){
         var previous=selectedState;selectedState=next;
+        if(retentionModel!=null){retentionModel.selectVariant(next.variant(),next.locale());retentionModel.select(next.plan()!=null&&next.candidate()!=null?new io.vibeminer.application.selectedfile.CandidateChoice(next.plan(),next.candidate()):null,next.locale());}
         if(updatingContext||state==null)return;
         status.setText(next.message());
         boolean choiceOnly=previous!=null&&previous.stage()==next.stage()&&previous.plan()==next.plan()&&Objects.equals(previous.variant(),next.variant());
         if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null&&!choiceOnly)lookupPane.refreshSelectedFileState();
+    }
+    private void onRetentionState(SelectedFileRetentionPresentationModel.State next){
+        retentionState=next;if(updatingContext||state==null)return;
+        status.setText(next.message());refreshContextStripe();
+        if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null)lookupPane.refreshRetentionState();
     }
     private void openFileLookup(){archiveFindMode=true;archiveInstallMode=false;navigate("Archive");}
     private void onInstallState(InstallPresentationModel.State next){
@@ -305,7 +313,7 @@ public final class AtlasApplication extends Application {
         });
         VBox launcher=panel(heading,cards);launcher.getStyleClass().add("research-launcher");page.getChildren().add(launcher);
         VBox left=panel(label("YOUR NEXT STEP", "eyebrow"),label(state.selected()==null?"Choose the evidence first.":"A precise starting point.","section-heading"),
-                wrap(state.selected()==null?"Select a published build or a clearly labelled fixture. Research results will only appear when its required tables are supported and indexed.":"Your selected build has discovery metadata. Its game tables and asset files have not been acquired or decoded; no research findings are being inferred from metadata."),
+                wrap(state.selected()==null?"Select a published build or a clearly labelled fixture. Research results will only appear when its required tables are supported and indexed.":"Research findings require supported decoded and indexed tables. Retained encoded files and source metadata alone do not establish research findings."),
                 button(state.selected()==null?"Select a build →":"Inspect selected source →",()->{if(state.selected()==null)navigate("Archive");else buildDetails(state.selected());},"primary"));
         left.getChildren().add(new Separator());
         left.getChildren().addAll(label("A disciplined research workflow","section-heading"),
@@ -329,7 +337,7 @@ public final class AtlasApplication extends Application {
             if(installModel!=null)views.getChildren().add(button("Install files",()->{archiveInstallMode=true;archiveFindMode=false;render();},archiveInstallMode?"primary":"quiet-button"));
             if(lookupModel!=null){Button find=button("Find file",this::openFileLookup,archiveFindMode?"primary":"quiet-button");find.setId("open-file-lookup");views.getChildren().add(find);}
             views.setId("archive-views");page.getChildren().add(views);
-            if(archiveFindMode&&lookupModel!=null){lookupPane=new FileLookupPane(lookupModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,selectedFileVariant,key->selectedFileVariant=key,selectedModel);page.getChildren().add(lookupPane);return page;}
+            if(archiveFindMode&&lookupModel!=null){lookupPane=new FileLookupPane(lookupModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,selectedFileVariant,key->selectedFileVariant=key,selectedModel,retentionModel);page.getChildren().add(lookupPane);return page;}
             if(archiveInstallMode&&installModel!=null){page.getChildren().add(new InstallFilesPane(installModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,installQuery,selectedInstallEntry,q->installQuery=q,key->selectedInstallEntry=key));return page;}
         }
         ComboBox<String> product=new ComboBox<>();product.setId("discovery-product");product.setPrefWidth(240);product.setPromptText("Refresh products first");product.setAccessibleText("Discovered raw official product identifier");
@@ -382,7 +390,7 @@ public final class AtlasApplication extends Application {
         Button install=button("Install files…",()->{BuildSnapshot selected=table.getSelectionModel().getSelectedItem();if(selected!=null)openInstallFiles(selected);},"quiet-button");install.setId("inspect-install-files");install.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(installModel==null)));
         VBox buildResults=panel(label("OBSERVED BUILD METADATA · EXACT SOURCE PER ROW","eyebrow"),table,new FlowPane(10,8,open,inspect,install));
         if(state.builds().isEmpty())page.getChildren().add(buildResults);else page.getChildren().add(state.selected()!=null&&(installModel!=null||lookupModel!=null)?2:1,buildResults);
-        page.getChildren().add(note("RETAINED SCOPE","Exact build metadata and verified install lists can be retained locally; identical bytes are shared. Full game-file catalogues, complete build archives and cleanup controls remain unavailable. Unmeasured storage totals stay unknown."));return page;
+        page.getChildren().add(note("RETAINED SCOPE","Exact build metadata, verified install lists, supported root lookup maps and explicitly selected encoded files can be retained locally; identical bytes are shared. Selected encoded integrity does not establish decoded content. Complete build archives and cleanup controls remain unavailable. Unmeasured storage totals stay unknown."));return page;
     }
     private void onProductState(ProductPresentationModel.State next){
         productState=next;status.setText(next.error().isBlank()?next.message():next.error());
@@ -602,5 +610,5 @@ public final class AtlasApplication extends Application {
     private static Region spacer(){Region r=new Region();HBox.setHgrow(r,Priority.ALWAYS);return r;}
     private static Button button(String title,Runnable action,String style){Button b=new Button(title);b.getStyleClass().add(style);b.setOnAction(e->action.run());return b;}
     private static TableColumn<BuildSnapshot,String> column(String title,Function<BuildSnapshot,String> value,double width){TableColumn<BuildSnapshot,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
-    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();if(lookupModel!=null)lookupModel.close();if(selectedModel!=null)selectedModel.close();}
+    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();if(lookupModel!=null)lookupModel.close();if(selectedModel!=null)selectedModel.close();if(retentionModel!=null)retentionModel.close();}
 }

@@ -13,9 +13,19 @@ import javafx.scene.layout.*;
 public final class SelectedFileCandidatesPane extends VBox {
   private final SelectedFilePresentationModel model;
   private final double scale;
+  private final SelectedFileRetentionPresentationModel retentionModel;
+  private SelectedFileRetentionPane retentionPane;
 
   public SelectedFileCandidatesPane(SelectedFilePresentationModel model, double scale) {
+    this(model, scale, null);
+  }
+
+  public SelectedFileCandidatesPane(
+      SelectedFilePresentationModel model,
+      double scale,
+      SelectedFileRetentionPresentationModel retentionModel) {
     super(10);
+    this.retentionModel = retentionModel;
     if (!Double.isFinite(scale) || scale <= 0)
       throw new IllegalArgumentException("Positive text scale required");
     this.model = java.util.Objects.requireNonNull(model);
@@ -24,16 +34,21 @@ public final class SelectedFileCandidatesPane extends VBox {
     refreshState();
   }
 
+  public void refreshRetentionState() {
+    if (retentionPane != null) retentionPane.refreshState();
+  }
+
   public void refreshState() {
     var s = model.state();
     getChildren().clear();
+    retentionPane = null;
     getChildren()
         .addAll(
             copy("FILE REPRESENTATIONS", "eyebrow"),
             copy("Inspect encoded representations", "section-heading"),
             copy(
-                "Metadata only. No selected file contents are downloaded, decoded or previewed"
-                    + " here.",
+                "Representation metadata only. Checking or selecting a representation does not"
+                    + " download file contents. Retention below requires separate consent.",
                 "body-copy"));
     if (s.variant() == null) {
       getChildren().add(copy(s.message(), "body-copy"));
@@ -224,6 +239,10 @@ public final class SelectedFileCandidatesPane extends VBox {
       TitledPane source = new TitledPane("Source and association evidence", proofs);
       source.setExpanded(false);
       getChildren().add(source);
+    }
+    if (retentionModel != null) {
+      retentionPane = new SelectedFileRetentionPane(retentionModel);
+      getChildren().add(retentionPane);
     }
   }
 

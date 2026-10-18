@@ -25,6 +25,7 @@ final class FileLookupPane extends VBox {
   private String selectedKey;
   private final SelectedFilePresentationModel selectedModel;
   private SelectedFileCandidatesPane candidatesPane;
+  private final SelectedFileRetentionPresentationModel retentionModel;
 
   FileLookupPane(
       FileLookupPresentationModel model,
@@ -40,7 +41,18 @@ final class FileLookupPane extends VBox {
       String selectedKey,
       Consumer<String> selectionChanged,
       SelectedFilePresentationModel selectedModel) {
+    this(model, scale, selectedKey, selectionChanged, selectedModel, null);
+  }
+
+  FileLookupPane(
+      FileLookupPresentationModel model,
+      double scale,
+      String selectedKey,
+      Consumer<String> selectionChanged,
+      SelectedFilePresentationModel selectedModel,
+      SelectedFileRetentionPresentationModel retentionModel) {
     super(10);
+    this.retentionModel = retentionModel;
     this.selectedModel = selectedModel;
 
     this.model = model;
@@ -52,8 +64,9 @@ final class FileLookupPane extends VBox {
         .addAll(
             copy("Find a file by ID", "section-heading"),
             copy(
-                "Exact-build membership metadata only. File contents, filenames and item records"
-                    + " are not acquired.",
+                "Root lookup acquires exact-build membership metadata only. It does not acquire"
+                    + " file contents, filenames or item records. Retaining encoded file bytes"
+                    + " below requires separate consent.",
                 "body-copy"));
     if (state.build() == null) {
       getChildren().add(copy("Choose an exact build first.", "notice-heading"));
@@ -97,6 +110,43 @@ final class FileLookupPane extends VBox {
                 "secondary"));
     getChildren().add(body);
     refreshState();
+  }
+
+  void refreshRetentionState() {
+    if (candidatesPane == null) return;
+    Node focused = getScene() == null ? null : getScene().getFocusOwner();
+    String id = focused == null ? null : focused.getId();
+    candidatesPane.refreshRetentionState();
+    if (id != null
+        && java.util.Set.of(
+                "selected-retention-locate",
+                "selected-retention-search",
+                "selected-retention-retain",
+                "selected-retention-offline",
+                "selected-retention-cancel")
+            .contains(id)) {
+      var state = retentionModel.state();
+      String target = retentionFocusTarget(state);
+      javafx.application.Platform.runLater(
+          () -> {
+            if (candidatesPane != null && candidatesPane.getScene() != null) {
+              Node control = candidatesPane.lookup("#" + target);
+              if (control != null) control.requestFocus();
+            }
+          });
+    }
+  }
+
+  static String retentionFocusTarget(SelectedFileRetentionPresentationModel.State state) {
+    return state.busy()
+        ? "selected-retention-cancel"
+        : state.plan() != null
+            ? "selected-retention-retain"
+            : state.receipt() != null || state.choice() == null
+                ? "selected-retention-offline"
+                : state.missing() != null
+                    ? "selected-retention-search"
+                    : "selected-retention-locate";
   }
 
   void refreshSelectedFileState() {
@@ -381,7 +431,7 @@ final class FileLookupPane extends VBox {
                   "body-copy"));
     }
     if (selectedModel != null && state.build().productId().equals("wow")) {
-      candidatesPane = new SelectedFileCandidatesPane(selectedModel, scale);
+      candidatesPane = new SelectedFileCandidatesPane(selectedModel, scale, retentionModel);
       detail.getChildren().add(candidatesPane);
     }
   }
