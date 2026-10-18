@@ -5,7 +5,8 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * A single explicit bounded slice of an encoded object whose whole length is independently pinned.
+ * A single explicit bounded slice of an official resource whose whole length is independently
+ * pinned.
  */
 public record CdnRangeRequest(
     CdnRequest.Source source,
@@ -13,9 +14,34 @@ public record CdnRangeRequest(
     long wholeEncodedLength,
     long start,
     int count,
-    int maximumBytes) {
+    int maximumBytes,
+    CdnResource.Kind resourceKind) {
+  /** Existing data requests remain source compatible and retain identical validation. */
+  public CdnRangeRequest(
+      CdnRequest.Source source,
+      String encodedKey,
+      long wholeEncodedLength,
+      long start,
+      int count,
+      int maximumBytes) {
+    this(source, encodedKey, wholeEncodedLength, start, count, maximumBytes, CdnResource.Kind.DATA);
+  }
+
+  public CdnRangeRequest(
+      CdnResource resource, long wholeEncodedLength, long start, int count, int maximumBytes) {
+    this(
+        resource.source(),
+        resource.key(),
+        wholeEncodedLength,
+        start,
+        count,
+        maximumBytes,
+        resource.kind());
+  }
+
   public CdnRangeRequest {
     Objects.requireNonNull(source, "source");
+    Objects.requireNonNull(resourceKind, "resourceKind");
     Objects.requireNonNull(encodedKey, "encodedKey");
     if (!encodedKey.matches("[0-9a-fA-F]{32}"))
       throw new IllegalArgumentException("Expected 128-bit encoded key");
@@ -43,6 +69,6 @@ public record CdnRangeRequest(
   }
 
   public URI uri() {
-    return CdnRequest.loose(source, encodedKey, 1, 1).uri();
+    return new CdnResource(source, encodedKey, resourceKind).uri();
   }
 }
