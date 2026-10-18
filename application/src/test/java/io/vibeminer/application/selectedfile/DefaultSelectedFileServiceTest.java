@@ -237,6 +237,8 @@ class DefaultSelectedFileServiceTest {
     var entered = new CountDownLatch(1);
     var release = new CountDownLatch(1);
     var retired = new CountDownLatch(1);
+    var consumerRetired = new CountDownLatch(1);
+    var nextConsumerRetirement = new java.util.concurrent.atomic.AtomicReference<CountDownLatch>();
     f.gateway.enteringAcquisition =
         () -> {
           entered.countDown();
@@ -245,8 +247,20 @@ class DefaultSelectedFileServiceTest {
     f.gateway.acquisitionFailure =
         new EncodedAcquisitionFailure(
             EncodedAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED, error(CANCELLED));
-    try (var jobs = Executors.newFixedThreadPool(2);
+    try (var jobWorkers = Executors.newFixedThreadPool(2);
         var workers = Executors.newSingleThreadExecutor()) {
+      Executor jobs =
+          task -> {
+            var completion = nextConsumerRetirement.getAndSet(null);
+            jobWorkers.execute(
+                () -> {
+                  try {
+                    task.run();
+                  } finally {
+                    if (completion != null) completion.countDown();
+                  }
+                });
+          };
       Executor acquisition =
           task ->
               workers.execute(
@@ -260,6 +274,7 @@ class DefaultSelectedFileServiceTest {
       try (var service = f.service(jobs, acquisition)) {
         var plan = await(service.planCandidates(v.build(), v, BUDGETS));
         var a = located(service, plan, 0);
+        nextConsumerRetirement.set(consumerRetired);
         var pending = service.retain(a).toCompletableFuture();
         try {
           assertTrue(entered.await(3, TimeUnit.SECONDS));
@@ -272,6 +287,9 @@ class DefaultSelectedFileServiceTest {
           release.countDown();
         }
         assertTrue(retired.await(3, TimeUnit.SECONDS));
+        // Source retirement does not imply the canceled orchestration has left its slot.
+        // Both real workers must finish before a different candidate can be admitted.
+        assertTrue(consumerRetired.await(3, TimeUnit.SECONDS));
         assertTrue(f.files.slots.isEmpty());
         assertEquals(1, f.files.released);
         f.gateway.acquisitionFailure = null;
