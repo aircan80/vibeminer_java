@@ -12,6 +12,7 @@ import io.vibeminer.domain.ObjectDigest;
 import io.vibeminer.domain.StoredObject;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -29,6 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 
 /**
  * App-owned immutable byte store. One process owns the root; operations coordinate publication and
@@ -43,6 +45,7 @@ public final class FileObjectStore implements ObjectStore {
   }
 
   private final AtomicMover atomicMover;
+  private final StagingCapacityGuard stagingCapacity;
   private final Object coordinator = new Object();
   private final Path objects;
   private final Path work;
@@ -54,21 +57,28 @@ public final class FileObjectStore implements ObjectStore {
   private int readers;
 
   public FileObjectStore(Path root) {
-    this(
-        root,
-        (source, target, replace) -> {
-          if (replace)
-            Files.move(
-                source,
-                target,
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING);
-          else Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        });
+    this(root, FileObjectStore::atomicMove, null, StagingCapacityGuard.DEFAULT_HEADROOM_BYTES);
+  }
+
+  private static void atomicMove(Path source, Path target, boolean replace) throws IOException {
+    if (replace)
+      Files.move(
+          source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    else Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
   }
 
   /** Deterministic failure seam; production always requires the native atomic move. */
   FileObjectStore(Path root, AtomicMover atomicMover) {
+    this(root, atomicMover, null, StagingCapacityGuard.DEFAULT_HEADROOM_BYTES);
+  }
+
+  /** Deterministic capacity policy seam; never probes another application's storage. */
+  FileObjectStore(Path root, LongSupplier usableBytes, long headroom) {
+    this(root, FileObjectStore::atomicMove, Objects.requireNonNull(usableBytes), headroom);
+  }
+
+  FileObjectStore(Path root, AtomicMover atomicMover, LongSupplier usableBytes, long headroom) {
+    if (headroom < 0) throw new IllegalArgumentException("Nonnegative staging headroom required");
     this.atomicMover = Objects.requireNonNull(atomicMover);
     Objects.requireNonNull(root, "root");
     FileChannel channel = null;
@@ -92,6 +102,18 @@ public final class FileObjectStore implements ObjectStore {
       work = storeRoot.resolve("work");
       ensureDirectory(objects);
       ensureDirectory(work);
+      stagingCapacity =
+          new StagingCapacityGuard(
+              usableBytes != null
+                  ? usableBytes
+                  : () -> {
+                    try {
+                      return Files.getFileStore(work).getUsableSpace();
+                    } catch (IOException unavailable) {
+                      throw new UncheckedIOException(unavailable);
+                    }
+                  },
+              headroom);
       try (var stages = Files.newDirectoryStream(work, "stage-*.tmp")) {
         for (var stage : stages) {
           if (Files.isRegularFile(stage, LinkOption.NOFOLLOW_LINKS)) Files.delete(stage);
@@ -256,8 +278,13 @@ public final class FileObjectStore implements ObjectStore {
     beginOperation();
     Path stage = null;
     StoredObject object = null;
+    boolean capacityReserved = false;
     try {
       cancellation.throwIfCancellationRequested();
+      synchronized (coordinator) {
+        stagingCapacity.reserve(expectedLength);
+        capacityReserved = true;
+      }
       stage = Files.createTempFile(work, "stage-", ".tmp");
       var sourceHash =
           expectedChecksum == null ? null : hash(expectedChecksum.algorithm().jcaName());
@@ -306,6 +333,7 @@ public final class FileObjectStore implements ObjectStore {
       }
       synchronized (coordinator) {
         cancellation.throwIfCancellationRequested();
+        stagingCapacity.recheck();
         var target = objectPath(object.digest());
         ensureDirectory(target.getParent());
         if (expectedRepair != null && readers != 0)
@@ -336,14 +364,24 @@ public final class FileObjectStore implements ObjectStore {
     } catch (IOException io) {
       throw failure(IO_FAILURE, "Cannot publish verified object bytes", io);
     } finally {
-      if (stage != null) {
+      try {
+        if (stage != null) {
+          try {
+            Files.deleteIfExists(stage);
+          } catch (IOException ignored) {
+            /* Startup removes abandoned app-owned staging files. */
+          }
+        }
+      } finally {
         try {
-          Files.deleteIfExists(stage);
-        } catch (IOException ignored) {
-          /* Startup removes abandoned app-owned staging files. */
+          if (capacityReserved)
+            synchronized (coordinator) {
+              stagingCapacity.release(expectedLength);
+            }
+        } finally {
+          endOperation();
         }
       }
-      endOperation();
     }
   }
 
