@@ -5,6 +5,8 @@
 Later literal search #89 has accepted local `c17ec25` qualification: 1,333 clean Java cases, verified Linux development package 24, and 109 assertions (92+17) per Noto/DejaVu run across two JVMs with zero HTTP and 21 PNGs per font. The newer `62513a2` all-four/all-eleven gate passed and scoped #89 is closed after independent criterion review. See [search contract](ITEM-NAME-SEARCH.md), [paired-name references](design/item-names/README.md), [search references](design/item-name-search/README.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Alpha.5 remains the published baseline; no full-table decoded proof, copies, gameplay availability or alpha.6 publication is claimed.
 
 
+This scoped workflow is included in published [alpha.6](releases/v0.1.0-alpha.6.md), exact `ee6598f`; four-target/eleven-workflow publication and independent verification of all 12 final assets passed. Earlier alpha.5 exclusions below describe that historical release, not the new alpha.6 capability.
+
 ## Research outcome and source selection
 
 From two already retained sources, explicitly prepare the admitted ItemSparse physical-name projection and join its names onto the existing bounded Item record-ID pages and exact-ID lookup. The Item index remains the row anchor. No download, repair or preparation follows automatically from opening the screen or querying an ID.

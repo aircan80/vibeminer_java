@@ -8,14 +8,11 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 ## Available now
 
-[VibeMiner 0.1.0-alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.5) is published at `f3c4d46e42451bfc7941959b862143a462a3ddd6`. All four packages and 12 final assets were independently verified. Packages bundle Java for Windows x64, macOS ARM64, macOS Intel and Linux x64; they are unsigned and not notarized.
+[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved.
 
-This release adds explicit local retained-metadata reuse: replay canonical A, preserve a new build’s declared B separately and attach/reopen the association offline without alternate-B acquisition. Discovery, saved metadata, install/root inspection, selected encoded retention and scoped physical Item pages/lookup remain available. See [verified release notes](docs/releases/v0.1.0-alpha.5.md) for exact scope and checks.
+This release adds paired physical Item names, explicit bounded literal name search and known-cost repair of the original canonical root/install representation. Discovery, saved metadata, retained-file inspection, local metadata reuse and admitted physical Item pages/lookup remain available. Packages bundle Java; they are unsigned and not notarized. See [verified release notes](docs/releases/v0.1.0-alpha.6.md) for exact scope and proof limits.
 
-Names, general search/filtering, metadata repair execution, GC, comparisons, exports and complete historical archives remain unfinished. Complete encoded verification does not establish a full decoded Item CKey. Later read-only/repair-integration foundations are not included in the release. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
-
-
-Later accepted local `c17ec25` adds literal-name-search controls and repair qualification (1,333 Java cases, verified Linux package 24, Noto/DejaVu search and repair native checks). The `62513a2` four-platform/eleven-workflow gate passed and scoped #83/#89 are closed; broad #21 retains relations/official-run work and #91 export/#92 metadata history remain planning-only until the next alpha checkpoint. These features are not in alpha.5. See the [current checkpoint](docs/PLAN.md).
+Copies/other sections, whole decoded-table CKeys, validated relations, comparisons, exports, GC and complete historical archives remain unfinished. #91 one-record JSON export is starting application-contract TDD, not delivered; #92 metadata history remains planned. See [current status](docs/PLAN.md).
 
 ## What it will do
 

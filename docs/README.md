@@ -2,11 +2,9 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Published [alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.5) is exact `f3c4d46e42451bfc7941959b862143a462a3ddd6` (annotated tag `2cc1af4`). All four native packages and all 12 freshly downloaded assets were independently verified against manifests, SHA-256, targets and byte counts; [publication run 39119447852](https://github.com/aircan80/vibeminer/actions/runs/39119447852) passed. See [release notes](releases/v0.1.0-alpha.5.md) for scope. Explicit retained metadata reuse is released; names, repair execution and GC remain unfinished. Later source foundations do not alter the exact release contents.
+[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved. See [release notes](releases/v0.1.0-alpha.6.md) and [central checkpoint](PLAN.md). Scoped names/search and original-metadata repair are released; #91 export is starting application-contract TDD and #92 history remains planned. Relations, general decoded-table support and GC remain unfinished.
 
-
-Later accepted local `c17ec25` adds literal-name-search controls and repair qualification (1,333 Java cases, verified Linux package 24, Noto/DejaVu search and repair native checks). The `62513a2` four-platform/eleven-workflow gate passed and scoped #83/#89 are closed; broad #21 retains relations/official-run work and #91 export/#92 metadata history remain planning-only until the next alpha checkpoint. These features are not in alpha.5. See the [current checkpoint](PLAN.md).
-
+- [Verified alpha.6 release notes](releases/v0.1.0-alpha.6.md)
 - [Verified alpha.5 release notes](releases/v0.1.0-alpha.5.md)
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
