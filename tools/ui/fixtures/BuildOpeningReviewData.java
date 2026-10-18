@@ -26,7 +26,8 @@ public final class BuildOpeningReviewData {
   private final String gameEKey;
   private volatile boolean offline, holdEncoding;
   private final CountDownLatch encodingEntered = new CountDownLatch(1),
-      encodingRelease = new CountDownLatch(1);
+      encodingCancelled = new CountDownLatch(1);
+  private final CompletableFuture<Void> encodingRelease = new CompletableFuture<>();
 
   public BuildOpeningReviewData() throws Exception {
     var decoded = new LinkedHashMap<String, byte[]>();
@@ -101,9 +102,14 @@ public final class BuildOpeningReviewData {
     return encodingEntered.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
   }
 
+  /** Waits for the real transport to cancel its pending HTTP response, not a UI facade flag. */
+  public boolean awaitEncodingCancellation(Duration timeout) throws InterruptedException {
+    return encodingCancelled.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
+  }
+
   public void releaseEncoding() {
     holdEncoding = false;
-    encodingRelease.countDown();
+    encodingRelease.complete(null);
   }
 
   public void offline() {
@@ -320,15 +326,34 @@ public final class BuildOpeningReviewData {
       }
       if (key.equals(gameEKey)) gameRequests.incrementAndGet();
       if (key.equals(keys.get("encoding")) && holdEncoding && !request.method().equals("HEAD")) {
+        var pending = new CompletableFuture<HttpResponse<T>>();
+        pending.whenComplete(
+            (value, failed) -> {
+              if (pending.isCancelled()) encodingCancelled.countDown();
+            });
+        byte[] captured = whole;
+        encodingRelease.whenComplete(
+            (ignored, failed) -> {
+              if (pending.isDone()) return;
+              try {
+                respond(request, handler, captured)
+                    .whenComplete(
+                        (value, error) -> {
+                          if (error != null) pending.completeExceptionally(error);
+                          else pending.complete(value);
+                        });
+              } catch (Throwable error) {
+                pending.completeExceptionally(error);
+              }
+            });
         encodingEntered.countDown();
-        try {
-          if (!encodingRelease.await(30, TimeUnit.SECONDS))
-            throw new AssertionError("Authored EN gate was not released");
-        } catch (InterruptedException interrupted) {
-          Thread.currentThread().interrupt();
-          throw new CancellationException("Authored EN gate interrupted");
-        }
+        return pending;
       }
+      return respond(request, handler, whole);
+    }
+
+    private <T> CompletableFuture<HttpResponse<T>> respond(
+        HttpRequest request, HttpResponse.BodyHandler<T> handler, byte[] whole) {
       var range = request.headers().firstValue("Range");
       int status = whole == null ? 404 : range.isPresent() ? 206 : 200;
       byte[] bytes = whole;

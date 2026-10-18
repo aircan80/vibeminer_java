@@ -246,6 +246,9 @@ public final class CaptureBuildOpeningIntegration {
     check(data.gameObjectRequests() == 0, "Open fetches no game payload");
     shot(stage, "preparing");
     click("guided-opening-cancel");
+    check(
+        data.awaitEncodingCancellation(Duration.ofSeconds(5)),
+        "Actual pending EN HTTP response observes transport cancellation before body release");
     data.releaseEncoding();
     until(() -> fx(() -> !node("guided-open-build").isDisabled()));
     check(
@@ -266,8 +269,18 @@ public final class CaptureBuildOpeningIntegration {
                     return overview != null || open != null && !open.isDisabled();
                   }));
       if (fx(() -> stage.getScene().lookup("#build-overview") != null)) break;
-      if (System.nanoTime() > end)
-        throw new AssertionError("Actual canceled worker did not retire for retry");
+      if (System.nanoTime() > end) {
+        var latest = operations.getLast();
+        Throwable failure = null;
+        try {
+          latest.completion().toCompletableFuture().getNow(null);
+        } catch (RuntimeException observed) {
+          failure = observed;
+        }
+        throw new AssertionError(
+            "Actual canceled worker did not retire for retry; latest progress=" + latest.progress(),
+            failure);
+      }
       Thread.sleep(50);
     } while (true);
     assertOverview();
