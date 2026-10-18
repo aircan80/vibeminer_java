@@ -8,6 +8,7 @@ Published [alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-al
 - [Verified alpha.5 release notes](releases/v0.1.0-alpha.5.md)
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
+- [Planned single Item JSON evidence export](ITEM-EVIDENCE-EXPORT.md)
 - [Layered architecture and contracts](ARCHITECTURE.md)
 - [CDN discovery and acquisition](CDN.md)
 - [Recorded official metadata evidence](PROTOCOL-EVIDENCE.md)
