@@ -34,7 +34,8 @@ public final class SqliteBuildRetentionInventory
       Objects.requireNonNull(archives);
     }
 
-    String commitment() {
+    /** Versioned policy identity only; grants no source authority or physical readiness. */
+    public String commitment() {
       return hash(
           "retention-locator-ceilings-v1",
           payload.lookup().toString(),
