@@ -109,6 +109,87 @@ public final class DefaultItemNamesService implements ItemNamesService {
   }
 
   @Override
+  public CompletionStage<ItemNamesSearchPage> search(
+      PreparedItemNames pair,
+      ItemNameLiteralQuery query,
+      Optional<ItemNamesSearchCursor> cursor,
+      int size) {
+    return submit(
+        token -> {
+          if (pair == null || query == null || cursor == null || size < 1 || size > 500)
+            throw error(
+                INVALID_REQUEST, "Explicit pair, literal query and page size 1 to 500 required");
+          if (cursor.isPresent()) {
+            try {
+              cursor.get().requireContext(pair, query, size);
+            } catch (IllegalArgumentException stale) {
+              throw error(
+                  STALE_CURSOR, "Search cursor belongs to another pair, query or page size");
+            }
+          }
+          var authorization = requireReady(pair);
+          if (pair.item().coverage().physicalRows() > ItemNamesBackend.MAX_SEARCH_ITEM_ROWS
+              || pair.names().coverage().physicalRows() > ItemNamesBackend.MAX_SEARCH_NAME_ROWS
+              || pair.names().coverage().projectedUtf8Bytes()
+                  > ItemNamesBackend.MAX_SEARCH_NAME_UTF8_BYTES)
+            throw error(LIMIT_EXCEEDED, "Prepared pair exceeds the admitted literal-search scope");
+          try {
+            var result = backend.search(pair, query, cursor, size, token);
+            token.throwIfCancellationRequested();
+            requireReady(pair);
+            if (result == null
+                || !result.pair().equals(pair)
+                || !result.query().equals(query)
+                || result.rows().size() > size
+                || result.rows().size() > pair.item().coverage().physicalRows()
+                || result.rows().size() > pair.names().coverage().physicalRows())
+              throw error(CORRUPT, "Search response changed exact pair, query or result bounds");
+            if (cursor.isPresent()
+                && !cursor.get().generationFingerprint().equals(result.generationFingerprint()))
+              throw error(
+                  STALE_CURSOR, "Prepared artifact generations changed during search continuation");
+            long previous = cursor.map(ItemNamesSearchCursor::afterRecordId).orElse(0L);
+            long utf8 = 0;
+            var itemOrdinals = new HashSet<Integer>();
+            var nameOrdinals = new HashSet<Integer>();
+            for (var row : result.rows()) {
+              validateRow(pair, row, authorization.limits());
+              if (row.name().outcome() != ItemNameMatch.Outcome.PHYSICAL_NAME)
+                throw error(CORRUPT, "Search response contains an unavailable or unindexed name");
+              var candidate = row.name().candidate().orElseThrow();
+              if (!query.matches(candidate)
+                  || row.item().recordId() <= previous
+                  || !itemOrdinals.add(row.item().physicalOrdinal())
+                  || !nameOrdinals.add(candidate.physicalOrdinal()))
+                throw error(
+                    CORRUPT, "Search response changed literal predicate or physical ordering");
+              if (candidate.utf8Bytes() > pair.names().coverage().projectedUtf8Bytes() - utf8)
+                throw error(CORRUPT, "Search response exceeds admitted projected-name bytes");
+              utf8 += candidate.utf8Bytes();
+              previous = row.item().recordId();
+            }
+            if (result.nextCursor().isPresent()) {
+              var next = result.nextCursor().get();
+              try {
+                next.requireContext(pair, query, size);
+              } catch (IllegalArgumentException changed) {
+                throw error(CORRUPT, "Backend search cursor changed context");
+              }
+              if (result.rows().size() != size
+                  || next.afterRecordId() != previous
+                  || !next.generationFingerprint().equals(result.generationFingerprint()))
+                throw error(
+                    CORRUPT, "Search cursor does not follow the last visible match and generation");
+            }
+            return result;
+          } catch (ItemNamesException failure) {
+            revoke(pair, failure);
+            throw failure;
+          }
+        });
+  }
+
+  @Override
   public CompletionStage<ItemNamesLookup> lookup(PreparedItemNames pair, long recordId) {
     return submit(
         token -> {
