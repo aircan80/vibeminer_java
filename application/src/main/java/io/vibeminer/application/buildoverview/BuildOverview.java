@@ -69,6 +69,9 @@ public final class BuildOverview {
     }
   }
 
+  /**
+   * scopeRevision is the metadata admission policy; the issued Target has its own inventory scope.
+   */
   public record Request(
       BuildLibraryReference reference,
       String locale,
@@ -87,8 +90,7 @@ public final class BuildOverview {
       Objects.requireNonNull(target);
       if (target.isPresent()
           && (!target.get().groupId().equals(reference.key().identity())
-              || !target.get().snapshotId().equals(reference.snapshotId())
-              || !target.get().scopeRevision().equals(scopeRevision)))
+              || !target.get().snapshotId().equals(reference.snapshotId())))
         throw new IllegalArgumentException("Issued target differs from exact overview request");
     }
   }
@@ -186,6 +188,10 @@ public final class BuildOverview {
     }
   }
 
+  /**
+   * scopeRevision remains the metadata policy; target retains the separately verified inventory
+   * scope.
+   */
   public record Snapshot(
       BuildLibraryReference reference,
       String locale,
@@ -217,8 +223,7 @@ public final class BuildOverview {
         throw new IllegalArgumentException("Overview problem bound exceeded");
       if (target.isPresent()
           && (!target.get().groupId().equals(reference.key().identity())
-              || !target.get().snapshotId().equals(reference.snapshotId())
-              || !target.get().scopeRevision().equals(scopeRevision)))
+              || !target.get().snapshotId().equals(reference.snapshotId())))
         throw new IllegalArgumentException("Overview target changed exact scope");
       if (metadata == MetadataState.READY && readiness == Readiness.NOT_READY
           || measurements.denominatorComplete() && inventory != InventoryState.SEALED)

@@ -527,6 +527,29 @@ class DefaultBuildOverviewServiceTest {
   }
 
   @Test
+  void metadataAdmissionScopeAndIssuedInventoryScopeRemainIndependent() {
+    var ref = reference();
+    var target =
+        new BuildRetention.Target(
+            ref.key().identity(),
+            ref.snapshotId(),
+            "c".repeat(64),
+            "d".repeat(64),
+            1,
+            "wow-root-all-declared-inventory-v1",
+            "e".repeat(64));
+    var r = new Request(ref, "enUS", "wow-direct-metadata-v1", LIMITS, Optional.of(target));
+    try (var service =
+        new DefaultBuildOverviewService((req, p, t) -> finish(req, p), Runnable::run)) {
+      var result = service.read(r).completion().toCompletableFuture().join();
+      assertEquals("wow-direct-metadata-v1", result.scopeRevision());
+      assertEquals(
+          "wow-root-all-declared-inventory-v1", result.target().orElseThrow().scopeRevision());
+      assertEquals(Readiness.FULL, result.readiness());
+    }
+  }
+
+  @Test
   void fullCannotBeFabricatedFromUnknownCountsOrHistoricalJobSuccess() {
     var r = request();
     var target = full(r).target();
