@@ -1,6 +1,7 @@
 # Bounded Item names and exact-context join
 
-**Status: proposed design for [#21](https://github.com/aircan80/vibeminer/issues/21); unimplemented.** The [Item physical projection](ITEM-PROJECTION.md) is the prerequisite. Its #81 user-interface acceptance remains pending; this document establishes no delivered name search, readable whole table or newly acquired content.
+**Status: approved #21 design with a pure bounded ItemSparse name projector foundation (11 tests); production name preparation/index/application/view remains undelivered.** The prerequisite [physical Item projection](ITEM-PROJECTION.md) is published in verified [alpha.4](releases/v0.1.0-alpha.4.md); its verified four-platform checkpoint is tracked centrally in [the plan](PLAN.md#delivered-baseline-and-current-work). No general name search, complete readable table or newly acquired content is established by the pure projector.
+
 
 ## Research outcome and source selection
 

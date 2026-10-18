@@ -2,9 +2,10 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Released [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) remains `2382261`. Later `6fac722` passed 855 Java cases, Linux bundled-runtime smoke and [all four native targets](https://github.com/aircan80/vibeminer/actions/runs/39113600719). Its metadata/file publisher guard is active; strong A-versus-B reuse (#85), same-A metadata repair (#83), Item backend/index/UI, general research search and GC remain unfinished. Complete encoded verification remains distinct from decoded-content proof. All six native UI harnesses and nine offline protocol entrypoints passed, and all 17 candidate/retention PNG comparisons were exact (AE 0).
+Published [alpha.4](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.4) is exact `891a9c49776649924ac289873336b45071662dba`, with all four packages and 12 assets independently verified. It adds selected encoded retention/offline reopen and scoped physical Item preparation, pages and exact-ID lookup. See [release notes](releases/v0.1.0-alpha.4.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Names, strong alternate-B reuse, repair and GC remain unfinished; later reuse/repair foundations are unreleased and unwired.
 
 
+- [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
 - [Layered architecture and contracts](ARCHITECTURE.md)
 - [CDN discovery and acquisition](CDN.md)

@@ -1,6 +1,7 @@
 # Bounded Item physical-row projection
 
-**Status: approved first production scope; implementation and acceptance remain to be delivered in [#81](https://github.com/aircan80/vibeminer/issues/81) under [#20](https://github.com/aircan80/vibeminer/issues/20).** This design refines the [exact Item cohort](ITEM-COHORT.md) and [implementation plan](PLAN.md). It does not establish a delivered readable table, complete Item dataset or general search capability.
+**Status: #81 physical-row backend, runtime and Atlas view are published in verified [alpha.4](releases/v0.1.0-alpha.4.md), exact `891a9c4`, with all four native targets passed.** This is the bounded #20 slice, not all table/search acceptance. Final Item UI acceptance exercised 85 assertions across two JVMs; [central evidence](PLAN.md#delivered-baseline-and-current-work) records the exact test/package/protocol/image limits. The [exact cohort](ITEM-COHORT.md) and contracts below define admitted physical rows, four candidate integer fields and copies-unindexed coverage. Full decoded-table CKeys, names and general search are not claimed.
+
 
 ## User outcome and exact context
 
