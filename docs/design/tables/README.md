@@ -19,3 +19,5 @@ All three prototypes were rendered in Firefox at a 1440 × 1000 outer window, ch
 - [Explorer screenshot](screenshots/explorer.png)
 - [Workbench screenshot](screenshots/workbench.png)
 - [Trail screenshot](screenshots/trail.png)
+
+Explorer refinement ([#108](https://github.com/aircan80/vibeminer/issues/108)): the desktop inspector is 340 px wide. Selecting a table in the left catalogue starts a fresh breadcrumb/history; following linked fields extends that trail. Option A is the current preference, pending further review.
