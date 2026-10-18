@@ -1,0 +1,99 @@
+{
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "buildConfig": "88d5e8ef05ec5a8446cdec93d142d7c6",
+  "cdnConfig": "f065eade5276a5ac05606e60a4c5a1f7",
+  "priorRootProof": {
+    "completeRootCKey": "e84483ee756c69a7dc5fbff04af81316",
+    "rootScanThisRun": false,
+    "priorVariantCount": 11
+  },
+  "selection": {
+    "fileDataId": 1572924,
+    "requestedLocale": "enUS",
+    "localeBit": 2,
+    "priorRootMask": 514,
+    "contentFlags": 304087040,
+    "rawContentFlags": {
+      "first": 0,
+      "second": 301989888,
+      "third": 16
+    },
+    "CKey": "bb0ecbdc2fd4988ddd3c1c5e95c34165",
+    "sharedEnGB": true,
+    "regionDoesNotImplyLocale": true
+  },
+  "freshEncodingPages": {
+    "sourceEKey": "6e9260e140bd5f5b116d47229e937993",
+    "wholeEncodedBytes": 188062372,
+    "wholeDecodedBytes": 200255766,
+    "wholeENCKeyVerified": false,
+    "selectedCKeyPagesAndEncodingMetadataAuthenticated": true
+  },
+  "target": {
+    "EKey": "cab35eb8601260c12a5917c1bdacfda5",
+    "wholeEncodedBytes": 7988612,
+    "wholeDecodedBytes": 62715198,
+    "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5",
+    "looseAvailable": true,
+    "archiveFallbackUsed": false,
+    "BLTEHeaderBytes": 90732,
+    "BLTEHeaderEKeyVerified": true,
+    "chunkCount": 3780,
+    "consumedChunkIndexes": [
+      0
+    ],
+    "consumedChunkEncodedBytes": 1950,
+    "consumedChunkDecodedBytes": 5252,
+    "consumedChunkIntegrityVerified": true
+  },
+  "header": {
+    "signature": "WDC5",
+    "tableHash": "919BE54E",
+    "layoutHash": "1C17D17F",
+    "schemaVersion": 5,
+    "schemaString": "WOWSTATIC_12_1_5_70077",
+    "flags": 5,
+    "recordCount": 175758,
+    "fieldCount": 67,
+    "recordSize": 328,
+    "stringTableSize": 0,
+    "minId": 25,
+    "maxId": 287078,
+    "localeRawValue": 1,
+    "idFieldIndex": 0,
+    "totalFieldCount": 67,
+    "packedDataOffset": 328,
+    "lookupColumnCount": 0,
+    "fieldStorageInfoSize": 1608,
+    "commonDataSize": 0,
+    "palletDataSize": 0,
+    "sectionCount": 49,
+    "candidateTableLayoutMatch": true,
+    "candidateRevision": "b9a63096cdd99b26967f17f9515377ae62cadfd7"
+  },
+  "cost": {
+    "globalRequests": 14,
+    "completedResponseBodyBytes": 1676362,
+    "reservedOrReceivedBodyBytes": 1676362,
+    "decodedWorkBytes": 1441562,
+    "elapsedNanos": 662767918
+  },
+  "coverage": {
+    "completeTableCKeyVerified": false,
+    "tableBodyValidated": false,
+    "rowsSupported": false,
+    "encryptedSectionState": "UNKNOWN",
+    "rootScanThisRun": false,
+    "noPayloadWrites": true
+  },
+  "selectedSourceEvidenceLines": [
+    "VERIFIED configMD5=88d5e8ef05ec5a8446cdec93d142d7c6 source=https://us.cdn.blizzard.com/tpr/wow/config/88/d5/88d5e8ef05ec5a8446cdec93d142d7c6 received=2026-10-18T06:26:52.382546959Z bytes=87836",
+    "VERIFIED configMD5=f065eade5276a5ac05606e60a4c5a1f7 source=https://us.cdn.blizzard.com/tpr/wow/config/f0/65/f065eade5276a5ac05606e60a4c5a1f7 received=2026-10-18T06:26:52.423987996Z bytes=59333",
+    "RECEIVED SPARSE LOOSE range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=0 count=8 at=2026-10-18T06:26:52.642883601Z SHA256=b3751cef46aae6882469e31a93145b756f9c50bc6ae3bcaf19ff315ec1317336",
+    "RECEIVED SPARSE LOOSE range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=0 count=90732 at=2026-10-18T06:26:52.658264801Z SHA256=f72fdba3727f2e0d4cdc8ea052e97563c729e9dcfcdf84ed74fa052c09d59110",
+    "RECEIVED SPARSE LOOSE range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=90732 count=1950 at=2026-10-18T06:26:52.672026426Z SHA256=72b525e82fdcc646e2f0a28241b3db54f8e0daddd00b424c090b543d5fe03b7f"
+  ],
+  "diagnosticSourceCommit": "da2f593"
+}
