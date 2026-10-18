@@ -14,7 +14,7 @@ public final class Main {
       PackageSelfTest.run();
       return;
     }
-    var dataDirectory = AppDataDirectory.resolve();
+    var dataDirectory = dataDirectory(args);
     var metadata = MetadataRuntime.open(dataDirectory);
     var content = new LazyBootstrapService(() -> ContentRuntime.open(dataDirectory));
     var mining = new LazyBuildServices(content);
@@ -74,6 +74,21 @@ public final class Main {
           /* The registered hook owns the same idempotent shutdown. */
         }
       }
+    }
+  }
+
+  /**
+   * Smoke verification must never open the normal profile or its authorized work. The tiny smoke
+   * profile is intentionally left in the OS temporary directory: shutdown can retain actual
+   * workers, so deleting it here would risk deleting storage still in use.
+   */
+  static java.nio.file.Path dataDirectory(String[] args) {
+    if (!List.of(args).contains("--smoke-test")) return AppDataDirectory.resolve();
+    try {
+      return java.nio.file.Files.createTempDirectory("vibeminer-smoke-");
+    } catch (java.io.IOException failure) {
+      throw new java.io.UncheckedIOException(
+          "Could not create isolated GUI smoke storage", failure);
     }
   }
 
