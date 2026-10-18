@@ -40,6 +40,19 @@ public final class BuildOverviewPane extends VBox {
     }
   }
 
+  public enum InventoryState {
+    UNKNOWN("Not measured"),
+    PREPARING("Preparing"),
+    SEALED("Sealed"),
+    INCOMPLETE("Incomplete"),
+    NEEDS_ATTENTION("Needs attention");
+    final String label;
+
+    InventoryState(String label) {
+      this.label = label;
+    }
+  }
+
   public enum DownloadMode {
     ON_DEMAND("On demand"),
     DOWNLOAD_ALL("Download all");
@@ -136,7 +149,39 @@ public final class BuildOverviewPane extends VBox {
       String activity,
       String jobSummary,
       List<String> problems,
-      Capabilities capabilities) {
+      Capabilities capabilities,
+      InventoryState inventory,
+      boolean retryPreparationAvailable,
+      boolean refreshCoverageAvailable,
+      boolean coverageBusy) {
+    public ViewData(
+        Identity identity,
+        Scope scope,
+        Readiness readiness,
+        MetadataState metadata,
+        Metrics metrics,
+        DownloadMode mode,
+        String activity,
+        String jobSummary,
+        List<String> problems,
+        Capabilities capabilities) {
+      this(
+          identity,
+          scope,
+          readiness,
+          metadata,
+          metrics,
+          mode,
+          activity,
+          jobSummary,
+          problems,
+          capabilities,
+          metrics.denominatorComplete() ? InventoryState.SEALED : InventoryState.UNKNOWN,
+          false,
+          false,
+          false);
+    }
+
     public ViewData {
       Objects.requireNonNull(identity);
       Objects.requireNonNull(scope);
@@ -147,6 +192,7 @@ public final class BuildOverviewPane extends VBox {
       Objects.requireNonNull(activity);
       Objects.requireNonNull(jobSummary);
       Objects.requireNonNull(capabilities);
+      Objects.requireNonNull(inventory);
       problems = List.copyOf(problems);
       problems.forEach(BuildOverviewPane::required);
       if (!scope.revision().equals(metrics.scopeRevision()))
@@ -178,13 +224,33 @@ public final class BuildOverviewPane extends VBox {
       Consumer<Identity> sourceDetails,
       Runnable backToBuilds,
       Runnable retryMetadata,
-      Runnable retryRetention) {
+      Runnable retryRetention,
+      Runnable retryPreparation,
+      Runnable refreshCoverage) {
+    public Callbacks(
+        Consumer<ModeRequest> requestMode,
+        Consumer<Identity> sourceDetails,
+        Runnable backToBuilds,
+        Runnable retryMetadata,
+        Runnable retryRetention) {
+      this(
+          requestMode,
+          sourceDetails,
+          backToBuilds,
+          retryMetadata,
+          retryRetention,
+          () -> {},
+          () -> {});
+    }
+
     public Callbacks {
       Objects.requireNonNull(requestMode);
       Objects.requireNonNull(sourceDetails);
       Objects.requireNonNull(backToBuilds);
       Objects.requireNonNull(retryMetadata);
       Objects.requireNonNull(retryRetention);
+      Objects.requireNonNull(retryPreparation);
+      Objects.requireNonNull(refreshCoverage);
     }
   }
 
@@ -385,9 +451,7 @@ public final class BuildOverviewPane extends VBox {
         .setAll(
             copy("Build readiness", "overview-panel-heading"),
             measurement("Required metadata", data.metadata().label),
-            measurement(
-                "Content inventory",
-                data.metrics().denominatorComplete() ? "Complete" : "Not measured"),
+            measurement("Content inventory", data.inventory().label),
             copy("Download policy", "overview-eyebrow"));
     ToggleGroup group = new ToggleGroup();
     FlowPane modes = new FlowPane(0, 0);
@@ -418,6 +482,27 @@ public final class BuildOverviewPane extends VBox {
                 "Fully downloaded means the required scoped encoded objects are retained."
                     + " Encryption, decoding and preview support are separate.",
                 "overview-help"));
+    if (data.retryPreparationAvailable())
+      readiness
+          .getChildren()
+          .add(
+              button(
+                  "Retry preparation",
+                  "overview-retry-preparation",
+                  () -> {
+                    if (data == rendered) callbacks.retryPreparation().run();
+                  }));
+    if (data.refreshCoverageAvailable()) {
+      Button refresh =
+          button(
+              "Refresh coverage",
+              "overview-refresh-coverage",
+              () -> {
+                if (data == rendered && !data.coverageBusy()) callbacks.refreshCoverage().run();
+              });
+      refresh.setDisable(data.coverageBusy());
+      readiness.getChildren().add(refresh);
+    }
     if (data.capabilities().retryMetadata())
       readiness
           .getChildren()

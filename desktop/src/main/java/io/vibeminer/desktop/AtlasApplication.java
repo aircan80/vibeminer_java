@@ -7,8 +7,11 @@ import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.buildlibrary.BuildLibraryPage;
 import io.vibeminer.application.buildlibrary.BuildLibraryService;
 import io.vibeminer.application.buildopening.*;
+import io.vibeminer.application.buildoverview.*;
+import io.vibeminer.application.buildretention.*;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseService;
+import io.vibeminer.application.inventory.BuildInventoryPreparationService;
 import io.vibeminer.application.item.ItemProjectionService;
 import io.vibeminer.application.itemexport.ItemEvidenceService;
 import io.vibeminer.application.itemnames.ItemNamesService;
@@ -60,6 +63,10 @@ public final class AtlasApplication extends Application {
   private static ItemEvidenceDestinationChooser evidenceChooser;
   private static BuildLibraryService configuredBuildLibrary;
   private static BuildOpeningService configuredBuildOpening;
+  private static BuildInventoryPreparationService configuredPreparation;
+  private static BuildOverviewService configuredOverview;
+  private static BuildRetentionModeService configuredMode;
+  private static BuildOverview.Limits configuredOverviewLimits;
   private ItemEvidenceExportDialog evidenceDialog;
   private io.vibeminer.domain.item.PreparedItemProjection exportItem;
   private io.vibeminer.domain.item.PreparedItemNames exportPair;
@@ -80,6 +87,22 @@ public final class AtlasApplication extends Application {
     if (configuredBuildOpening != null)
       throw new IllegalStateException("Build opening has already been configured");
     configuredBuildOpening = Objects.requireNonNull(opening);
+  }
+
+  /** Optional mining observations over actual prepared inventory; all services remain borrowed. */
+  public static synchronized void configureBuildMining(
+      BuildInventoryPreparationService preparation,
+      BuildOverviewService overview,
+      BuildRetentionModeService modes,
+      BuildOverview.Limits limits) {
+    if (configuredBuildOpening == null)
+      throw new IllegalStateException("Configure build opening before mining");
+    if (configuredPreparation != null)
+      throw new IllegalStateException("Build mining already configured");
+    configuredPreparation = Objects.requireNonNull(preparation);
+    configuredOverview = Objects.requireNonNull(overview);
+    configuredMode = Objects.requireNonNull(modes);
+    configuredOverviewLimits = Objects.requireNonNull(limits);
   }
 
   public static synchronized void configureItemEvidenceDestinationChooser(
@@ -226,6 +249,10 @@ public final class AtlasApplication extends Application {
     configuredEvidence = evidence;
     configuredBuildLibrary = null;
     configuredBuildOpening = null;
+    configuredPreparation = null;
+    configuredOverview = null;
+    configuredMode = null;
+    configuredOverviewLimits = null;
   }
 
   private Stage stage;
@@ -241,6 +268,9 @@ public final class AtlasApplication extends Application {
   private GuidedDiscoveryPane guidedPane;
   private ScrollPane guidedScroll;
   private BuildOpenPresentationModel openingModel;
+  private BuildMiningPresentationModel miningModel;
+  private Timeline miningPoll;
+  private BuildOverviewPane.ViewData overviewBaseline;
   private Timeline openingPoll;
   private VBox openingFeedback;
   private Label openingProgress;
@@ -468,6 +498,19 @@ public final class AtlasApplication extends Application {
       workspaceState = workspaceModel.state();
     }
     if (configuredBuildLibrary != null) {
+      if (configuredPreparation != null) {
+        miningModel =
+            new BuildMiningPresentationModel(
+                configuredPreparation,
+                configuredOverview,
+                configuredMode,
+                configuredOverviewLimits,
+                Platform::runLater,
+                this::onMiningState,
+                System::nanoTime);
+        miningPoll = new Timeline(new KeyFrame(Duration.millis(250), e -> miningModel.tick()));
+        miningPoll.setCycleCount(Timeline.INDEFINITE);
+      }
       if (configuredBuildOpening != null) {
         openingModel =
             new BuildOpenPresentationModel(
@@ -1233,6 +1276,7 @@ public final class AtlasApplication extends Application {
         && overviewPane != null) name = "BuildHome";
     destination = name;
     if (openingModel != null) openingModel.setDiscoveryActive(!name.equals("Settings"));
+    updateMiningVisibility();
     navigation.getToggles().forEach(t -> t.setSelected(destination.equals(t.getUserData())));
     render();
   }
@@ -1251,8 +1295,13 @@ public final class AtlasApplication extends Application {
       savedWorkspaceBar.setManaged(false);
       workspaceFeedback.setVisible(false);
       workspaceFeedback.setManaged(false);
-      mode.setText("EXACT BUILD · METADATA READY");
-      status.setText("Metadata verified. Build content coverage has not been measured.");
+      mode.setText(miningModel == null ? "EXACT BUILD · METADATA READY" : "EXACT BUILD");
+      status.setText(
+          miningModel == null
+              ? "Metadata verified. Build content coverage has not been measured."
+              : miningModel.state().error().isBlank()
+                  ? "Exact-build observations; encoded retention and decoding are separate."
+                  : miningModel.state().error());
       if (overviewScroll == null) {
         overviewScroll = new ScrollPane(overviewPane);
         overviewScroll.setFitToWidth(true);
@@ -1769,6 +1818,9 @@ public final class AtlasApplication extends Application {
 
   private void retireOpening() {
     if (openingModel != null) openingModel.clear();
+    overviewBaseline = null;
+    if (miningModel != null) miningModel.retire();
+    if (miningPoll != null) miningPoll.stop();
     overviewPane = null;
     overviewScroll = null;
     openedEntry = null;
@@ -1821,7 +1873,8 @@ public final class AtlasApplication extends Application {
           });
     if (next.admission() != null) {
       var admission = next.admission();
-      var view = admittedOverview(admission, java.time.Instant.now());
+      overviewBaseline = admittedOverview(admission, java.time.Instant.now());
+      var view = miningModel == null ? overviewBaseline : miningModel.viewData(overviewBaseline);
       var admittedEntry = openedEntry;
       var actions =
           openingModel.bindOverviewActions(
@@ -1833,22 +1886,69 @@ public final class AtlasApplication extends Application {
                 retireOpening();
                 navigate("Archive");
               });
+      var paneBinding = new BuildOverviewPane[1];
+      java.util.function.BooleanSupplier currentPane =
+          () -> overviewPane == paneBinding[0] && openingModel.state().admission() == admission;
       overviewPane =
           new BuildOverviewPane(
               view,
               new BuildOverviewPane.Callbacks(
-                  ignored -> {},
+                  request -> {
+                    if (miningModel != null
+                        && currentPane.getAsBoolean()
+                        && request.contextId().equals(overviewBaseline.identity().contextId())
+                        && request
+                            .scopeRevision()
+                            .equals(miningModel.viewData(overviewBaseline).scope().revision()))
+                      miningModel.requestMode(
+                          BuildRetention.Mode.valueOf(request.requested().name()));
+                  },
                   ignored -> actions.source().run(),
                   actions.back(),
                   () -> {},
-                  () -> {}));
+                  () -> {
+                    if (miningModel != null && currentPane.getAsBoolean())
+                      miningModel.retryActivation();
+                  },
+                  () -> {
+                    if (miningModel != null && currentPane.getAsBoolean())
+                      miningModel.retryPreparation();
+                  },
+                  () -> {
+                    if (miningModel != null && currentPane.getAsBoolean()) miningModel.refresh();
+                  }));
+      paneBinding[0] = overviewPane;
       overviewScroll = null;
       // Settings preserves context and never gets interrupted by a completion.
       if (destination.equals("Archive") && openingModel.overviewRequested()) {
         destination = "BuildHome";
         render();
       }
+      if (miningModel != null) miningModel.start(admission);
+      updateMiningVisibility();
     }
+  }
+
+  private void onMiningState(BuildMiningPresentationModel.State state) {
+    if (overviewPane == null
+        || overviewBaseline == null
+        || state.admission() == null
+        || openingModel.state().admission() == null
+        || !state.admission().equals(openingModel.state().admission())) return;
+    overviewPane.update(miningModel.viewData(overviewBaseline));
+    if (destination.equals("BuildHome"))
+      status.setText(
+          state.error().isBlank()
+              ? "Exact-build observations; encoded retention and decoding are separate."
+              : state.error());
+  }
+
+  private void updateMiningVisibility() {
+    if (miningModel == null) return;
+    boolean active = destination.equals("BuildHome");
+    miningModel.setVisible(active);
+    if (active && miningModel.state().admission() != null) miningPoll.play();
+    else miningPoll.stop();
   }
 
   private void revealOpeningProgress() {
@@ -3236,6 +3336,8 @@ public final class AtlasApplication extends Application {
     if (guidedModel != null) guidedModel.close();
     if (openingPoll != null) openingPoll.stop();
     if (openingModel != null) openingModel.close();
+    if (miningPoll != null) miningPoll.stop();
+    if (miningModel != null) miningModel.close();
     if (workspaceModel != null) workspaceModel.close();
     if (productModel != null) productModel.close();
     if (installModel != null) installModel.close();

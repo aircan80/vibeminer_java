@@ -215,4 +215,40 @@ class BuildOverviewPaneTest {
       }
     assertTrue(requests.isEmpty());
   }
+
+  @Test
+  void explicitInventoryStateDoesNotPretendItsByteDenominatorWasMeasured() {
+    var base =
+        data(
+            BuildOverviewPane.Readiness.PARTIAL,
+            BuildOverviewPane.MetadataState.READY,
+            metrics(OptionalLong.empty(), OptionalLong.empty(), false),
+            BuildOverviewPane.DownloadMode.ON_DEMAND,
+            false,
+            false);
+    var supplied =
+        new BuildOverviewPane.ViewData(
+            base.identity(),
+            base.scope(),
+            base.readiness(),
+            base.metadata(),
+            base.metrics(),
+            base.mode(),
+            "Preparing inventory",
+            "Actual local job",
+            List.of(),
+            base.capabilities(),
+            BuildOverviewPane.InventoryState.PREPARING,
+            true,
+            true,
+            true);
+    assertEquals(BuildOverviewPane.InventoryState.PREPARING, supplied.inventory());
+    assertFalse(supplied.metrics().denominatorComplete());
+    assertEquals("Unknown", BuildOverviewPane.retainedPercentage(supplied.metrics()));
+    assertTrue(supplied.retryPreparationAvailable());
+    assertTrue(supplied.refreshCoverageAvailable());
+    assertTrue(supplied.coverageBusy());
+    assertFalse(base.refreshCoverageAvailable());
+    assertEquals(BuildOverviewPane.InventoryState.UNKNOWN, base.inventory());
+  }
 }
