@@ -38,24 +38,8 @@ public final class SqliteRetentionRepository implements RetentionRepository {
     try (var connection = catalog.connect()) {
       connection.setAutoCommit(false);
       try {
-        if (catalog.readSnapshot(connection, scope.snapshotId()).isEmpty())
-          throw new RetentionException(
-              RetentionException.Code.NOT_FOUND,
-              "Register the exact build before pinning its scope");
         if (replaceRoot) supersedeUnfulfilled(connection, scope);
-        for (var requirement : scope.requirements()) {
-          cancellation.throwIfCancellationRequested();
-          checkFacts(connection, scope, requirement);
-        }
-        RetentionSql.insert(connection, scope);
-        if (!RetentionSql.read(connection, scope.scopeId()).equals(scope))
-          throw RetentionSql.corrupt("Conflicting immutable scope");
-        try (var query =
-            connection.prepareStatement("UPDATE retention_scopes SET pinned=1 WHERE id=?")) {
-          query.setString(1, scope.scopeId());
-          query.executeUpdate();
-        }
-        cancellation.throwIfCancellationRequested();
+        pinInTransaction(connection, scope, cancellation);
         connection.commit();
         return scope;
       } catch (SQLException | RuntimeException failure) {
@@ -65,6 +49,31 @@ public final class SqliteRetentionRepository implements RetentionRepository {
     } catch (SQLException failure) {
       throw unavailable(failure);
     }
+  }
+
+  /** Infrastructure composition only; caller owns the surrounding IMMEDIATE transaction. */
+  public RetentionScope pinInTransaction(
+      Connection connection, RetentionScope scope, CancellationToken cancellation)
+      throws SQLException {
+    if (connection.getAutoCommit())
+      throw new IllegalStateException("Pin requires caller transaction");
+    if (catalog.readSnapshot(connection, scope.snapshotId()).isEmpty())
+      throw new RetentionException(
+          RetentionException.Code.NOT_FOUND, "Register the exact build before pinning its scope");
+    for (var requirement : scope.requirements()) {
+      cancellation.throwIfCancellationRequested();
+      checkFacts(connection, scope, requirement);
+    }
+    RetentionSql.insert(connection, scope);
+    if (!RetentionSql.read(connection, scope.scopeId()).equals(scope))
+      throw RetentionSql.corrupt("Conflicting immutable scope");
+    try (var query =
+        connection.prepareStatement("UPDATE retention_scopes SET pinned=1 WHERE id=?")) {
+      query.setString(1, scope.scopeId());
+      query.executeUpdate();
+    }
+    cancellation.throwIfCancellationRequested();
+    return scope;
   }
 
   @Override
