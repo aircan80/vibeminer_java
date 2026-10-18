@@ -61,6 +61,11 @@ public final class DefaultMetadataReuseService implements MetadataReuseService {
         token -> {
           Objects.requireNonNull(build);
           Objects.requireNonNull(kind);
+          if (kind != MetadataStructureAttestation.Kind.ROOT
+              && kind != MetadataStructureAttestation.Kind.INSTALL)
+            throw failure(
+                ContentClaimException.Code.UNSUPPORTED_REUSE,
+                "Local metadata reuse supports only ROOT and INSTALL");
           Objects.requireNonNull(budgets);
           var configuration = configuration(build, token);
           var declaration = gateway.readDeclaration(build, configuration, kind, budgets, token);

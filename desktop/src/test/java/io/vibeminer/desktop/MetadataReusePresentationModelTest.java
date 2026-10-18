@@ -206,7 +206,9 @@ class MetadataReusePresentationModelTest {
 
   @Test
   void confirmedLocalApplyFailureRemainsTypedAndRevokesConsentWithoutFallback() {
-    for (var kind : MetadataStructureAttestation.Kind.values()) {
+    for (var kind :
+        List.of(
+            MetadataStructureAttestation.Kind.ROOT, MetadataStructureAttestation.Kind.INSTALL)) {
       for (var code :
           List.of(
               ContentClaimException.Code.MISSING_LOCAL,

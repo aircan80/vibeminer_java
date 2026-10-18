@@ -49,6 +49,10 @@ public final class OfficialMetadataLocalVerificationGateway
       LookupBudgets budgets,
       CancellationToken cancellation) {
     Objects.requireNonNull(request);
+    if (request.kind() != MetadataStructureAttestation.Kind.ROOT
+        && request.kind() != MetadataStructureAttestation.Kind.INSTALL)
+      throw failure(
+          UNSUPPORTED_REUSE, "Local original verification supports only ROOT and INSTALL");
     Objects.requireNonNull(original);
     Objects.requireNonNull(budgets);
     Objects.requireNonNull(cancellation).throwIfCancellationRequested();

@@ -103,6 +103,25 @@ class DefaultMetadataReuseServiceTest {
         gateway, builds, contents, associations, executor, serviceClock, nanos::get);
   }
 
+  @Test
+  void newManifestKindsCannotEnterLegacyReuseOrReadConfiguration() {
+    missing = true;
+    try (var service = service(Runnable::run)) {
+      for (var kind :
+          List.of(
+              MetadataStructureAttestation.Kind.ENCODING,
+              MetadataStructureAttestation.Kind.DOWNLOAD,
+              MetadataStructureAttestation.Kind.DOWNLOAD_SIZE)) {
+        assertEquals(
+            ContentClaimException.Code.UNSUPPORTED_REUSE,
+            failure(service.planRetained(build(), kind, LookupBudgets.defaults())));
+      }
+    }
+    assertEquals(0, reads.get());
+    assertEquals(0, replays.get());
+    assertEquals(0, attaches.get());
+  }
+
   MetadataReusePlan plan(DefaultMetadataReuseService s) {
     return s.planRetained(
             build(), MetadataStructureAttestation.Kind.INSTALL, LookupBudgets.defaults())

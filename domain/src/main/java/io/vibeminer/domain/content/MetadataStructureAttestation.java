@@ -8,7 +8,10 @@ import java.util.Objects;
 public record MetadataStructureAttestation(Kind kind, String parserRevision) {
   public enum Kind {
     ROOT,
-    INSTALL
+    INSTALL,
+    ENCODING,
+    DOWNLOAD,
+    DOWNLOAD_SIZE
   }
 
   public MetadataStructureAttestation {

@@ -70,4 +70,31 @@ class CanonicalContentRecordsTest {
     corrupt[4] = (byte) 0xff;
     assertThrows(IllegalArgumentException.class, () -> CanonicalContentRecords.decode(corrupt));
   }
+
+  @Test
+  void malformedRevisionCannotBeSilentlyReplacedDuringEncoding() {
+    for (var revision : List.of("parser-\uD800", "parser-\uDC00")) {
+      var decoded =
+          historical()
+              .withAttestations(
+                  Optional.of(new DecodedContentAttestation(C, 64, revision)), Optional.empty());
+      assertThrows(IllegalArgumentException.class, () -> CanonicalContentRecords.encode(decoded));
+      var grammar =
+          historical()
+              .withAttestations(
+                  Optional.of(new DecodedContentAttestation(C, 64, "decoded-v1")),
+                  Optional.of(
+                      new MetadataStructureAttestation(
+                          MetadataStructureAttestation.Kind.ROOT, revision)));
+      assertThrows(IllegalArgumentException.class, () -> CanonicalContentRecords.encode(grammar));
+    }
+    var valid =
+        historical()
+            .withAttestations(
+                Optional.of(new DecodedContentAttestation(C, 64, "decoded-\uD83D\uDE00")),
+                Optional.of(
+                    new MetadataStructureAttestation(
+                        MetadataStructureAttestation.Kind.ROOT, "parser-\uD83D\uDE00")));
+    assertEquals(valid, CanonicalContentRecords.decode(CanonicalContentRecords.encode(valid)));
+  }
 }

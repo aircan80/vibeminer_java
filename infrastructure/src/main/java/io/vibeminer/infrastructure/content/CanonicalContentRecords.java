@@ -93,6 +93,8 @@ public final class CanonicalContentRecords {
   }
 
   private static void text(DataOutputStream out, String value) throws IOException {
+    if (!StandardCharsets.UTF_8.newEncoder().canEncode(value))
+      throw invalid("Canonical proof text must be lossless UTF8", null);
     var bytes = value.getBytes(StandardCharsets.UTF_8);
     if (bytes.length > 16384) throw invalid("Oversized canonical proof field", null);
     out.writeInt(bytes.length);

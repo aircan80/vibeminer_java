@@ -27,6 +27,11 @@ public record MetadataRepairObservation(
     Objects.requireNonNull(actualTransfer);
     Objects.requireNonNull(decodedAttestation);
     Objects.requireNonNull(structuralAttestation);
+    var namespace = originalProof.originalAlias().source().namespace();
+    if (!namespace.equals("wow.root.tsfm.v1v2") && !namespace.equals("tact.install.v1"))
+      throw new ContentClaimException(
+          ContentClaimException.Code.UNSUPPORTED_REUSE,
+          "Metadata repair observations support only ROOT and INSTALL");
     var tuple = originalProof.originalAlias().source().immutableSourceKey().split(";", -1);
     var kind =
         originalProof.originalAlias().source().namespace().equals("wow.root.tsfm.v1v2")

@@ -40,6 +40,7 @@ public final class SqliteMetadataAssociationRepository implements MetadataAssoci
   public MetadataBuildAssociation attach(
       MetadataBuildAssociation association, RetentionScope scope, CancellationToken cancellation) {
     Objects.requireNonNull(association);
+    requireLegacyKind(association.declaration().kind());
     Objects.requireNonNull(scope);
     Objects.requireNonNull(cancellation);
     cancellation.throwIfCancellationRequested();
@@ -149,6 +150,7 @@ public final class SqliteMetadataAssociationRepository implements MetadataAssoci
       String snapshotId, MetadataStructureAttestation.Kind kind, CancellationToken cancellation) {
     BuildObjectReference.validateSnapshotId(snapshotId);
     Objects.requireNonNull(kind);
+    requireLegacyKind(kind);
     Objects.requireNonNull(cancellation);
     cancellation.throwIfCancellationRequested();
     ready();
@@ -370,5 +372,11 @@ public final class SqliteMetadataAssociationRepository implements MetadataAssoci
   private static ContentClaimException fail(
       ContentClaimException.Code code, String message, Throwable cause) {
     return new ContentClaimException(code, message, cause);
+  }
+
+  private static void requireLegacyKind(MetadataStructureAttestation.Kind kind) {
+    if (kind != MetadataStructureAttestation.Kind.ROOT
+        && kind != MetadataStructureAttestation.Kind.INSTALL)
+      throw fail(UNSUPPORTED_REUSE, "Metadata associations support only ROOT and INSTALL", null);
   }
 }

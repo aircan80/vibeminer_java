@@ -204,17 +204,30 @@ public final class MetadataContentAcquisition {
         switch (request.kind()) {
           case ROOT -> "wow.root.tsfm.v1v2";
           case INSTALL -> "tact.install.v1";
+          case ENCODING -> "tact.encoding.v1";
+          case DOWNLOAD -> "tact.download.v1v2v3";
+          case DOWNLOAD_SIZE -> "tact.download-size.v1";
         };
     var tuple = source.immutableSourceKey().split(";", -1);
     if (!source.namespace().equals(namespace)
         || tuple.length != 4
         || !tuple[0].equals(request.slot().contentKey())
         || !tuple[1].equals(request.requestedEncodingKey())
+        || !positiveCanonicalLength(tuple[2])
         || !tuple[3].equals(Long.toString(request.requestedEncodedBytes()))
         || request.declaredDecodedBytes().isPresent()
             && !tuple[2].equals(Long.toString(request.declaredDecodedBytes().getAsLong())))
       throw failure(
           INTEGRITY_FAILURE, "Metadata source identity disagrees with exact requested declaration");
+  }
+
+  private static boolean positiveCanonicalLength(String value) {
+    if (!value.matches("[1-9][0-9]{0,18}")) return false;
+    try {
+      return Long.parseLong(value) > 0;
+    } catch (NumberFormatException overflow) {
+      return false;
+    }
   }
 
   private static void check(

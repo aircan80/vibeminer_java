@@ -32,6 +32,11 @@ public record MetadataRepairPlan(
     Objects.requireNonNull(cost);
     Objects.requireNonNull(issuedAt);
     Objects.requireNonNull(expiresAt);
+    if (request.kind() != MetadataStructureAttestation.Kind.ROOT
+        && request.kind() != MetadataStructureAttestation.Kind.INSTALL)
+      throw new ContentClaimException(
+          ContentClaimException.Code.UNSUPPORTED_REUSE,
+          "Metadata repair supports only ROOT and INSTALL");
     String namespace =
         request.kind() == MetadataStructureAttestation.Kind.ROOT
             ? "wow.root.tsfm.v1v2"

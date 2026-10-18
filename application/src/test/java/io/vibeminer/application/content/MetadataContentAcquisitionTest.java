@@ -480,6 +480,122 @@ class MetadataContentAcquisitionTest {
     assertEquals(0, repository.finishes);
   }
 
+  @Test
+  void completeManifestKindsUseExactSourceNamespaceAndCanonicalWorkerLifecycle() {
+    var namespaces =
+        Map.of(
+            "ENCODING",
+            "tact.encoding.v1",
+            "DOWNLOAD",
+            "tact.download.v1v2v3",
+            "DOWNLOAD_SIZE",
+            "tact.download-size.v1");
+    for (var entry : namespaces.entrySet()) {
+      repository.events.clear();
+      repository.proof = null;
+      var kind = MetadataStructureAttestation.Kind.valueOf(entry.getKey());
+      var declaration =
+          new MetadataContentRequest(
+              request.build(),
+              request.configuration(),
+              kind,
+              request.slot(),
+              E,
+              80,
+              OptionalLong.of(100));
+      var source = new ResolvedSourceIdentity(entry.getValue(), C + ";" + E + ";100;80", "full-v1");
+      var alias =
+          new VerifiedSourceAlias(
+              source,
+              full.object(),
+              new SourceVerificationEvidence(
+                  "full-v1", "https://example.test/data", java.time.Instant.EPOCH));
+      var prospective =
+          new MetadataContentProof(
+              alias,
+              E,
+              C,
+              OptionalLong.of(100),
+              Optional.of(new DecodedContentAttestation(C, 100, "full-md5-v1")),
+              Optional.empty());
+      var complete =
+          prospective.withAttestations(
+              prospective.decodedAttestation(),
+              Optional.of(new MetadataStructureAttestation(kind, "parser-v1")));
+      var actual =
+          new MetadataContentAcquisition(repository)
+              .acquire(
+                  declaration,
+                  source,
+                  Optional::empty,
+                  (observer, token) -> {
+                    observer.beforePromotion(prospective, token);
+                    observer.afterStructureValidation(complete, token);
+                    return alias;
+                  },
+                  (retained, observer, token) -> fail("No retained object"),
+                  CancellationToken.none());
+      assertEquals(alias, actual);
+      assertEquals("complete", repository.events.getLast());
+      repository.events.clear();
+      assertThrows(
+          ContentClaimException.class,
+          () ->
+              new MetadataContentAcquisition(repository)
+                  .acquire(
+                      declaration,
+                      full.originalAlias().source(),
+                      Optional::empty,
+                      (observer, token) -> fail("Wrong namespace cannot transfer"),
+                      (retained, observer, token) -> fail("Wrong namespace cannot replay"),
+                      CancellationToken.none()));
+      assertTrue(repository.events.isEmpty());
+    }
+  }
+
+  @Test
+  void unknownRequestedDecodedLengthStillRequiresCanonicalPositiveSourceLengthBeforeReserve() {
+    for (var kind : MetadataStructureAttestation.Kind.values()) {
+      String namespace =
+          switch (kind) {
+            case ROOT -> "wow.root.tsfm.v1v2";
+            case INSTALL -> "tact.install.v1";
+            case ENCODING -> "tact.encoding.v1";
+            case DOWNLOAD -> "tact.download.v1v2v3";
+            case DOWNLOAD_SIZE -> "tact.download-size.v1";
+          };
+      var declaration =
+          new MetadataContentRequest(
+              request.build(),
+              request.configuration(),
+              kind,
+              request.slot(),
+              E,
+              80,
+              OptionalLong.empty());
+      for (var invalid : List.of("0", "-1", "", "text", "01", "9223372036854775808")) {
+        repository.events.clear();
+        var source =
+            new ResolvedSourceIdentity(namespace, C + ";" + E + ";" + invalid + ";80", "v1");
+        var failure =
+            assertThrows(
+                ContentClaimException.class,
+                () ->
+                    new MetadataContentAcquisition(repository)
+                        .acquire(
+                            declaration,
+                            source,
+                            Optional::empty,
+                            (observer, token) -> fail("Invalid decoded source cannot transfer"),
+                            (retained, observer, token) ->
+                                fail("Invalid decoded source cannot replay"),
+                            CancellationToken.none()));
+        assertEquals(ContentClaimException.Code.INTEGRITY_FAILURE, failure.code());
+        assertTrue(repository.events.isEmpty());
+      }
+    }
+  }
+
   VerifiedSourceAlias run(MetadataContentAcquisition.Transfer transfer) {
     return new MetadataContentAcquisition(repository)
         .acquire(

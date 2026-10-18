@@ -216,6 +216,11 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
 
   @Override
   public CompletionStage<MetadataRepairResult> execute(MetadataRepairPlan issued) {
+    if (issued != null
+        && issued.request().kind() != MetadataStructureAttestation.Kind.ROOT
+        && issued.request().kind() != MetadataStructureAttestation.Kind.INSTALL)
+      return CompletableFuture.failedFuture(
+          failure(UNSUPPORTED_REUSE, "Metadata repair supports only ROOT and INSTALL"));
     RepairFlight flight;
     var subscriber = new CompletableFuture<MetadataRepairResult>();
     synchronized (this) {

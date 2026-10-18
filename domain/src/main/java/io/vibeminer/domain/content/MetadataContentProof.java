@@ -85,6 +85,9 @@ public record MetadataContentProof(
     return switch (alias.source().namespace()) {
       case "wow.root.tsfm.v1v2" -> MetadataStructureAttestation.Kind.ROOT;
       case "tact.install.v1" -> MetadataStructureAttestation.Kind.INSTALL;
+      case "tact.encoding.v1" -> MetadataStructureAttestation.Kind.ENCODING;
+      case "tact.download.v1v2v3" -> MetadataStructureAttestation.Kind.DOWNLOAD;
+      case "tact.download-size.v1" -> MetadataStructureAttestation.Kind.DOWNLOAD_SIZE;
       default ->
           throw new IllegalArgumentException("Unsupported original metadata source namespace");
     };

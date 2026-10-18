@@ -14,6 +14,12 @@ public record MetadataRepairAudit(
   public MetadataRepairAudit {
     Objects.requireNonNull(attemptId);
     Objects.requireNonNull(issued);
+    var kind = issued.request().kind();
+    if (kind != io.vibeminer.domain.content.MetadataStructureAttestation.Kind.ROOT
+        && kind != io.vibeminer.domain.content.MetadataStructureAttestation.Kind.INSTALL)
+      throw new ContentClaimException(
+          ContentClaimException.Code.UNSUPPORTED_REUSE,
+          "Metadata repair audits support only ROOT and INSTALL");
     Objects.requireNonNull(begunAt);
     events = List.copyOf(events);
     if (events.size() > 4) throw new IllegalArgumentException("Repair audit history exceeds bound");

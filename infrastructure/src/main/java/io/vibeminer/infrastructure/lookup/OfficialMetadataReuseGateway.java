@@ -74,6 +74,7 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
     Objects.requireNonNull(budgets);
     Objects.requireNonNull(cancellation);
     cancellation.throwIfCancellationRequested();
+    requireLegacyKind(kind);
     requireConfigurationOrigin(build, retainedConfiguration);
     try (var lease = store.openRead(retainedConfiguration.object().digest(), cancellation)) {
       return readConfigurationDeclaration(
@@ -94,6 +95,7 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
   private void validateDeclarationInternal(
       MetadataDeclaration declaration, LookupBudgets budgets, CancellationToken cancellation) {
     ensureOpen();
+    requireLegacyKind(declaration.kind());
     try (var lease = store.openRead(declaration.configuration().object().digest(), cancellation)) {
       validateConfiguration(declaration, budgets, cancellation, lease);
     }
@@ -195,6 +197,7 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
     Objects.requireNonNull(cancellation);
     cancellation.throwIfCancellationRequested();
     var declaration = plan.declaration();
+    requireLegacyKind(declaration.kind());
     var actual = plan.actualRepresentation();
     requireSupported(actual, declaration.kind());
     // Keep the exact configuration protected until the complete actual representation replay ends.
@@ -486,5 +489,11 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
   public void close() {
     closed = true;
     roots.close();
+  }
+
+  private static void requireLegacyKind(MetadataStructureAttestation.Kind kind) {
+    if (kind != MetadataStructureAttestation.Kind.ROOT
+        && kind != MetadataStructureAttestation.Kind.INSTALL)
+      throw failure(UNSUPPORTED_REUSE, "Local metadata reuse supports only ROOT and INSTALL");
   }
 }
