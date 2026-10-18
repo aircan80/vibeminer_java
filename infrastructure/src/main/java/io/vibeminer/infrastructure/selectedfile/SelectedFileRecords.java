@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.*;
 
 /** Bounded, versioned typed metadata only. No Java serialization and no game-payload field. */
-final class SelectedFileRecords {
+public final class SelectedFileRecords {
   static final int MAX_BYTES = 65536;
 
   private SelectedFileRecords() {}
@@ -51,7 +51,7 @@ final class SelectedFileRecords {
     }
   }
 
-  static byte[] representation(ContentRepresentation value) {
+  public static byte[] representation(ContentRepresentation value) {
     return encode(
         out -> {
           text(out, "VMER2");
@@ -59,7 +59,7 @@ final class SelectedFileRecords {
         });
   }
 
-  static ContentRepresentation representation(byte[] bytes) {
+  public static ContentRepresentation representation(byte[] bytes) {
     return decode(
         bytes,
         in -> {
