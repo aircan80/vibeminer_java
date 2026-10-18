@@ -2,13 +2,11 @@ package io.vibeminer.infrastructure.buildretention;
 
 import java.sql.*;
 
-/**
- * Proposed schema17 tables. Explicit test installation only; no catalog migration/runtime wiring.
- */
-final class BuildRetentionSchema {
+/** Durable retention ledger tables installed by the shared catalog migration. */
+public final class BuildRetentionSchema {
   private BuildRetentionSchema() {}
 
-  static void install(Connection connection) throws SQLException {
+  public static void install(Connection connection) throws SQLException {
     try (var statement = connection.createStatement()) {
       statement.execute(
           """

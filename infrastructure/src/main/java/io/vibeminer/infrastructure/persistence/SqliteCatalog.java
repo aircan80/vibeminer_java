@@ -14,7 +14,7 @@ import static io.vibeminer.application.catalog.CatalogException.Code.*;
 
 /** Single schema/migration owner and connection factory for app-owned metadata and object references. */
 public final class SqliteCatalog {
-    public static final int SCHEMA_VERSION = 15;
+    public static final int SCHEMA_VERSION = 18;
     private final Path database;
 
     public SqliteCatalog(Path database) { this.database = database.toAbsolutePath().normalize(); }
@@ -71,6 +71,9 @@ public final class SqliteCatalog {
                 io.vibeminer.infrastructure.discoveryhistory.DiscoveryHistorySchema.migrate(connection);
                 io.vibeminer.infrastructure.discoveryhistory.BuildLibrarySchema.migrate(connection);
                 io.vibeminer.infrastructure.buildopening.BuildMetadataAdmissionSql.migrate(connection);
+                io.vibeminer.infrastructure.encoding.EncodingLookupSchema.migrate(connection);
+                io.vibeminer.infrastructure.buildretention.BuildRetentionSchema.install(connection);
+                io.vibeminer.infrastructure.inventory.InventorySchema.migrate(connection);
                 statement.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                 statement.execute("COMMIT");
             } catch (SQLException | RuntimeException failure) {

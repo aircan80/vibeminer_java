@@ -504,7 +504,7 @@ class BuildMetadataAdmissionRepositoryTest {
           var s = c.createStatement();
           var r = s.executeQuery("PRAGMA user_version")) {
         assertTrue(r.next());
-        assertEquals(15, r.getInt(1));
+        assertEquals(SqliteCatalog.SCHEMA_VERSION, r.getInt(1));
       }
       assertTrue(
           f.repository.find(f.facts.reference(), "enUS", f.facts.scopeRevision(), NONE).isEmpty());

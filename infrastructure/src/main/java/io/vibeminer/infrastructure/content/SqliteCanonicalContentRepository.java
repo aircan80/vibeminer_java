@@ -61,31 +61,10 @@ public final class SqliteCanonicalContentRepository implements CanonicalContentR
     aliases = new SqliteBuildObjectCatalog(catalog, store);
   }
 
-  /** One SQLite-only fence, admitted only by the newly opened exclusive store capability. */
+  /** Compatibility entry point for the one shared, exclusive content startup transaction. */
   public static void recoverAtStartup(
       SqliteCatalog catalog, FileObjectStore.StoreSession capability) {
-    Objects.requireNonNull(catalog);
-    Objects.requireNonNull(capability);
-    capability.recoverAtStartup(
-        () -> {
-          try (var connection = catalog.connect()) {
-            connection.setAutoCommit(false);
-            try {
-              recoverInStartupTransaction(connection, capability);
-              connection.commit();
-            } catch (SQLException | RuntimeException failure) {
-              try {
-                connection.rollback();
-              } catch (SQLException suppressed) {
-                failure.addSuppressed(suppressed);
-              }
-              throw failure;
-            }
-          } catch (SQLException failure) {
-            throw new ContentClaimException(
-                STORAGE_UNAVAILABLE, "Cannot recover canonical content startup", failure);
-          }
-        });
+    SqliteContentStartupRecovery.recoverAtStartup(catalog, capability);
   }
 
   /** SQL extraction for the common unused-session startup fence; never commits. */
