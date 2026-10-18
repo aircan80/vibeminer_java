@@ -5,6 +5,7 @@ import java.util.Objects;
 public final class BuildLibraryException extends RuntimeException {
   public enum Code {
     INVALID_REQUEST,
+    STALE_CURSOR,
     NOT_FOUND,
     BUSY,
     CLOSED,
