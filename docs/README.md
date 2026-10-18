@@ -7,6 +7,7 @@ These versioned documents are the formal project specifications. A clean checkou
 - [CDN discovery and acquisition](CDN.md)
 - [Recorded official metadata evidence](PROTOCOL-EVIDENCE.md)
 - [Shared storage and historical archives](STORAGE.md)
+- [Proposed encoded-file retention proof boundary](ENCODED-RETENTION.md)
 - [WoW formats, schemas and research search](FORMATS.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
