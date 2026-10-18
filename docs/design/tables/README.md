@@ -20,6 +20,6 @@ All three prototypes were rendered in Firefox at a 1440 × 1000 outer window, ch
 - [Workbench screenshot](screenshots/workbench.png)
 - [Trail screenshot](screenshots/trail.png)
 
-Explorer refinement ([#108](https://github.com/aircan80/vibeminer/issues/108)): the desktop inspector is 340 px wide. Selecting a table in the left catalogue starts a fresh breadcrumb/history; following linked fields extends that trail. Option A is the current preference, pending further review.
+Explorer refinement ([#108](https://github.com/aircan80/vibeminer/issues/108)): the desktop inspector is 340 px wide. Selecting a table in the left catalogue starts a fresh breadcrumb/history; following linked fields extends that trail. Explorer A is the preferred table layout; the selected application navigation is the [paired top-navigation design](../top-navigation/README.md).
 
 Navigation refinement ([#110](https://github.com/aircan80/vibeminer/issues/110)): Explorer retains the application sidebar with Tables selected. Its table catalogue is a separate inner pane; the header and table breadcrumb trail keep their existing responsibilities.
