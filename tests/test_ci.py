@@ -1,5 +1,10 @@
 import importlib.util
 import json
+import fnmatch
+import os
+import re
+import subprocess
+import textwrap
 from pathlib import Path
 import tempfile
 import stat
@@ -252,6 +257,87 @@ class BuildAutomationTests(unittest.TestCase):
         (output / "unexpected.txt").write_text("extra")
         with self.assertRaisesRegex(ValueError, "Unexpected"):
             ci.verify_release(output, "0.1.0", SHA, targets={"windows-x64"})
+
+
+class NativeMiningWorkflowTests(unittest.TestCase):
+    WORKFLOW = Path(__file__).parents[1] / ".github/workflows/build.yml"
+    STEP = "Check actual build mining at both sizes and text scales"
+
+    def mining_step(self):
+        workflow = self.WORKFLOW.read_text()
+        match = re.search(r"      - name: " + re.escape(self.STEP) +
+                          r"\n        if: runner.os == 'Linux'\n        run: \|\n((?:          .*\n|\n)+)", workflow)
+        self.assertIsNotNone(match, "Linux actual mining journey must be a native CI step")
+        self.assertLess(workflow.index("check packageDistribution verifyDistribution"), match.start())
+        self.assertIn("dependsOn '"+":bootstrap:installDist"+"'", (self.WORKFLOW.parents[2] / "build.gradle").read_text())
+        return textwrap.dedent(match.group(1))
+
+    def execute_step(self, fail=False):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        (root / "bin").mkdir()
+        (root / "tools/ui").mkdir(parents=True)
+        # Model process boundaries, not Java behavior: actual runner must receive the isolated
+        # DISPLAY and every viewport/scale, and a failed native process must fail the CI step.
+        scripts = {
+            "bin/timeout": '#!/bin/bash\n[[ "$1" == --kill-after=10s && "$2" == 180s ]] || exit 31\nshift 2\nexec "$@"\n',
+            "bin/xvfb-run": '#!/bin/bash\n[[ "$1" == -a ]] || exit 32\nshift\nexport DISPLAY=:471\nexec "$@"\n',
+            "tools/ui/run-build-mining-review.sh": '#!/bin/bash\nexec python3 - "$@" <<\'PYPROBE\'\nimport json,os,sys\nwith open(os.environ["MINING_RECORD"],"a") as out: out.write(json.dumps({"args":sys.argv[1:],"display":os.environ.get("DISPLAY")})+"\\n")\nprint("Authored mining seed and restart proof")\nif os.environ.get("MINING_FAIL"): sys.exit(19)\nPYPROBE\n',
+        }
+        for name, content in scripts.items():
+            path = root / name
+            path.write_text(content)
+            path.chmod(0o755)
+        record = root / "calls.jsonl"
+        env = dict(os.environ, PATH=str(root / "bin") + os.pathsep + os.environ["PATH"],
+                   MINING_RECORD=str(record))
+        if fail:
+            env["MINING_FAIL"] = "1"
+        result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", self.mining_step()],
+                                cwd=root, env=env, capture_output=True, text=True, timeout=10)
+        calls = [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
+        return root, result, calls
+
+    def test_mining_ci_runs_all_four_isolated_seed_restart_cases_and_retains_proof_text(self):
+        root, result, calls = self.execute_step()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(4, len(calls))
+        self.assertEqual({("1440", "1100", "100"), ("1440", "1100", "200"),
+                          ("1280", "800", "100"), ("1280", "800", "200")},
+                         {tuple(call["args"][2:]) for call in calls})
+        for call in calls:
+            self.assertEqual(":471", call["display"])
+            self.assertEqual(call["display"], call["args"][0])
+            output = root / call["args"][1]
+            self.assertIn("Authored mining seed and restart proof", (output / "results.txt").read_text())
+
+    def test_mining_ci_native_failure_propagates_instead_of_being_hidden_by_tee(self):
+        _, result, calls = self.execute_step(fail=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(1, len(calls))
+
+    def test_ui_artifact_globs_exclude_mining_payloads_and_compiled_tools(self):
+        workflow = self.WORKFLOW.read_text()
+        artifact = workflow.split("name: UI-review-${{ matrix.target }}", 1)[1]
+        block = artifact.split("          path: |\n", 1)[1].split("          if-no-files-found:", 1)[0]
+        patterns = [line.strip() for line in block.splitlines() if line.strip()]
+        def uploaded(path):
+            included = False
+            for pattern in patterns:
+                if pattern.startswith("!"):
+                    if fnmatch.fnmatchcase(path, pattern[1:]):
+                        included = False
+                elif fnmatch.fnmatchcase(path, pattern):
+                    included = True
+            return included
+        prefix = "build/ui-review/build-mining/1440x1100-100pct/"
+        for name in ["seed/atlas-mining.png", "restart/atlas-mining.png", "results.txt"]:
+            self.assertTrue(uploaded(prefix + name), name)
+        for name in ["authored-data/catalog.sqlite", "authored-data/mining-review-complete.txt",
+                     "authored-data/content/objects/proof.txt", "tool-classes/Fixture.class",
+                     "tool-classes/diagnostic.txt"]:
+            self.assertFalse(uploaded(prefix + name), name)
 
 
 if __name__ == "__main__":

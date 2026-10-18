@@ -68,3 +68,5 @@ Packages are initially **unsigned and not notarized**. OS trust prompts and sign
 ## UI visual review
 
 Use [Atlas](mockups/atlas/index.html), the [UI specification](docs/UI.md) and matching-size screenshots. Capture only the application or an explicitly isolated virtual display. Review visual fidelity alongside keyboard/focus, scaling, empty/loading/error states and exact workspace context. See the portable capture tool under `tools/ui/` when present.
+
+Linux native CI includes a fifteenth UI workflow for the real build-mining journey. After the installed distribution is built, it runs `tools/ui/run-build-mining-review.sh` on an explicitly isolated display at 1440×1100 and 1280×800, each at 100% and 200% text scale. Each case runs seed and restart in separate JVMs, with a 180-second outer bound. The fixture uses authored local HTTP responses and the actual application services; this is not an official-CDN compatibility check. The UI artifact includes screenshots and result text, while excluding authored catalogs/content and compiled review tools.
