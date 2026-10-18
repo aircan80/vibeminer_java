@@ -27,14 +27,42 @@ class ItemNamesServiceTest {
         IllegalArgumentException.class,
         () ->
             new SparseNameLimits(
-                0, 131072, 4096, 4 << 20, 4 << 20, 131072, 4 << 20, 200000, 1000, 64L << 20, 65535,
-                16384, 65535, 32L << 20, 128L << 20, 100));
+                0,
+                131072,
+                4096,
+                4 << 20,
+                4 << 20,
+                131072,
+                4 << 20,
+                200000,
+                1000,
+                64L << 20,
+                65535,
+                16384,
+                65535,
+                32L << 20,
+                128L << 20,
+                100));
     assertThrows(
         IllegalArgumentException.class,
         () ->
             new SparseNameLimits(
-                1000000, 131072, 4096, 4 << 20, 4 << 20, 131072, 4 << 20, 200000, 1000, 64L << 20,
-                65536, 16384, 65535, 32L << 20, 128L << 20, 100));
+                1000000,
+                131072,
+                4096,
+                4 << 20,
+                4 << 20,
+                131072,
+                4 << 20,
+                200000,
+                1000,
+                64L << 20,
+                65536,
+                16384,
+                65535,
+                32L << 20,
+                128L << 20,
+                100));
   }
 
   @Test
@@ -261,12 +289,118 @@ class ItemNamesServiceTest {
     var later = Instant.ofEpochSecond(100);
     var observed =
         new ItemNamesRequest(
-            ItemNamesFixture.item(later),
+            pair.item(),
             ItemNamesFixture.names(later).evidence().association().descriptor(),
             "enUS",
             limits);
     try (var service = new DefaultItemNamesService(fake, Runnable::run)) {
       assertEquals(pair, service.prepare(observed).toCompletableFuture().join());
+    }
+  }
+
+  @Test
+  void namesPreparationCannotSubstituteOriginalItemProvenance() {
+    var e = pair.item().evidence();
+    var a = e.association();
+    var rep = a.representation();
+    var receipt = rep.sourceReceipt();
+    var recaptured =
+        new io.vibeminer.domain.selectedfile.EncodedSourceReceipt(
+            receipt.kind(),
+            receipt.actualResourceUrl(),
+            receipt.resourceKey(),
+            receipt.parentWholeBytes(),
+            receipt.childOffset(),
+            receipt.childEncodedBytes(),
+            Instant.ofEpochSecond(30),
+            receipt.payloadRequestCount(),
+            receipt.payloadResponseBytes(),
+            receipt.observationDigest(),
+            receipt.archiveMapping());
+    var changedRepresentation =
+        new io.vibeminer.domain.selectedfile.ContentRepresentation(
+            rep.slot(), rep.encoded(), rep.scope(), recaptured);
+    var changedAssociation =
+        new io.vibeminer.domain.selectedfile.SelectedFileAssociation(
+            a.descriptor(), a.configuration(), a.root(), a.proof(), changedRepresentation);
+    var windows = new ArrayList<>(e.windows());
+    windows.set(
+        0,
+        new ItemProjectionEvidence.DecodedWindow(
+            windows.getFirst().offset(), windows.getFirst().length() + 1));
+    var c = e.chunks().getFirst();
+    var changedChunk =
+        new ItemProjectionEvidence.ChunkAttestation(
+            c.ordinal(),
+            c.encodedOffset(),
+            c.encodedBytes(),
+            c.encodedMd5(),
+            c.decodedOffset(),
+            c.decodedBytes(),
+            "substituted-decoder");
+    var variants =
+        List.of(
+            new ItemProjectionEvidence(
+                changedAssociation,
+                e.localVerification(),
+                e.chunks(),
+                e.windows(),
+                e.fullDecoded()),
+            new ItemProjectionEvidence(
+                a, e.localVerification(), e.chunks(), windows, e.fullDecoded()),
+            new ItemProjectionEvidence(
+                a, e.localVerification(), List.of(changedChunk), e.windows(), e.fullDecoded()),
+            new ItemProjectionEvidence(
+                a,
+                new ItemProjectionEvidence.LocalVerification(
+                    e.localVerification().object(),
+                    e.localVerification().verifiedAt(),
+                    "changed-local-verifier"),
+                e.chunks(),
+                e.windows(),
+                e.fullDecoded()),
+            new ItemProjectionEvidence(
+                a,
+                e.localVerification(),
+                e.chunks(),
+                e.windows(),
+                Optional.of(
+                    new io.vibeminer.domain.content.DecodedContentAttestation(
+                        a.descriptor().association().contentKey(),
+                        a.proof().declaredDecodedBytes().orElseThrow(),
+                        "unrequested-full-upgrade"))));
+    for (var evidence : variants) {
+      var changedItem =
+          new PreparedItemProjection(pair.item().definition(), evidence, pair.item().coverage());
+      var fake = new Fake();
+      fake.prepared = new PreparedItemNames(changedItem, pair.names());
+      try (var service = new DefaultItemNamesService(fake, Runnable::run)) {
+        assertEquals(ItemNamesException.Code.CORRUPT, code(service.prepare(request)));
+        assertEquals(ItemNamesException.Code.NOT_READY, code(service.lookup(fake.prepared, 101)));
+      }
+    }
+  }
+
+  @Test
+  void physicalVerificationTimeCanRefreshWithoutReplacingItemHistory() {
+    var e = pair.item().evidence();
+    var fresh =
+        new ItemProjectionEvidence(
+            e.association(),
+            new ItemProjectionEvidence.LocalVerification(
+                e.localVerification().object(),
+                Instant.ofEpochSecond(20),
+                e.localVerification().verifierRevision()),
+            e.chunks(),
+            e.windows(),
+            e.fullDecoded());
+    var refreshedItem =
+        new PreparedItemProjection(pair.item().definition(), fresh, pair.item().coverage());
+    var fake = new Fake();
+    fake.prepared = new PreparedItemNames(refreshedItem, pair.names());
+    try (var service = new DefaultItemNamesService(fake, Runnable::run)) {
+      assertEquals(fake.prepared, service.prepare(request).toCompletableFuture().join());
+      assertEquals(e.association(), fake.prepared.item().evidence().association());
     }
   }
 

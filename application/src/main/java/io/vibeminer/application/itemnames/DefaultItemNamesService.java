@@ -34,8 +34,7 @@ public final class DefaultItemNamesService implements ItemNamesService {
             var result = backend.prepare(request, token);
             token.throwIfCancellationRequested();
             if (result == null
-                || !result.item().artifactId().equals(request.item().artifactId())
-                || !result.item().coverage().equals(request.item().coverage())
+                || !sameSelectedItem(request.item(), result.item())
                 || !result.item().sourceRole().equals(request.item().sourceRole())
                 || !result.snapshotId().equals(request.item().snapshotId())
                 || !result.locale().equals(request.locale())
@@ -216,6 +215,23 @@ public final class DefaultItemNamesService implements ItemNamesService {
         throw error(LIMIT_EXCEEDED, "Consumed Sparse chunks exceeded extraction bounds");
       decoded += chunk.decodedBytes();
     }
+  }
+
+  private static boolean sameSelectedItem(
+      PreparedItemProjection requested, PreparedItemProjection returned) {
+    var before = requested.evidence();
+    var after = returned.evidence();
+    return requested.definition().equals(returned.definition())
+        && requested.coverage().equals(returned.coverage())
+        && before.association().equals(after.association())
+        && before.localVerification().object().equals(after.localVerification().object())
+        && before
+            .localVerification()
+            .verifierRevision()
+            .equals(after.localVerification().verifierRevision())
+        && before.chunks().equals(after.chunks())
+        && before.windows().equals(after.windows())
+        && before.fullDecoded().equals(after.fullDecoded());
   }
 
   private static void validateRow(
