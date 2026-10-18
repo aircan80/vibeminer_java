@@ -27,10 +27,6 @@ public final class OfficialBootstrapArtifactGateway implements BootstrapArtifact
   private static final TactConfigParser.Limits CONFIG_LIMITS =
       new TactConfigParser.Limits(
           1024 * 1024, 8192, 16384, 256, MAXIMUM_DECODED_BYTES, MAXIMUM_ENCODED_BYTES);
-  private static final BlteDecoder.Limits BLTE_LIMITS =
-      new BlteDecoder.Limits(MAXIMUM_ENCODED_BYTES, MAXIMUM_DECODED_BYTES, 4096);
-  private static final InstallManifestParser.Limits INSTALL_LIMITS =
-      new InstallManifestParser.Limits(MAXIMUM_DECODED_BYTES, 50000, 512, 16384);
   private final ObjectStore store;
   private final BootstrapTransfer transport;
   private final Clock clock;
@@ -276,34 +272,8 @@ public final class OfficialBootstrapArtifactGateway implements BootstrapArtifact
       String encodingKey,
       String contentKey,
       CancellationToken token) {
-    try {
-      var decoded =
-          new BlteDecoder()
-              .decode(
-                  encoded,
-                  decodedSize,
-                  HexFormat.of().parseHex(encodingKey),
-                  HexFormat.of().parseHex(contentKey),
-                  BLTE_LIMITS,
-                  token::isCancellationRequested);
-      var manifest =
-          new InstallManifestParser()
-              .parse(decoded, INSTALL_LIMITS, token::isCancellationRequested);
-      long relationships = 0;
-      for (int i = 0; i < manifest.entries().size(); i++) {
-        token.throwIfCancellationRequested();
-        for (var tag : manifest.tags())
-          if (tag.includesEntry(i) && ++relationships > 250000)
-            throw failure(
-                BootstrapException.Reason.LIMIT,
-                "Install tag memberships exceed inspection budget");
-      }
-      return manifest;
-    } catch (BlteException error) {
-      throw protocol(error.reason().name(), error);
-    } catch (InstallManifestException error) {
-      throw protocol(error.reason().name(), error);
-    }
+    return new InstallMetadataVerifier()
+        .decodeAndParse(encoded, decodedSize, encodingKey, contentKey, token);
   }
 
   private AcquiredBytes fetch(CdnRequest request, CancellationToken token) {
