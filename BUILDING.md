@@ -38,6 +38,8 @@ Each package is built on its matching OS/architecture. Cross-compiling a runtime
   -PdistributionTarget=linux-x64
 ```
 
+The macOS Intel package selects OpenGL with a software fallback (`prism.order=es2,sw`). Native CI diagnostics showed its virtual GPU aborting in Metal after OpenGL initialization failed; the software pipeline successfully rendered the same UI. Other targets keep their normal rendering selection. This compatibility setting is included in the distributed launcher and is tested by the same bundled GUI gate.
+
 On headless Linux wrap that command with `xvfb-run -a`. `packageDistribution` writes only package files to `build/distributions/<target>/`. `verifyDistribution` extracts the generated archive to a separate location and checks its actual bundled launcher/runtime and JavaFX smoke launch. These checks establish launchability, not a complete research workflow or full accessibility certification.
 
 CI collects the declared packages, verifies their file selection and writes SHA-256 checksums plus a build manifest containing target, version and exact commit. A complete Gradle bootstrap is required; partial wrappers/build files fail rather than silently skipping the app. Before a bootstrap exists, repository checks run but no application package or release is produced.

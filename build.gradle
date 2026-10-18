@@ -61,6 +61,9 @@ tasks.register('packageImage') {
                 '--app-version', nativePackageVersion.get(), '--vendor', 'VibeMiner', '--dest', imageRoot.get().asFile,
                 '--java-options', '--enable-native-access=ALL-UNNAMED',
                 '--add-modules', 'java.base,java.desktop,java.logging,java.net.http,java.sql,java.xml,jdk.unsupported,jdk.crypto.ec'
+            // Intel virtual GPUs can abort in Metal after OpenGL initialization fails.
+            // Preserve OpenGL acceleration where available, with software as the safe fallback.
+            if (hostTarget == 'macos-x64') args '--java-options', '-Dprism.order=es2,sw'
         }
         def result = packaging.result.get()
         logger.lifecycle(packaging.standardOutput.asText.get().trim())
