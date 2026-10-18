@@ -71,3 +71,15 @@ Tests are synthetic and deterministic; no live CDN CI. A later explicitly author
 ## Blockers and handoff
 
 The synthetic BLTE subset above exists; DB2 parser support and the exact useful WDC feature set remain unproven. One exact live BLTE object has passed verification; this does not establish general payload or DB2 compatibility. Resolve through the later bounded protocol/format spike before committing item-decoder acceptance. Pin actual upstream commits/licenses before reuse/distribution. Mining expert must validate item name/base-record dependencies and joins for the chosen build. Architect/storage must settle artifact versus membership keys, index publication and reader leases. These block semantic implementation promises, not initial discovery/raw metadata work.
+
+## Current configuration and install-manifest subset (#33, #35)
+
+`TactConfigParser` verifies full-byte configuration MD5 before strict UTF-8 interpretation and enforces byte, line, token and declared bootstrap limits. Unknown fields remain immutable metadata; duplicate assignments fail explicitly. Direct encoding/install bootstrap pairs retain CKey, EKey and decoded/encoded sizes separately. A CKey-only install entry requires encoding-table resolution and is unsupported by the initial direct-object workflow.
+
+`InstallManifestParser` supports decoded IN version 1 with 16-byte content keys. It bounds counts and names, validates terminated UTF-8, reads big-endian unsigned sizes and preserves MSB-first tag membership in immutable results. Entry names are metadata, never filesystem paths or proof of complete game-root membership. Eight synthetic tests and independent review passed; the exact [verified live object](PROTOCOL-EVIDENCE.md#first-verified-configuration-and-blte-object--2026-10-18) parsed as 274 entries and 31 tags. These parsers do not resolve arbitrary game files.
+
+## WDC5 header inspection foundation (#38)
+
+`protocol-db2` currently inspects only the mandatory 204-byte WDC5 prefix. This length is derived from the actual sequential fields in the [pinned DBCD reader](https://github.com/wowdev/DBCD/blob/e732093f8864240fc5884bd1bba6b02f3dfc0d56/DBCD.IO/Readers/WDC5Reader.cs), whose `HeaderSize = 200` constant does not include all bytes consumed through the section count. Flag identities were independently checked against the [matching flag definitions](https://github.com/wowdev/DBCD/blob/e732093f8864240fc5884bd1bba6b02f3dfc0d56/DBCD.IO/DB2Flags.cs).
+
+The header inspector bounds unsigned metadata, retains exact table/layout/schema identities and reports expected-identity mismatches and unsupported flags. Its result always identifies body validation, schema semantics and record decoding as unavailable or unverified. Strict UTF-8 and embedded-NUL rejection are deliberate limits of this supported subset, not claims about every upstream file. Eleven synthetic tests include every prefix truncation from zero through 203 bytes. No actual DB2 table has been acquired or validated by this increment; Item/ItemSparse, sparse strings, noninline IDs, field storage, copy/relationship sections and locale semantics remain separate work.
