@@ -238,13 +238,16 @@ public final class CaptureInstallWorkflow {
         CaptureAtlas.button(stage, "Settings").fire();
         CaptureAtlas.setCombo(CaptureAtlas.accessible(stage, "Application text scale"), "200%");
         CaptureAtlas.navigate(stage, "Archive");
-        reveal(stage, byId(stage, "install-entry-filter"));
         CaptureAtlas.later(() -> {
-            capture(stage, afterRestart ? "install-offline-entries-200pct-1280x800.png" : "install-retained-entries-200pct-1280x800.png");
-            CaptureAtlas.button(stage, "Settings").fire();
-            CaptureAtlas.setCombo(CaptureAtlas.accessible(stage, "Application text scale"), "100%");
-            CaptureAtlas.navigate(stage, "Archive");
-            if (afterRestart) otherBuildOffline(stage); else finish();
+            reveal(stage, byId(stage, "install-entry-filter"));
+            CaptureAtlas.later(() -> {
+                assertVisible(stage, byId(stage, "install-entry-filter"), "Scaled entry filter was not visible after scrolling");
+                capture(stage, afterRestart ? "install-offline-entries-200pct-1280x800.png" : "install-retained-entries-200pct-1280x800.png");
+                CaptureAtlas.button(stage, "Settings").fire();
+                CaptureAtlas.setCombo(CaptureAtlas.accessible(stage, "Application text scale"), "100%");
+                CaptureAtlas.navigate(stage, "Archive");
+                if (afterRestart) otherBuildOffline(stage); else finish();
+            });
         });
     }
 

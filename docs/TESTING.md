@@ -2,9 +2,15 @@
 
 Formalized test strategy. GitHub Issues records actual implementation and validation status.
 
-## Evidence and limits
+## Recorded delivery evidence and limits
 
-The application is being bootstrapped. Repository automation tests and Gradle tests do not by themselves establish real data support, visual quality or native release readiness. Record exact commands, source revision and runner/architecture for every validation claim. The mockup data is fictional.
+[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) at `42b8be9` has verified bundled-runtime packages for Windows x64, macOS ARM64, macOS x64 and Linux x64. Its tested product scope is Atlas metadata discovery and saved offline metadata workspaces. Package verification does not certify the unfinished research MVP, signing/notarization, all accessibility behaviors or all future dependencies.
+
+Post-release official product catalogue `971862b` and compact fix `5f1dfb0` are committed; final geometry verification passed. Delivered #31–#35 and #38 backend slices have deterministic fixture coverage for bounded BLTE/IN parsing, structural DB2 inspection, transport and shared acquisition. Separate [protocol evidence](PROTOCOL-EVIDENCE.md) records one small real BLTE/IN path; it does not establish arbitrary real-file decoding or item support.
+
+The #36 receipt/catalog refactor passed 40 focused tests and independent review. A clean committed checkout of `90dd952` passed all 188 Java tests plus Linux bundled SQLite/JavaFX launch checks. The #37 backend passed 19 scoped application/gateway checks and six lifecycle checks. Separate live evidence covers a tiny exact install scope; a real-service/SQLite/CAS two-JVM harness uses synthetic transport for deterministic UI checks. Final UI refinements passed two-JVM recapture; a full source check and Linux bundled-runtime SQLite/CAS/JavaFX package check also passed. New all-platform packages remain to validate. Full archive/DB2 acceptance remains outstanding.
+
+For each subsequent validation claim, record exact commands, source revision and runner/architecture. Preserve failed/unrun checks explicitly. Ordinary CI remains deterministic without live CDN or private working documents; mockup data remains fictional. The acceptance matrices below include requirements still to implement.
 
 ## Delivery discipline
 
@@ -30,7 +36,7 @@ Do not use arbitrary sleeps, real CDN responses, latest-build pointers, wall-clo
 
 ## Architecture enforcement alignment
 
-Architect coordination proposes five initial modules: domain; application depending on domain; desktop depending on application/domain; infrastructure implementing application/domain ports; bootstrap wiring desktop and infrastructure. Test that only bootstrap composes concrete adapters, domain/application have no JavaFX/JDBC/HTTP/filesystem dependencies, and desktop cannot reach concrete infrastructure. Package rules additionally keep parser logic free of HTTP/SQL/JavaFX before infrastructure is split. Later pure protocol-tact and format-wow, and infrastructure-http/storage/discovery/query modules, inherit these rules. Contract tests cover JobHandle cancellation/CompletionStage outcome/progress lifecycle and cursor pages bound to query/snapshot with completeness and provenance. Confirm final names against architect document before implementation.
+The implemented layers are domain; application depending on domain; desktop depending on application/domain; infrastructure implementing application/domain ports; and bootstrap composing concrete adapters. Pure protocol-tact and protocol-db2 modules inherit explicit bans on networking, persistence, JavaFX and application dependencies. Executable architecture tests enforce these restrictions. New format adapters must preserve them. Contract coverage expands with real use cases: cancellation/outcome lifecycles, source receipts, bounded queries and snapshot-bound cursors. The complete future job/paging contracts below are requirements, not claims that every interface already exists.
 
 ## First acceptance gate: foundation and runnable vertical shell
 
@@ -102,11 +108,11 @@ Treat CDN bytes, schemas, filenames, export names, remote metadata and optional 
 
 Pin dependencies/plugins, verify provenance/checksums as tooling permits, inventory licenses and redistributed natives/runtime assets, and run vulnerability checks with documented triage rather than treating tool silence as proof. Review release archives for private material, secrets, private working directories, synthetic-only labeling leaks and accidental downloaded game payloads. Diagnostics minimize usernames/absolute paths and never include credentials. Choose project and schema redistribution licenses before shipping.
 
-## Tooling validation still required
+## Tooling baseline and remaining validation
 
-- Select supported JDK/JavaFX/Gradle versions and vendor/license; verify jlink/jpackage, SQLite driver, required compression/native libraries and per-platform architecture support together. No version choice is certified by this plan.
+- Current build selects Java 25 and JavaFX 25.0.2 with the committed Gradle wrapper; alpha.1 establishes the four named packaged runtime targets. Keep vendor/runtime/dependency licenses inventoried and revalidate driver, codecs and native architectures as dependencies change.
 - Evaluate JUnit/property-test, architecture-rule, local HTTP and JavaFX UI harness candidates in a tiny branch/spike. Headless TestFX/Monocle is a candidate, not assumed compatibility; native JavaFX runs remain needed.
-- Agree Linux baseline/windowing/display runner, macOS Intel runner access and Windows installer prerequisites; define whether early CI uses runtime-image launch versus installer automation.
+- Retain the working four-platform package matrix and graphics fallback checks. Document Linux baseline/windowing support, distinguish image launch from installer automation, and retest affected platforms when graphics/runtime dependencies change.
 - Define empirical UI responsiveness, query/decode/memory and unique-storage budgets using representative bounded fixtures; measure before declaring numeric gates. No invented throughput target.
 - Define SQLite and object-store recovery ordering with architect/storage owner before crash tests become normative.
 - Select dependency/license/vulnerability scanning tools and release signing availability. A skipped check must stay visible.

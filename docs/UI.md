@@ -74,3 +74,20 @@ Compared against Atlas: ivory/teal palette, serif headings, paper panels and res
 The actual JavaFX [saved-workspace catalog at 1280×800](design/javafx-saved-workspaces-1280x800.png) and [offline reopened locale at 200%](design/javafx-saved-workspace-200pct-1280x800.png) were reviewed against Atlas. A versioned two-process `CaptureWorkspaces` harness exercises actual SQLite save/restart with synthetic sources and rejects any discovery call. It also verifies saved/raw-source context isolation, locale-specific inspection, invalid/valid rename, cancelled/confirmed removal and preservation of the other saved workspace.
 
 The tested slice passed visual/usability review. It preserves exact context and clearly identifies metadata-only coverage. At 200%, long picker labels can ellipsize and fixed context chrome leaves a smaller scrollable research area; the full selected source and locale remain visible. Compact research cards and a shorter save action corrected layout issues found in matching-size captures. This is not full-platform accessibility or complete research-workflow certification.
+
+### Published products and build selection (#14)
+
+The [actual build catalog at 1280×800](design/javafx-product-builds-1280x800.png) was checked with production workspace controls present. Explicit product refresh exposes raw official IDs, current/CDN/preload pointer capabilities and source evidence. Typed filtering preserves text and reports matching counts; unsupported pointer types do not enable current-build acquisition. Loaded build results precede further discovery controls, while empty startup prioritizes discovery. Row identities remain their actual source when the input product changes.
+
+The native harness verifies no startup network, explicit product/version calls, source inspection, stale replies, filtering and visible build rows. The subsequent small-result table correction also checks that the primary Open action fits above the footer. Exact context remains readable at 200%; complete accessibility certification remains separate.
+
+### Install-list workflow contract (#37)
+
+Within an exact-build workspace, Install files provides two explicit actions: first check the pinned configuration; then show the list's encoded download and decoded metadata sizes before Download list. Do not fetch the larger encoding/root catalog implicitly. Reopen retained list is offline-only. Progress is indeterminate until real byte events exist; Cancel detaches this request from shared work.
+
+Verified results show named install entries, decoded sizes, tags, filter counts and a full-name detail view. Entry names are display metadata, never local paths or instructions to fetch listed files. Persistent coverage says Install list verified and identifies that game file contents have not been acquired. Source details distinguish captured configuration from actual acquisition evidence retained through shared reuse.
+
+Missing local content, corrupt bytes, unsupported variants, unavailable CDN objects, transfer failures, task capacity and storage errors remain distinct. Corruption removes the old ready view. Errors and action outcomes remain visible in the main panel; cancelled work cannot repaint another build. Filter focus, Enter-to-detail and Escape-to-table are required checks. Use normal scrolling at 200% with exact context visible; keep cost and Download together at 1280×800.
+
+
+The final synthetic [explicit-cost view](design/javafx-install-plan-1280x800.png) and [offline entries at 200%](design/javafx-install-offline-200pct-1280x800.png) passed matching-size Atlas review. The versioned two-JVM harness uses real application policy, SQLite and CAS with deterministic synthetic transport, checks source details, cancellation, unavailable data, context switches, filter focus, Enter/Escape details, offline restart with zero transport calls and rejection of corrupted retained bytes. Final row sizing and error wording were recaptured. This covers the install-list slice; full accessibility and other native-platform interaction testing remain separate.

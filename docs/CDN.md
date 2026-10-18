@@ -2,13 +2,15 @@
 
 Formalized specification. Implementation and validation status are tracked in GitHub Issues.
 
-## Current implementation — provenance and acquisition boundaries
+## Current delivery and evidence
 
-The discovery/workspace slice preserves exact captured metadata as `SourceDocument`: original bytes (bounded to 1 MiB each), HTTPS provenance URL, capture timestamp and SHA-256 verified against those bytes. SQLite stores shared source bytes plus per-snapshot observations so an existing workspace can reopen metadata without following current publication pointers. A provenance URL stored here is evidence, not an instruction to fetch arbitrary locations. Storage integrity failures remain distinct from upstream missing content or unsupported resolution.
+[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) (`42b8be9`) exposes metadata discovery and saved offline metadata workspaces. The committed post-release product catalogue (`971862b`, layout fix `5f1dfb0`) adds official product/pointer inspection; the compact layout passed real JavaFX geometry and visual review. Neither scope should be described as a complete content-download UI.
 
-The #17 object-store foundation verifies supplied whole-stream checksum/length and stores local SHA-256-addressed bytes; it does not perform CDN requests or resolve source objects. The #31 synthetic BLTE decoder checks chunk hashes and optional expected EKey/CKey using their appropriate scopes; whole-stream MD5 and BLTE header EKey must not be interchanged. Neither foundation proves that a real payload can currently be located, downloaded, decoded and retained end to end.
+Closed slices #31–#35 establish bounded pinned configuration and loose-object requests, BLTE N/Z decoding, independently cancellable shared acquisition and bounded IN install-manifest inspection. The recorded live probe verified exact build/CDN configuration hashes and one 23,106-byte encoded install object, its BLTE EKey/chunk/CKey checks, then 274 IN metadata entries and 31 tags. See [protocol evidence](PROTOCOL-EVIDENCE.md) for identities, bounds and exclusions. The larger encoding manifest was not downloaded. This proves one path, not full root/FileDataID resolution or DB2/item support.
 
-Full configuration/encoding/root/index resolution, source-alias mappings, shared network transfer cancellation and older-build selected-content acquisition remain the progression below. Metadata-only offline restoration must not be presented as an archived game build. Known historical metadata does not guarantee that Blizzard still serves its required objects. This documentation update records inspected implementation boundaries, not fresh live-endpoint or real-payload verification.
+Captured source documents preserve original bytes, HTTPS provenance URL, capture time and SHA-256. Protocol EKey/CKey, configuration whole-byte MD5 and local SHA-256 retain their distinct scopes. Loose bytes do not become protocol-verified merely because a transport response or local SHA-256 exists.
+
+In-progress #36 persists verified source aliases, build-role references and actual acquisition provenance; #37 orchestrates explicit install-scope inspection/acquisition/reopen through application policy and a protocol gateway. Scoped green backend checks are recorded in the issues; desktop integration is not yet complete. General acquisition/retention workflows, complete resolver coverage, cleanup and older-build scope acceptance remain unfinished. Metadata-only offline restoration is not an archived game build, and historical pointers do not guarantee CDN availability.
 
 ## Responsibility and boundaries
 
@@ -16,11 +18,11 @@ Discovery obtains official publication metadata. Product adapters interpret prot
 
 Use typed source identifiers distinguishing build config digest, CDN config digest, encoded key and decoded content key. Validate each according to its actual format specification; local SHA-256 is an additional physical identity, not a replacement for protocol verification. A verified encoded object does not by itself establish successfully verified decoded content.
 
-## First slice: metadata only
+## Metadata discovery contract
 
 Begin deterministic fixtures for version/product/CDN document parsing, preserving extra columns and rejecting malformed required columns. Parse header-declared types carefully, with bounded document sizes, row counts and string lengths. Preserve raw document bytes with source URL, retrieval time, HTTP metadata and local digest. Resolve one exact WoW build snapshot from matching region/product data, retaining build/CDN configuration identities. UI refresh must not mutate an already pinned build snapshot.
 
-Official endpoint candidates from earlier research: `https://us.version.battle.net/v2/summary`, product `/versions` and `/cdns` routes; verify current route shapes and returned formats during the explicit M0 protocol spike. Do not infer product IDs from display names such as Forever; record unverified editions as unresolved capabilities. `/v2/products` was previously observed not to be a valid listing route. Avoid hardcoding an unverified product catalogue as authoritative.
+Official endpoint candidates from earlier research: `https://us.version.battle.net/v2/summary`, product `/versions` and `/cdns` routes; observed route evidence is recorded in PROTOCOL-EVIDENCE.md; new route/product coverage still requires explicit validation. Do not infer product IDs from display names such as Forever; record unverified editions as unresolved capabilities. `/v2/products` was previously observed not to be a valid listing route. Avoid hardcoding an unverified product catalogue as authoritative.
 
 M0 evidence must record exact URL, timestamp, HTTP outcome, document hash, fixture/spec interpretation and chosen reference commit, without publishing game payload. Manual live smoke actions are separate from deterministic CI. A 200 response is not proof of semantically usable metadata.
 
@@ -56,6 +58,6 @@ Java is the selected implementation language. Existing C# TACTSharp/DBCD are pro
 
 Primary references already recorded in project planning: https://github.com/wowdev/TACTSharp (including VersionServices/Ribbit.cs), https://github.com/ladislav-zezula/CascLib . These were not revalidated during this task; pin source revisions and verify claims in M0. No claim that current Java library coverage is established. Small Java implementations of metadata/configuration parsing can unblock M0 independently of later decoder selection. Binary format and native codec decisions require focused research issues before implementation.
 
-## Tests before implementation
+## Deterministic tests and remaining acceptance
 
 Fixture-first behavior tests: header order/unknown fields, missing required columns, duplicates, unknown product, region mismatch, same label/different configs, changed publication pointers and exact old snapshot reopening. Local scripted HTTP server tests cover truncated response, bad digest, excessive body, wrong Content-Range, 200-on-range, 416, redirects, Retry-After, cancellation and host fallback. Storage integration verifies corrupt bytes never become available, concurrent requests coalesce and offline hits perform zero HTTP. Fuzz/property tests for index counts/offset arithmetic and decompression size bounds follow supported parsers. All fixture bytes are synthetic and checked into normal test resources when implemented, never dependent on ignored local files.

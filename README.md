@@ -2,9 +2,15 @@
 
 **Explore Blizzard’s data. Discover what changed.**
 
-VibeMiner is a planned, standalone desktop application for exploring and datamining data published on Blizzard’s CDN. Pick a game, channel, region and build, then browse its available files and supported records. Download the data you actually explore and reuse it from a verified local cache.
+VibeMiner is a standalone desktop application being built to explore and datamine Blizzard’s CDN data. The current alpha discovers and saves exact-build metadata; content research is being added in small tested increments.
 
-It requires no installed Blizzard game, Battle.net client, Vibecraft installation, external database or local service. It never discovers, reads, or imports a game installation, Battle.net directory, or game-generated cache. Its own archive, cache and search index live locally. First launch should work with an empty cache and an internet connection.
+It requires no installed Blizzard game, Battle.net client, external database or local service. It never discovers, reads, or imports a game installation, Battle.net directory, or game-generated cache. Its own archive, cache and search index live locally. First launch should work with an empty cache and an internet connection.
+
+## Available now
+
+[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) (`42b8be9`) provides the Atlas JavaFX shell, official build-metadata discovery and saved exact-build workspaces that reopen their metadata offline. Verified bundled-runtime packages cover Windows x64, macOS ARM64, macOS x64 and Linux x64. This is a metadata research alpha; it does not yet provide an end-to-end game-content download, retained archive or item-search workflow.
+
+Post-release source adds an official product catalog and a scoped install-list workflow backed by shared verified storage. Backend tests, bounded real-CDN checks, two-process UI checks and a Linux package check passed; new cross-platform package validation is in progress. These changes are not part of alpha.1. They do not yet provide a complete game-file catalog, item search or a full archived build. See [protocol evidence](docs/PROTOCOL-EVIDENCE.md) and [delivery status](docs/PLAN.md).
 
 ## What it will do
 
@@ -31,7 +37,7 @@ The selected stack is Java with JavaFX, Gradle and embedded SQLite. Keep discove
 
 Blizzard is the default data source. Community filename lists or schema definitions, if introduced, are separate, identified metadata providers rather than silently treated as Blizzard-authored facts. Game-folder discovery, game-install reads and local game-cache imports are excluded.
 
-**Status: early Java/JavaFX implementation.** The Atlas shell and official metadata discovery are being bootstrapped; complete mining, shared archives and record decoding are not yet implemented. Open [the design options](mockups/index.html). All enhancements, defects and implementation work are tracked in [GitHub Issues](https://github.com/aircan80/vibeminer/issues). See [the formal documentation](docs/README.md), [building and downloads](BUILDING.md), and [milestones](https://github.com/aircan80/vibeminer/milestones).
+All enhancements, defects and implementation work are tracked in [GitHub Issues](https://github.com/aircan80/vibeminer/issues). See [formal documentation](docs/README.md), [building and downloads](BUILDING.md), [milestones](https://github.com/aircan80/vibeminer/milestones) and [design references](mockups/index.html).
 
 ## Research-led workflows
 
@@ -47,6 +53,8 @@ VibeMiner starts with what people want to find, inspect, investigate and search:
 Findings retain exact build and source context. Client data does not establish release timing, obtainable rewards, server-only behavior or market profitability.
 
 ## Shared storage across builds
+
+The following is the target storage contract. The byte-store foundation exists; full retention, cleanup and storage-management workflows remain unfinished.
 
 Builds retain manifests and references into one app-owned content-addressed object store. Archives and caches are retention policies over that store, not duplicate copies. Identical data is reused across versions; derived data is shared when its source content, decoder/schema, locale and output settings match. Concurrent requests for the same object share a download. Removing a build releases its references; cleanup removes only objects unused by all remaining builds and active work. Storage screens distinguish logical build size, physically shared bytes, additional download bytes and reclaimable bytes.
 

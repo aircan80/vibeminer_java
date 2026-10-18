@@ -2,6 +2,15 @@
 
 Formal implementation plan, 2026-10-18. GitHub Issues owns scope and delivery status; this document records the product and architecture decisions. Application implementation is underway in small verified increments. See the linked issues for current completion and validation.
 
+## Delivered baseline and current work
+
+- Released: [v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) at `42b8be9`, with verified Windows x64, macOS ARM64/x64 and Linux x64 packages. User-facing scope is Atlas metadata discovery plus saved offline metadata workspaces, not the complete research MVP.
+- Committed after release: official product catalogue and published-pointer inspection in `971862b`, followed by compact workspace correction `5f1dfb0` (#14). Final geometry verification passed with production workspace controls; these changes are not included in alpha.1.
+- Closed backend slices: #31–#35 provide bounded BLTE decoding, independently cancellable shared acquisition, pinned configuration/loose-object transport and bounded IN inspection. Recorded live evidence covers one small BLTE/IN object. The separate #38 header gate is not decoded item support.
+- Implemented and reviewed: #36 durable aliases/build memberships, including canonical actual-source evidence and schema migrations. Forty focused tests and a clean-checkout 188-test baseline passed.
+- In progress: #37 install-list UI/package acceptance over application-owned policy and a protocol gateway. Nineteen backend and six lifecycle checks passed review; the real scoped download/reopen check and two-JVM synthetic UI flow passed. Final UI refinements and a Linux bundled-runtime package check passed; new all-platform packages remain to verify. This is selected list retention, not full archive or item research acceptance.
+- Remaining: complete verified acquisition/offline reopening UI, selected-content retention and safe cleanup, exact-layout DB2 records/schema/item research, comparisons, findings and research exports. Preserve each issue's remaining acceptance; an early packaged alpha does not close the final research-MVP release gate.
+
 ## Agreed product and engineering contract
 
 - VibeMiner is a standalone Windows/macOS/Linux Java/JavaFX application, with Atlas as its design direction and a bundled runtime.
@@ -38,7 +47,7 @@ bootstrap -------> desktop + infrastructure
 | desktop | JavaFX views/presenters, navigation, UI-only observables, context generation, display | Direct HTTP/JDBC, mining file I/O, protocol decoding or business rules |
 | bootstrap | Construction/wiring, configuration, lifecycle and package entry point | Research or storage business policy |
 
-Do not create speculative empty modules for every feature. Extract pure `protocol-tact` when verified acquisition needs it; extract pure `format-wow` and specialized adapters when table/search slices need them. Parsers accept bounded inputs and return models; they do not fetch, persist, schedule or paint UI. Enforce dependency direction/cycle restrictions in normal CI, using Gradle boundaries and architecture tests.
+Do not create speculative empty modules for every feature. The pure `protocol-tact` and narrow `protocol-db2` modules now exist. Expand or extract specialized adapters when the table/search slices justify them. Parsers accept bounded inputs and return models; they do not fetch, persist, schedule or paint UI. Enforce dependency direction/cycle restrictions in normal CI, using Gradle boundaries and architecture tests.
 
 Use explicit ports and constructor wiring. Avoid service locators, global mutable context, blanket dependency graphs, generic repository frameworks and a framework for hypothetical plugins. Concrete reference libraries do not become runtime dependencies without Java compatibility and license evidence.
 
@@ -96,9 +105,9 @@ For deterministic behavior: write a failing test, implement the smallest change,
 
 ## Validation-first decisions and risks
 
-Current environment has an OpenJDK runtime reporting 25.0.4.1, but no `javac` or Gradle on PATH. Provision/validate a full supported JDK and compatible JavaFX/Gradle/JDBC/codec versions before calling builds ready. A version choice is not inferred from installed runtime alone.
+The source build selects Java 25 and JavaFX 25.0.2, with the committed Gradle wrapper. Alpha.1 package evidence establishes the four named runtime targets; additional decoder/native dependency choices and future compatibility changes still require validation. See BUILDING.md for current setup.
 
-Still to prove during the narrow spikes: official Forever/product mapping; exact available baseline/target builds; resolver/BLTE and DB2 variants; minimal useful table dependencies; schema/listfile licensing/pinning; native package runners and signing/distribution requirements. Establish search/latency/memory/storage budgets from small representative measured workloads before claiming performance targets. Do not silently compensate for missing format support with fabricated data or another edition's records.
+Still to prove during the narrow spikes: official Forever/product mapping; exact available baseline/target builds; broader resolver/BLTE coverage and exact DB2 variants; minimal useful table dependencies; schema/listfile licensing/pinning; native package runners and signing/distribution requirements. Establish search/latency/memory/storage budgets from small representative measured workloads before claiming performance targets. Do not silently compensate for missing format support with fabricated data or another edition's records.
 
 
 ## Delivery tracking

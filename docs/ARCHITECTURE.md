@@ -2,15 +2,17 @@
 
 Formalized architecture for issue #12. These contracts are implementation requirements; capabilities are accepted only after their tests and evidence pass.
 
-## Current implementation — workspace, object-store and decoder slices
+## Current implementation and release boundary
 
-Source status for issues #15, #17 and #31; review and completion evidence remain in their issues. The discovery shell uses asynchronous `DiscoveryService` calls and immutable build snapshots. `DefaultWorkspaceService` delegates blocking persistence to an injected executor through `WorkspaceRepository`; `SqliteWorkspaceRepository` stores pinned metadata and locale workspaces. `WorkspacePresentationModel` keeps presentation state separate from persistence and rejects stale completions using a generation counter. Bootstrap wires the catalog under the app-owned data directory.
+[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) (`42b8be9`) delivers the Atlas shell, metadata discovery and SQLite saved-source workspaces. The four verified package targets do not imply mining/retention support. The post-release official product catalogue (`971862b`) and layout fix (`5f1dfb0`) are committed source changes, whose final layout review passed.
 
-`ObjectStore` is an application port implemented by `FileObjectStore`; it verifies bounded supplied streams and publishes immutable SHA-256-addressed bytes, independently of the GUI and network. This foundation has read leases and exclusive store ownership, but does not yet implement build membership, retained scopes, download coalescing or cleanup policies. The desktop bootstrap currently wires the workspace catalog, not a complete acquisition/archive pipeline.
+Delivered backend slices #31–#35 and #38 add pure `protocol-tact` BLTE N/Z and bounded IN parsing, a narrow `protocol-db2` structural header inspector, bounded pinned configuration/loose-object transport and `CoalescingAcquisitionService`. Acquisition is application policy over a `VerifiedSourceAcquirer` port; transport/protocol adapters perform byte mechanics and verification. Shared consumers cancel independently. A recorded small real BLTE/IN proof establishes one exact path, not general content resolution or item decoding.
 
-The extracted `protocol-tact` module now contains a pure bounded `BlteDecoder` for N/raw and Z/zlib, exercised by synthetic fixtures. It receives byte arrays, limits, expected decoded size, optional protocol hashes and cancellation; it neither acquires nor persists content. No DB2/search or real-payload compatibility claim follows from this decoder slice.
+The #36 catalog is implemented and independently reviewed: `BuildObjectCatalog`/`SqliteBuildObjectCatalog` share one schema/migration owner, `SqliteCatalog`. Canonical domain `ResolvedSourceIdentity`, `SourceVerificationEvidence` and `VerifiedSourceAlias` values carry actual acquisition evidence through shared transfers, local reuse and restart. Alias and exact-build membership publication is transactional after verified physical publication; conflicting mappings fail closed.
 
-Raw metadata provenance includes captured document bytes, HTTPS source URL, timestamp and verified SHA-256. Workspace storage failures distinguish unavailable storage, corrupt metadata, missing workspace and limits. Object integrity/missing/limit/I/O/ownership failures and decoder malformed/integrity/unsupported/limit/cancelled outcomes stay separate. These implemented subsets do not imply the complete job, capability, paging or archive contracts below already exist.
+The #37 application `DefaultBootstrapService` owns jobs, cancellation, coalescing, catalog membership and offline policy through `BootstrapArtifactGateway`. Infrastructure `OfficialBootstrapArtifactGateway` owns bounded source/HTTP/format/CAS mechanics. Bootstrap composes a lazy content runtime with distinct job/transfer pools; metadata-only startup takes no content-store lock and makes no HTTP request. Nineteen scoped backend and six lifecycle checks passed independent review. A real 23,106-byte install object was retained and reopened with fresh services and zero HTTP. Two-process synthetic UI checks passed; final copy/layout and native-package validation remain pending.
+
+`ObjectStore`/`FileObjectStore` provide bounded verified publication and read leases independently of JavaFX and HTTP. Workspace persistence and source evidence remain separate from proof of complete retained content. Storage, integrity, unsupported-format, unavailable-source, cancellation and missing-local outcomes remain distinct; raw provenance is retained rather than reconstructed as an assumed successful request. Full retention/GC, generic file resolution, DB2 records, schema/search and comparison contracts below remain intended requirements.
 
 ## Architectural position
 
@@ -30,7 +32,7 @@ infrastructure -> domain
 - `desktop`: Atlas JavaFX views, presenters/viewmodels, UI-only observable state, navigation and rendering. Talks only to application inputs/outputs. No direct SQL/HTTP/filesystem mining. A file chooser may collect an explicit export/archive destination; actual file operations remain adapters.
 - `bootstrap`: explicit construction/wiring, configuration, startup/shutdown, executable packaging. The sole place with visibility into UI and concrete adapters. No business policy.
 
-First extraction when verified file acquisition begins:
+Target adapter extraction as acquisition responsibilities grow (not all separate Gradle projects exist):
 
 ```
 infrastructure-discovery -> application, domain, protocol-tact
@@ -40,7 +42,7 @@ protocol-tact            -> domain
 bootstrap                -> all required adapters + desktop
 ```
 
-`protocol-tact` owns configuration/index/root/encoding parsers and supported BLTE decoding. Parsers accept bounded byte input/streams and explicit resource limits, return format models, perform no source lookup, database access, job scheduling or hidden downloads. Product resolver orchestration stays in application, which obtains indexes/content through ports and invokes an explicit decoding port implemented by the protocol adapter.
+`protocol-tact` owns supported configuration/BLTE/IN parsing; root, encoding and archive-index support remains to be added as required. Parsers accept bounded byte input/streams and explicit resource limits, return format models, perform no source lookup, database access, job scheduling or hidden downloads. Product resolver orchestration stays in application, which obtains indexes/content through ports and invokes an explicit decoding port implemented by the protocol adapter.
 
 When DB2/search becomes real, add `format-wow` (pure parser/schema matching), `infrastructure-query` (SQLite prepared queries/index persistence) and application use cases. Format code cannot call HTTP, SQL or JavaFX. Search/storage adapters do not infer WoW semantics. Add comparison as application policies/domain structures first; its own module only if size and stable reuse justify it. Avoid blanket `implementation` dependencies between every project.
 

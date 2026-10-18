@@ -2,9 +2,9 @@
 
 Formalized specification. Implementation and validation status are tracked in GitHub Issues.
 
-## Current implementation — metadata persistence (#15)
+## Released metadata persistence (#15)
 
-`SqliteWorkspaceRepository` persists immutable build snapshots, captured source documents and named locale views in `catalog.sqlite`. Source-document bytes are shared in `source_blobs` by SHA-256; per-snapshot source rows preserve URL, capture time and ordering. Restoring a workspace reconstructs domain values and checks their identities and source digests. Renaming affects the workspace label; removing a workspace leaves snapshot/source history intact. This is offline metadata persistence, not retained game content or an implemented archive-cleanup policy.
+Alpha.1 (`42b8be9`) includes saved offline metadata workspaces. `SqliteWorkspaceRepository` persists immutable build snapshots, captured source documents and named locale views in `catalog.sqlite`. Source-document bytes are shared in `source_blobs` by SHA-256; per-snapshot source rows preserve URL, capture time and ordering. Restoring a workspace reconstructs domain values and checks their identities and source digests. Renaming affects the workspace label; removing a workspace leaves snapshot/source history intact. This is offline metadata persistence, not retained game content or an implemented archive-cleanup policy.
 
 The portable application-data decision is implemented by `AppDataDirectory`: Windows uses `%LOCALAPPDATA%/VibeMiner` (with a home-based fallback); macOS uses `~/Library/Application Support/VibeMiner`; Linux uses absolute `$XDG_DATA_HOME/vibeminer` or `~/.local/share/vibeminer`. Set `-Dvibeminer.dataDir=/absolute/app-owned/path` to choose another root. Relative overrides are rejected. This chooses a location; it does not migrate existing data or provide a portable installer mode. No game-directory discovery occurs.
 
@@ -14,7 +14,13 @@ The portable application-data decision is implemented by `AppDataDirectory`: Win
 
 A process lock excludes a second store owner; coordinated publication and read leases protect ownership while operations/readers are active. Stored reads rehash before exposure. Absent objects, corrupt bytes, limits, I/O failure, closed/busy state and store-in-use have distinct outcomes. Startup removes abandoned regular staging files. File contents are forced before atomic move; this does not establish complete filesystem/SQLite crash recovery or power-loss durability.
 
-The metadata source-blob table and filesystem store are currently separate foundations; no cross-store alias/membership catalog is implemented. No network fetching, transfer coalescing, build-scope retention, quotas, eviction, GC, derived-artifact sharing or full archive workflow is delivered by #17 alone. The specification below describes those later invariants. Synthetic tests exist for workspace restart/integrity and byte-store publication, cancellation, corruption, concurrency and read ownership; real game payload/complete retention support is not established by them.
+Closed shared-acquisition slice #32 coordinates source requests over this byte-store foundation with independent consumer cancellation. This is not a retained-build cleanup policy.
+
+## In-progress durable content catalog (#36) and workflow (#37)
+
+`BuildObjectCatalog` and `SqliteBuildObjectCatalog` now have source implementations over shared `SqliteCatalog`: immutable source aliases, physical object records, build-role membership and source verification evidence preserve actual URL, timestamp and verifier semantics. Workspace metadata and content catalog share schema/migration management. Verified lookups check local readiness; persisted references can still describe missing bytes. Publication precedes catalog attachment; SQLite cannot make the filesystem and catalog one atomic resource.
+
+The #36 catalog/provenance refactor passed 40 focused tests and independent review, then a clean-checkout full check and Linux SQLite/JavaFX package launch. The #37 install-scope backend passed 19 focused checks; bounded real content and fresh-service offline reuse passed, and the two-JVM UI workflow and final captures passed. These changes are not in alpha.1 and do not deliver general scope pinning, quota/eviction, GC, complete crash reconciliation, derived-artifact sharing or older-build archive acceptance. The specification below preserves those remaining requirements. A small verified real install manifest is transport/parser evidence, not a full retained build.
 
 ## Invariants
 
@@ -67,7 +73,7 @@ Transport bytes downloaded may exceed final payload bytes due to archive/index o
 
 First storage slice: synthetic A={x,y}, B={y,z}; retain A then B, assert three physical payloads and one y; reopen both offline; remove A and reclaim x only. Include concurrent requests, cancel one subscriber and preserve the other. Then fake promotion/DB crashes at every boundary and verify recovery never reports missing bytes as complete. Property tests exercise arbitrary membership graphs and cleanup: no live referenced object is deleted.
 
-Additional cases: duplicate aliases; corrupt existing blob; inconsistent length/digest; quota while pinned; active reader during cleanup; schema/locale/options invalidating derived reuse; identical transformed output sharing one blob; partial dependency closure; manifest totals unknown; disk full; cross-platform atomic move/file-handle behavior. Integration tests use temporary directories and SQLite; no live CDN dependency. This plan creates no tests yet.
+Additional cases: duplicate aliases; corrupt existing blob; inconsistent length/digest; quota while pinned; active reader during cleanup; schema/locale/options invalidating derived reuse; identical transformed output sharing one blob; partial dependency closure; manifest totals unknown; disk full; cross-platform atomic move/file-handle behavior. Integration tests use temporary directories and SQLite; no live CDN dependency. Existing byte-store/catalog tests establish their scoped invariants; the complete retention/cleanup matrix above remains acceptance to deliver.
 
 ## Risks and open decisions
 
