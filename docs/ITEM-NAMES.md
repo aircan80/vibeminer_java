@@ -1,6 +1,6 @@
 # Bounded Item names and exact-context join
 
-**Status: approved #21 design with a pure bounded ItemSparse name projector foundation (11 tests); production name preparation/index/application/view remains undelivered.** The prerequisite [physical Item projection](ITEM-PROJECTION.md) is published in verified [alpha.4](releases/v0.1.0-alpha.4.md); its verified four-platform checkpoint is tracked centrally in [the plan](PLAN.md#delivered-baseline-and-current-work). No general name search, complete readable table or newly acquired content is established by the pure projector.
+**Status: approved #21 design with a pure bounded ItemSparse name projector (11 tests) and independently accepted domain contracts in `c609f7d` (13 new plus 8 existing cases); production name preparation/index/application/view remains undelivered.** The prerequisite [physical Item projection](ITEM-PROJECTION.md) is published in verified [alpha.4](releases/v0.1.0-alpha.4.md); its verified four-platform checkpoint is tracked centrally in [the plan](PLAN.md#delivered-baseline-and-current-work). No general name search, complete readable table or newly acquired content is established by the pure projector.
 
 
 ## Research outcome and source selection

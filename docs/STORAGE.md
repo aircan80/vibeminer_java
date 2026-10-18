@@ -22,6 +22,8 @@ Closed shared-acquisition slice #32 coordinates source requests over this byte-s
 
 Publisher ownership originally integrated at `6fac722` with additive conflict inventory/worker nonce and exclusive-store one-shot startup fencing. Current `891a9c4` additionally contains SQLite schema-10 metadata-association foundations and shared physical Item derived-index persistence. Preserve immutable physical bytes, original receipts, pins and legacy tokens; a schema association does not activate representation-aware runtime reuse.
 
+Accepted post-release `ed6394b` adds associated-install readers that retain declaration-versus-actual receipt separation when reading schema-10 associations. Its service/reader acceptance does not enable runtime strong reuse or metadata repair. The independently clean 1,035-Java/24-Python check and passing local Linux native status are recorded in [the plan](PLAN.md#delivered-baseline-and-current-work); alpha.4 remains unchanged.
+
 The physical Item backend/runtime/Atlas journey is published in verified [alpha.4](releases/v0.1.0-alpha.4.md), exact `891a9c4`; see [central checkpoint and native validation](PLAN.md#delivered-baseline-and-current-work). Application projections reference shared artifacts rather than creating per-build decoded table copies. Names remain a pure parser foundation without delivered name-index/application/view. #85 runtime B reuse, #83 same-A metadata repair, quota/eviction, deletion/GC and full archive acceptance remain unfinished. Existing exact-descriptor reads retain their original proof even when canonical reconciliation blocks new acquisition. See [publisher ownership](PUBLISHER-OWNERSHIP.md) and [Item scope](ITEM-PROJECTION.md).
 
 ## Invariants

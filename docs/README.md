@@ -2,7 +2,7 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Published [alpha.4](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.4) is exact `891a9c49776649924ac289873336b45071662dba`, with all four packages and 12 assets independently verified. It adds selected encoded retention/offline reopen and scoped physical Item preparation, pages and exact-ID lookup. See [release notes](releases/v0.1.0-alpha.4.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Names, strong alternate-B reuse, repair and GC remain unfinished; later reuse/repair foundations are unreleased and unwired.
+Published [alpha.4](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.4) is exact `891a9c49776649924ac289873336b45071662dba`, with all four packages and 12 assets independently verified. It adds selected encoded retention/offline reopen and scoped physical Item preparation, pages and exact-ID lookup. See [release notes](releases/v0.1.0-alpha.4.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Names, strong alternate-B reuse, repair and GC remain unfinished; later reuse/repair foundations are unreleased and unwired. Accepted `ed6394b` adds a dedicated associated-install reader (1,035 clean Java cases and 24 Python checks); its local Linux package/self-storage/JavaFX smoke passed; runtime integration remains pending, with no newer four-platform claim.
 
 
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
