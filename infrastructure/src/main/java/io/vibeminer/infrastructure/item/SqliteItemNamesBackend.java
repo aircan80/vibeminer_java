@@ -11,6 +11,9 @@ import io.vibeminer.domain.item.*;
 import io.vibeminer.infrastructure.itemnames.SparseNameProjectionSourceReader;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.*;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.CancellationException;
@@ -219,6 +222,165 @@ public final class SqliteItemNamesBackend implements ItemNamesBackend {
     }
   }
 
+  @Override
+  public ItemNamesSearchPage search(
+      PreparedItemNames pair,
+      ItemNameLiteralQuery query,
+      Optional<ItemNamesSearchCursor> cursor,
+      int size,
+      CancellationToken token) {
+    if (pair == null || query == null || cursor == null || size < 1 || size > 500)
+      throw fail(INVALID_REQUEST, "Explicit pair, literal query and size1..500 required");
+    try {
+      cursor.ifPresent(value -> value.requireContext(pair, query, size));
+    } catch (IllegalArgumentException stale) {
+      throw new ItemNamesException(
+          STALE_CURSOR, "Search cursor belongs to another query or pair", stale);
+    }
+    Objects.requireNonNull(token);
+    token.throwIfCancellationRequested();
+    requireSearchBounds(pair);
+    try {
+      session.beforeProducerOperation();
+      // Authenticate the complete stored manifest before the historical source verifier borrows it.
+      var trusted =
+          items.cancellableTransaction(
+              token, c -> names.query(c, pair.names(), connection -> pair.names()));
+      try (var itemLease = itemReader.verify(pair.item(), token);
+          var nameLease = nameReader.verify(trusted, token)) {
+        return items.queryCancellable(
+            pair.item(),
+            token,
+            c ->
+                names.query(
+                    c,
+                    trusted,
+                    connection -> {
+                      if (items.exact(connection, pair.item(), 0).isPresent())
+                        throw fail(INCOMPATIBLE, "Admitted name join requires positive Item IDs");
+                      requireSearchBounds(pair);
+                      String fingerprint = generations(connection, pair);
+                      if (cursor.isPresent()
+                          && !cursor.get().generationFingerprint().equals(fingerprint))
+                        throw fail(STALE_CURSOR, "Prepared SQL artifact generations changed");
+                      return scan(
+                          connection,
+                          pair,
+                          query,
+                          cursor.map(ItemNamesSearchCursor::afterRecordId).orElse(0L),
+                          size,
+                          fingerprint,
+                          token);
+                    }));
+      }
+    } catch (RuntimeException failure) {
+      throw classify(failure);
+    }
+  }
+
+  private static void requireSearchBounds(PreparedItemNames pair) {
+    if (pair.item().coverage().physicalRows() > MAX_SEARCH_ITEM_ROWS
+        || pair.names().coverage().physicalRows() > MAX_SEARCH_NAME_ROWS
+        || pair.names().coverage().projectedUtf8Bytes() > MAX_SEARCH_NAME_UTF8_BYTES)
+      throw fail(LIMIT_EXCEEDED, "Prepared physical coverage exceeds literal-search action limits");
+  }
+
+  private ItemNamesSearchPage scan(
+      Connection c,
+      PreparedItemNames pair,
+      ItemNameLiteralQuery query,
+      long after,
+      int size,
+      String fingerprint,
+      CancellationToken token)
+      throws SQLException {
+    var matches = new ArrayList<NamedItemRow>();
+    long itemCount = 0, nameCount = 0, utf8 = 0;
+    boolean eof = false;
+    while (!eof && matches.size() <= size) {
+      token.throwIfCancellationRequested();
+      int batchCount = 0;
+      try (var statement = joinedStatement(c, pair, after, SEARCH_BATCH_ROWS, false);
+          var rows = statement.executeQuery()) {
+        while (rows.next()) {
+          token.throwIfCancellationRequested();
+          var row = readJoined(rows, pair);
+          after = row.item().recordId();
+          batchCount++;
+          if (++itemCount > MAX_SEARCH_ITEM_ROWS)
+            throw fail(LIMIT_EXCEEDED, "Examined Item anchors exceed search action limit");
+          if (row.name().outcome() == ItemNameMatch.Outcome.PHYSICAL_NAME) {
+            var candidate = row.name().candidate().orElseThrow();
+            if (++nameCount > MAX_SEARCH_NAME_ROWS)
+              throw fail(LIMIT_EXCEEDED, "Examined physical names exceed search action limit");
+            utf8 = Math.addExact(utf8, candidate.utf8Bytes());
+            if (utf8 > MAX_SEARCH_NAME_UTF8_BYTES)
+              throw fail(LIMIT_EXCEEDED, "Decoded candidate bytes exceed search action limit");
+            if (query.matches(candidate)) {
+              matches.add(row);
+              if (matches.size() > size) break;
+            }
+          }
+        }
+      }
+      eof = batchCount < SEARCH_BATCH_ROWS;
+    }
+    token.throwIfCancellationRequested();
+    boolean more = matches.size() > size;
+    var visible = List.copyOf(more ? matches.subList(0, size) : matches);
+    Optional<ItemNamesSearchCursor> next =
+        more
+            ? Optional.of(
+                new ItemNamesSearchCursor(
+                    pair.item().artifactId(),
+                    pair.names().artifactId(),
+                    pair.snapshotId(),
+                    pair.item().sourceRole(),
+                    pair.names().sourceRole(),
+                    pair.locale(),
+                    query,
+                    ItemNamesSearchCursor.QUERY_REVISION,
+                    fingerprint,
+                    visible.getLast().item().recordId(),
+                    size))
+            : Optional.empty();
+    return new ItemNamesSearchPage(pair, query, fingerprint, visible, next);
+  }
+
+  private static String generations(Connection c, PreparedItemNames pair) throws SQLException {
+    try (var query =
+        c.prepareStatement(
+            "SELECT i.generation,n.generation FROM item_projection_artifacts i JOIN"
+                + " sparse_name_artifacts n ON n.artifact_id=? WHERE i.artifact_id=? AND"
+                + " i.status='READY' AND n.status='READY'")) {
+      query.setString(1, pair.names().artifactId());
+      query.setString(2, pair.item().artifactId());
+      try (var rows = query.executeQuery()) {
+        if (!rows.next()) throw fail(NOT_READY, "Prepared search generations are absent");
+        try {
+          var bytes = new ByteArrayOutputStream();
+          try (var out = new DataOutputStream(bytes)) {
+            for (var value :
+                List.of(
+                    "item-name-search-generations-v1",
+                    pair.item().artifactId(),
+                    UUID.fromString(rows.getString(1)).toString(),
+                    pair.names().artifactId(),
+                    UUID.fromString(rows.getString(2)).toString())) {
+              var text = value.getBytes(StandardCharsets.UTF_8);
+              out.writeInt(text.length);
+              out.write(text);
+            }
+          }
+          return HexFormat.of()
+              .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+        } catch (IOException | NoSuchAlgorithmException impossible) {
+          throw new AssertionError(impossible);
+        }
+      }
+    }
+  }
+
   private <T> T itemQuery(
       PreparedItemProjection handle,
       CancellationToken token,
@@ -233,7 +395,7 @@ public final class SqliteItemNamesBackend implements ItemNamesBackend {
         });
   }
 
-  private List<NamedItemRow> joined(
+  private PreparedStatement joinedStatement(
       Connection c, PreparedItemNames pair, long id, int limit, boolean exact) throws SQLException {
     // The Item index anchors every row; both independent artifact generations are explicit.
     String sql =
@@ -247,47 +409,61 @@ public final class SqliteItemNamesBackend implements ItemNamesBackend {
             + " FROM item_projection_artifacts WHERE artifact_id=?) AND i.record_id"
             + (exact ? "=?" : " >?")
             + " ORDER BY i.record_id ASC LIMIT ?";
-    var result = new ArrayList<NamedItemRow>();
-    try (var q = c.prepareStatement(sql)) {
+    var q = c.prepareStatement(sql);
+    try {
       for (int n = 1; n <= 4; n++) q.setString(n, pair.names().artifactId());
       q.setString(5, pair.item().artifactId());
       q.setString(6, pair.item().artifactId());
       q.setLong(7, id);
       q.setInt(8, limit);
-      try (var rows = q.executeQuery()) {
-        while (rows.next()) {
-          var item = items.readRow(rows, pair.item());
-          boolean physical = rows.getObject(6) != null, copy = rows.getObject(11) != null;
-          if (physical && copy)
-            throw fail(CORRUPT, "Sparse physical row overlaps a copy declaration");
-          ItemNameMatch match;
-          if (physical)
-            match =
-                new ItemNameMatch(
-                    item.recordId(),
-                    ItemNameMatch.Outcome.PHYSICAL_NAME,
-                    Optional.of(names.readRow(rows, pair.names(), 6)),
-                    OptionalLong.empty());
-          else if (copy)
-            match =
-                new ItemNameMatch(
-                    item.recordId(),
-                    ItemNameMatch.Outcome.COPY_UNINDEXED,
-                    Optional.empty(),
-                    OptionalLong.of(
-                        SqliteSparseNameRepository.readCopy(rows, item.recordId(), 11)));
-          else
-            match =
-                new ItemNameMatch(
-                    item.recordId(),
-                    ItemNameMatch.Outcome.NO_PHYSICAL_MATCH,
-                    Optional.empty(),
-                    OptionalLong.empty());
-          var joined = new NamedItemRow(item, match);
-          pair.requireRow(joined);
-          result.add(joined);
-        }
+      return q;
+    } catch (SQLException | RuntimeException | Error failure) {
+      try {
+        q.close();
+      } catch (SQLException cleanup) {
+        failure.addSuppressed(cleanup);
       }
+      throw failure;
+    }
+  }
+
+  private NamedItemRow readJoined(ResultSet rows, PreparedItemNames pair) throws SQLException {
+    var item = items.readRow(rows, pair.item());
+    boolean physical = rows.getObject(6) != null, copy = rows.getObject(11) != null;
+    if (physical && copy) throw fail(CORRUPT, "Sparse physical row overlaps a copy declaration");
+    ItemNameMatch match;
+    if (physical)
+      match =
+          new ItemNameMatch(
+              item.recordId(),
+              ItemNameMatch.Outcome.PHYSICAL_NAME,
+              Optional.of(names.readRow(rows, pair.names(), 6)),
+              OptionalLong.empty());
+    else if (copy)
+      match =
+          new ItemNameMatch(
+              item.recordId(),
+              ItemNameMatch.Outcome.COPY_UNINDEXED,
+              Optional.empty(),
+              OptionalLong.of(SqliteSparseNameRepository.readCopy(rows, item.recordId(), 11)));
+    else
+      match =
+          new ItemNameMatch(
+              item.recordId(),
+              ItemNameMatch.Outcome.NO_PHYSICAL_MATCH,
+              Optional.empty(),
+              OptionalLong.empty());
+    var joined = new NamedItemRow(item, match);
+    pair.requireRow(joined);
+    return joined;
+  }
+
+  private List<NamedItemRow> joined(
+      Connection c, PreparedItemNames pair, long id, int limit, boolean exact) throws SQLException {
+    var result = new ArrayList<NamedItemRow>();
+    try (var query = joinedStatement(c, pair, id, limit, exact);
+        var rows = query.executeQuery()) {
+      while (rows.next()) result.add(readJoined(rows, pair));
     }
     return result;
   }

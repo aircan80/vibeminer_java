@@ -270,41 +270,86 @@ final class SqliteItemProjectionRepository {
   }
 
   <T> T query(PreparedItemProjection handle, CancellationToken token, Work<T> work) {
-    return tx(
-        token,
-        c -> {
-          var header =
-              readHeader(c, handle.artifactId())
-                  .orElseThrow(() -> failure(NOT_READY, "Projection is not prepared"));
-          if (!header.ready()) throw failure(NOT_READY, "Projection is still being prepared");
-          if (!header.definition().equals(handle.definition())
-              || !header.coverage().equals(handle.coverage()))
-            throw failure(CORRUPT, "Prepared handle differs from persisted artifact");
-          if (!header.currentCopyProof() && header.coverage().unindexedCopyDeclarations() > 0)
-            throw failure(NOT_READY, "Legacy copy metadata requires explicit verified preparation");
-          verifyCounts(c, handle.artifactId(), header);
-          requireDependencies(c, handle);
-          var build =
-              catalog
-                  .readSnapshot(c, handle.snapshotId())
-                  .orElseThrow(
-                      () -> failure(MISSING_LOCAL, "Exact projection snapshot is missing"));
-          try (var statement =
-              c.prepareStatement(
-                  "SELECT length(evidence),evidence FROM item_projection_contexts WHERE"
-                      + " artifact_id=? AND snapshot_id=? AND source_role=? AND locale=?")) {
-            context(statement, handle);
-            try (var rows = statement.executeQuery()) {
-              if (!rows.next())
-                throw failure(NOT_READY, "Projection is not attached to this exact source context");
-              if (rows.getLong(1) > ItemProjectionRecords.MAX_RECORD_BYTES
-                  || !ItemProjectionRecords.evidence(rows.getBytes(2), build)
-                      .equals(handle.evidence()))
-                throw failure(CORRUPT, "Prepared handle changed original evidence");
-            }
+    return tx(token, c -> checkedQuery(c, handle, work));
+  }
+
+  <T> T queryCancellable(PreparedItemProjection handle, CancellationToken token, Work<T> work) {
+    return cancellableTransaction(token, c -> checkedQuery(c, handle, work));
+  }
+
+  <T> T cancellableTransaction(CancellationToken token, Work<T> work) {
+    return tx(token, c -> withProgress(c, token, work));
+  }
+
+  /** One connection only; the callback observes cancellation and never executes SQL. */
+  static <T> T withProgress(Connection connection, CancellationToken token, Work<T> work)
+      throws SQLException {
+    org.sqlite.ProgressHandler.setHandler(
+        connection,
+        1000,
+        new org.sqlite.ProgressHandler() {
+          @Override
+          protected int progress() {
+            return token.isCancellationRequested() ? 1 : 0;
           }
-          return work.run(c);
         });
+    Throwable failed = null;
+    try {
+      return work.run(connection);
+    } catch (SQLException error) {
+      if (error.getErrorCode() == 9 && token.isCancellationRequested()) {
+        var cancelled =
+            new java.util.concurrent.CancellationException("Item names SQL scan cancelled");
+        cancelled.initCause(error);
+        failed = cancelled;
+        throw cancelled;
+      }
+      failed = error;
+      throw error;
+    } catch (RuntimeException | Error error) {
+      failed = error;
+      throw error;
+    } finally {
+      try {
+        org.sqlite.ProgressHandler.clearHandler(connection);
+      } catch (SQLException cleanup) {
+        if (failed != null) failed.addSuppressed(cleanup);
+        else throw cleanup;
+      }
+    }
+  }
+
+  private <T> T checkedQuery(Connection c, PreparedItemProjection handle, Work<T> work)
+      throws SQLException {
+    var header =
+        readHeader(c, handle.artifactId())
+            .orElseThrow(() -> failure(NOT_READY, "Projection is not prepared"));
+    if (!header.ready()) throw failure(NOT_READY, "Projection is still being prepared");
+    if (!header.definition().equals(handle.definition())
+        || !header.coverage().equals(handle.coverage()))
+      throw failure(CORRUPT, "Prepared handle differs from persisted artifact");
+    if (!header.currentCopyProof() && header.coverage().unindexedCopyDeclarations() > 0)
+      throw failure(NOT_READY, "Legacy copy metadata requires explicit verified preparation");
+    verifyCounts(c, handle.artifactId(), header);
+    requireDependencies(c, handle);
+    var build =
+        catalog
+            .readSnapshot(c, handle.snapshotId())
+            .orElseThrow(() -> failure(MISSING_LOCAL, "Exact projection snapshot is missing"));
+    try (var statement =
+        c.prepareStatement(
+            "SELECT length(evidence),evidence FROM item_projection_contexts WHERE"
+                + " artifact_id=? AND snapshot_id=? AND source_role=? AND locale=?")) {
+      context(statement, handle);
+      try (var rows = statement.executeQuery()) {
+        if (!rows.next())
+          throw failure(NOT_READY, "Projection is not attached to this exact source context");
+        if (rows.getLong(1) > ItemProjectionRecords.MAX_RECORD_BYTES
+            || !ItemProjectionRecords.evidence(rows.getBytes(2), build).equals(handle.evidence()))
+          throw failure(CORRUPT, "Prepared handle changed original evidence");
+      }
+    }
+    return work.run(c);
   }
 
   List<ItemPhysicalRow> page(Connection c, PreparedItemProjection handle, long after, int limit)
@@ -464,8 +509,7 @@ final class SqliteItemProjectionRepository {
     }
   }
 
-  ItemPhysicalRow readRow(ResultSet rows, PreparedItemProjection handle)
-      throws SQLException {
+  ItemPhysicalRow readRow(ResultSet rows, PreparedItemProjection handle) throws SQLException {
     if (rows.getLong(3) > ItemProjectionRecords.MAX_ROW_BYTES)
       throw failure(CORRUPT, "Oversized projection row");
     var bytes = rows.getBytes(4);
