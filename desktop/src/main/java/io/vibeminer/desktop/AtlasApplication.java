@@ -7,9 +7,11 @@ import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.ItemProjectionService;
+import io.vibeminer.application.itemexport.ItemEvidenceService;
 import io.vibeminer.application.itemnames.ItemNamesService;
 import io.vibeminer.application.lookup.FileLookupService;
 import io.vibeminer.application.selectedfile.SelectedFileService;
+import io.vibeminer.desktop.itemexport.*;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.PublishedProduct;
@@ -46,6 +48,16 @@ public final class AtlasApplication extends Application {
   private static MetadataReuseService configuredMetadataReuse;
   private static MetadataRepairService configuredRepair;
   private static ItemNamesService configuredNames;
+  private static ItemEvidenceService configuredEvidence;
+  private static ItemEvidenceDestinationChooser evidenceChooser;
+  private ItemEvidenceExportDialog evidenceDialog;
+  private io.vibeminer.domain.item.PreparedItemProjection exportItem;
+  private io.vibeminer.domain.item.PreparedItemNames exportPair;
+
+  public static synchronized void configureItemEvidenceDestinationChooser(
+      ItemEvidenceDestinationChooser chooser) {
+    evidenceChooser = Objects.requireNonNull(chooser);
+  }
 
   public static synchronized void configure(DiscoveryService service, boolean fixtureMode) {
     configure(service, null, fixtureMode);
@@ -142,6 +154,34 @@ public final class AtlasApplication extends Application {
       MetadataRepairService repair,
       ItemNamesService names,
       boolean fixtureMode) {
+    configure(
+        service,
+        workspaces,
+        products,
+        bootstrap,
+        lookup,
+        selected,
+        item,
+        reuse,
+        repair,
+        names,
+        null,
+        fixtureMode);
+  }
+
+  public static synchronized void configure(
+      DiscoveryService service,
+      WorkspaceService workspaces,
+      ProductDiscoveryService products,
+      BootstrapService bootstrap,
+      FileLookupService lookup,
+      SelectedFileService selected,
+      ItemProjectionService item,
+      MetadataReuseService reuse,
+      MetadataRepairService repair,
+      ItemNamesService names,
+      ItemEvidenceService evidence,
+      boolean fixtureMode) {
     if (configuredService != null)
       throw new IllegalStateException("Desktop has already been configured");
     configuredService = Objects.requireNonNull(service);
@@ -155,6 +195,7 @@ public final class AtlasApplication extends Application {
     configuredMetadataReuse = reuse;
     configuredRepair = repair;
     configuredNames = names;
+    configuredEvidence = evidence;
   }
 
   private Stage stage;
@@ -440,6 +481,7 @@ public final class AtlasApplication extends Application {
             || !Objects.equals(state.selected(), next.selected())
             || rootRepairModel != null && !rootRepairModel.state().locale().equals(currentLocale);
     state = next;
+    refreshExportContext();
     if (changedContext) {
       offeredRootPlan = null;
       offeredRootCandidate = null;
@@ -782,6 +824,7 @@ public final class AtlasApplication extends Application {
   private void onNamesState(ItemNamesPresentationModel.State next) {
     var previous = namesState;
     namesState = next;
+    refreshExportContext();
     if (updatingContext || state == null) return;
     if (previous == null || previous.pair() != next.pair() || previous.code() != next.code())
       refreshContextStripe();
@@ -892,6 +935,7 @@ public final class AtlasApplication extends Application {
   private void onItemState(ItemPresentationModel.State next) {
     var previous = itemState;
     itemState = next;
+    refreshExportContext();
     syncNamesContext();
     itemReadiness.observe(next.source());
     if (next.code() == io.vibeminer.application.item.ItemProjectionException.Code.MISSING_LOCAL
@@ -2201,7 +2245,8 @@ public final class AtlasApplication extends Application {
             new ItemNamesPane(
                 namesModel,
                 Integer.parseInt(selectedScale.replace("%", "")) / 100.0,
-                this::inspectSparseSource);
+                this::inspectSparseSource,
+                exportAvailable() ? this::exportNames : null);
         page.getChildren().add(namesPane);
         return page;
       }
@@ -2212,7 +2257,8 @@ public final class AtlasApplication extends Application {
               () -> {
                 if (state.selected() != null) openFileLookup();
                 else navigate("Archive");
-              });
+              },
+              exportAvailable() ? this::exportItem : null);
       page.getChildren().add(itemPane);
       if (itemState != null
           && itemState.source() == null
@@ -2642,8 +2688,110 @@ public final class AtlasApplication extends Application {
     return c;
   }
 
+  private boolean exportAvailable() {
+    return configuredEvidence != null && evidenceChooser != null;
+  }
+
+  private void exportItem(
+      io.vibeminer.domain.item.PreparedItemProjection h,
+      io.vibeminer.domain.item.ItemPhysicalRow row) {
+    if (!exportAvailable() || itemState == null || !h.equals(itemState.handle())) return;
+    var pair = namesState == null ? null : namesState.pair();
+    openEvidence(
+        h,
+        row.recordId(),
+        pair != null && pair.item().equals(h)
+            ? java.util.Optional.of(pair)
+            : java.util.Optional.empty(),
+        false);
+  }
+
+  private void exportNames(
+      io.vibeminer.domain.item.PreparedItemNames pair, io.vibeminer.domain.item.NamedItemRow row) {
+    if (!exportAvailable() || namesState == null || !pair.equals(namesState.pair())) return;
+    openEvidence(pair.item(), row.item().recordId(), java.util.Optional.of(pair), true);
+  }
+
+  private void openEvidence(
+      io.vibeminer.domain.item.PreparedItemProjection h,
+      long id,
+      java.util.Optional<io.vibeminer.domain.item.PreparedItemNames> pair,
+      boolean fromNames) {
+    if (evidenceDialog != null && evidenceDialog.isShowing()) return;
+    exportItem = h;
+    exportPair = fromNames ? pair.orElseThrow() : null;
+    evidenceDialog =
+        new ItemEvidenceExportDialog(
+            stage,
+            configuredEvidence,
+            evidenceChooser,
+            h,
+            id,
+            pair,
+            Integer.parseInt(selectedScale.replace("%", "")) / 100.0,
+            this::onExportEvidenceInvalidated);
+    evidenceDialog.setContextValidation(this::refreshExportContext);
+    evidenceDialog.show();
+  }
+
+  private static boolean sameExportItem(
+      io.vibeminer.domain.item.PreparedItemProjection a,
+      io.vibeminer.domain.item.PreparedItemProjection b) {
+    if (a == null || b == null) return false;
+    return a.definition().equals(b.definition())
+        && a.coverage().equals(b.coverage())
+        && a.evidence().association().equals(b.evidence().association())
+        && a.evidence().chunks().equals(b.evidence().chunks())
+        && a.evidence().windows().equals(b.evidence().windows())
+        && a.evidence().fullDecoded().equals(b.evidence().fullDecoded())
+        && a.evidence()
+            .localVerification()
+            .object()
+            .equals(b.evidence().localVerification().object())
+        && a.evidence()
+            .localVerification()
+            .verifierRevision()
+            .equals(b.evidence().localVerification().verifierRevision());
+  }
+
+  private void onExportEvidenceInvalidated(
+      io.vibeminer.application.itemexport.ItemEvidenceSelection selection) {
+    if (state == null
+        || state.selected() == null
+        || !selection.item().snapshotId().equals(state.selected().snapshotId())
+        || !selection.item().locale().equals(currentLocale)) return;
+    if (selection.names().isPresent()) {
+      if (namesState == null || !selection.names().get().equals(namesState.pair())) return;
+      tableSources.invalidate(selection.item().snapshotId(), 1572924);
+      if (namesModel != null) namesModel.invalidateDependency(selection.item().snapshotId());
+    } else {
+      if (itemState == null || !sameExportItem(selection.item(), itemState.handle())) return;
+      tableSources.invalidate(selection.item().snapshotId(), 841626);
+      itemReadiness.requiresVerification(selection.item().evidence().association());
+      if (namesModel != null) namesModel.invalidateDependency(selection.item().snapshotId());
+      if (itemModel != null) itemModel.invalidateForRepair(selection.item().snapshotId());
+    }
+    refreshContextStripe();
+  }
+
+  private void refreshExportContext() {
+    if (evidenceDialog == null || !evidenceDialog.isShowing()) return;
+    boolean valid =
+        state != null
+            && state.selected() != null
+            && exportItem.snapshotId().equals(state.selected().snapshotId())
+            && exportItem.locale().equals(currentLocale);
+    var selectedPair = evidenceDialog.state().selection().names();
+    valid &=
+        selectedPair.isPresent()
+            ? namesState != null && selectedPair.get().equals(namesState.pair())
+            : itemState != null && sameExportItem(exportItem, itemState.handle());
+    if (!valid) evidenceDialog.invalidateContext();
+  }
+
   @Override
   public void stop() {
+    if (evidenceDialog != null) evidenceDialog.close();
     if (model != null) model.close();
     if (workspaceModel != null) workspaceModel.close();
     if (productModel != null) productModel.close();

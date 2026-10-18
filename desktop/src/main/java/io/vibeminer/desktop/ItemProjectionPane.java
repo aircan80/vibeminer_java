@@ -16,6 +16,7 @@ public final class ItemProjectionPane extends VBox {
   private final ItemPresentationModel model;
   private final double scale;
   private final Runnable inspectSource;
+  private final java.util.function.BiConsumer<PreparedItemProjection, ItemPhysicalRow> export;
   private TableView<ItemPhysicalRow> rowTable;
   private TextField input;
   private Label statusLabel;
@@ -26,7 +27,16 @@ public final class ItemProjectionPane extends VBox {
   }
 
   public ItemProjectionPane(ItemPresentationModel model, double scale, Runnable inspectSource) {
+    this(model, scale, inspectSource, null);
+  }
+
+  public ItemProjectionPane(
+      ItemPresentationModel model,
+      double scale,
+      Runnable inspectSource,
+      java.util.function.BiConsumer<PreparedItemProjection, ItemPhysicalRow> export) {
     super(12);
+    this.export = export;
     this.inspectSource = inspectSource;
     this.model = Objects.requireNonNull(model);
     this.scale = scale;
@@ -247,7 +257,7 @@ public final class ItemProjectionPane extends VBox {
         + " other sections not indexed";
   }
 
-  private static void showRow(VBox detail, ItemPhysicalRow row, PreparedItemProjection h) {
+  private void showRow(VBox detail, ItemPhysicalRow row, PreparedItemProjection h) {
     detail.getChildren().clear();
     if (row == null) {
       detail
@@ -257,6 +267,12 @@ public final class ItemProjectionPane extends VBox {
                   "Select a physical row to inspect raw values and candidate interpretation.",
                   "body-copy"));
       return;
+    }
+    if (export != null) {
+      Button button = new Button("Export evidence…");
+      button.setId("item-export-evidence");
+      button.setOnAction(e -> export.accept(h, row));
+      detail.getChildren().add(button);
     }
     StringBuilder values =
         new StringBuilder(

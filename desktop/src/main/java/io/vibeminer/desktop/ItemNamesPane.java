@@ -18,6 +18,7 @@ public final class ItemNamesPane extends VBox {
   private final ItemNamesPresentationModel model;
   private final double scale;
   private final Runnable inspectSparse;
+  private final java.util.function.BiConsumer<PreparedItemNames, NamedItemRow> export;
   private Label status, mode, searchError;
   private TableView<NamedItemRow> table;
   private LiteralEditor searchInput;
@@ -25,7 +26,16 @@ public final class ItemNamesPane extends VBox {
   private TextArea executedText;
 
   public ItemNamesPane(ItemNamesPresentationModel model, double scale, Runnable inspectSparse) {
+    this(model, scale, inspectSparse, null);
+  }
+
+  public ItemNamesPane(
+      ItemNamesPresentationModel model,
+      double scale,
+      Runnable inspectSparse,
+      java.util.function.BiConsumer<PreparedItemNames, NamedItemRow> export) {
     super(12);
+    this.export = export;
     this.model = Objects.requireNonNull(model);
     this.scale = scale;
     this.inspectSparse = inspectSparse;
@@ -336,7 +346,7 @@ public final class ItemNamesPane extends VBox {
     searchError.setAccessibleText(
         state.searchBlocked()
             ? "Input rejected. This native editor cannot preserve CR, NUL, other control characters"
-                  + " or DEL. LF and tab are supported. Edit valid text or Clear before searching."
+                + " or DEL. LF and tab are supported. Edit valid text or Clear before searching."
             : "No rejected input.");
   }
 
@@ -489,7 +499,7 @@ public final class ItemNamesPane extends VBox {
     getChildren().addAll(table, detail);
   }
 
-  private static void showRow(VBox detail, NamedItemRow row) {
+  private void showRow(VBox detail, NamedItemRow row) {
     detail.getChildren().clear();
     if (row == null) {
       detail
@@ -500,6 +510,13 @@ public final class ItemNamesPane extends VBox {
                       + " fields.",
                   "body-copy"));
       return;
+    }
+    var pair = model.state().pair();
+    if (export != null && pair != null) {
+      Button button = new Button("Export evidence…");
+      button.setId("names-export-evidence");
+      button.setOnAction(e -> export.accept(pair, row));
+      detail.getChildren().add(button);
     }
     var name = row.name();
     StringBuilder text =
