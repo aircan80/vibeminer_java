@@ -75,3 +75,22 @@ Use synthetic content encoded into two deliberately different valid BLTE represe
 - Legacy duplicate representations remain visible and pinned; no automatic deletion or false reclaimed-byte claim occurs. Identical physical SHA aliases always count once.
 
 These checks are separate from full-build archive, general cache eviction and decoded-table sharing acceptance. No live data is needed for the deterministic suite.
+
+## Approved first guard architecture (#80)
+
+The shared authority remains the existing `canonical_content_slots` header: namespace/CKey, actual EKey, encoded length, durable token and lifecycle state. Do not create a second independently authoritative metadata reservation table. Its bounded representation field gains one explicitly tagged metadata variant beside the existing encoded variant. Existing encoded receipt bytes and public selected-file APIs remain compatible; all producer transitions delegate to the same neutral reservation implementation in a transaction. Selected-file projection of a metadata-only receipt returns a typed unsupported-reuse outcome until representation-aware reuse exists. It never casts that receipt into `ContentRepresentation` or fabricates an encoded transport receipt.
+
+A separate bounded legacy-conflict inventory is a blocking adjunct to that same authority, not a second lock or selected winner. Every lookup/reservation checks it transactionally. Historical header anchors/tokens remain unchanged, but a conflict returns an explicit conflict outcome rather than presenting an arbitrary anchor as canonical. No existing foreign-key parent table rebuild or opaque receipt rewrite is required by the first slice.
+
+Concrete pure values are deliberately limited:
+
+- A neutral `ContentClaim` contains the existing reviewed `ContentSlotKey`, actual EKey, encoded length, token, lifecycle state and optional typed proof. Process owner/session bookkeeping stays in infrastructure.
+- A sealed two-variant proof contains either the existing encoded `ContentRepresentation` or a metadata proof. There is no extensible generic proof graph.
+- A metadata proof preserves its original source alias/evidence, actual EKey, declared CKey and optional independently declared decoded length. It carries optional `DecodedContentAttestation(contentKey, actualDecodedBytes, verifierRevision)` and optional `MetadataStructureAttestation(ROOT|INSTALL, parserRevision)`.
+- Historical source tuples populate declarations only. Their existence does not newly attest current physical presence, decoded validity or grammar. A new EOF verifier records decoded attestation before promotion; root structural attestation is added only after its actual bounded second parser pass. The proof may grow monotonically for the same immutable object and source facts.
+
+A prospective metadata receipt is ledger evidence, not permission to publish a complete source alias or readable membership. Required protocol and structural capabilities must be satisfied before the corresponding final readiness/association transaction. Do not infer those capabilities from a verifier string in historical source metadata. Unknown length and absent attestation remain explicit, never zero or a generic ready flag.
+
+The first domain TDD slice covers private-state invariants rather than acquisition: exact key/EKey/length/object agreement; historical versus decoded versus structural capability; optional facts and unsigned/checkable lengths; same-object monotonic attestation upgrade; unsupported proof projection; immutable source evidence; and no accidental promotion of declarations into verified capability. Storage tests then cover strict tagged-codec compatibility, same-header preservation, root/install and selected-file mutual exclusion, legacy conflict blocking, original pins and every prospective-SHA recovery boundary.
+
+Implementation partitions are domain values, a narrow application canonical-content port, shared SQLite/codec delegation, existing install/root application policy, verifier publication observers, and composition injection. These are concrete responsibilities, not new frameworks. The guard is not enabled until every supported content producer participates; a partially wired metadata-only guard cannot uphold cross-workflow exclusion. Representation-aware reuse remains a later increment of #80; the first safe guard can explicitly refuse alternate encoding B.
