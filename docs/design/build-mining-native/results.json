@@ -1,0 +1,131 @@
+{
+  "source": "76a7e837142c66bcc3d344e69c23e513fa44ac8a",
+  "date": "2026-10-18",
+  "platform": "Linux x64 / JavaFX software rendering",
+  "sourceType": "authored HTTP vectors; actual services, SQLite and app-owned CAS",
+  "javaTests": 2083,
+  "javaFailures": 0,
+  "javaErrors": 0,
+  "javaSkipped": 0,
+  "linuxPackageVerification": "passed bundled runtime self-test and JavaFX smoke",
+  "cases": [
+    {
+      "viewport": [
+        1440,
+        1100
+      ],
+      "applicationTextScalePercent": 100,
+      "seed": {
+        "assertions": 154,
+        "successfulAuthoredHttpAttempts": 14,
+        "gameAttempts": 2
+      },
+      "restart": {
+        "assertions": 9,
+        "successfulAuthoredHttpAttempts": 0,
+        "gameAttempts": 0
+      }
+    },
+    {
+      "viewport": [
+        1440,
+        1100
+      ],
+      "applicationTextScalePercent": 200,
+      "seed": {
+        "assertions": 154,
+        "successfulAuthoredHttpAttempts": 14,
+        "gameAttempts": 2
+      },
+      "restart": {
+        "assertions": 9,
+        "successfulAuthoredHttpAttempts": 0,
+        "gameAttempts": 0
+      }
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "applicationTextScalePercent": 100,
+      "seed": {
+        "assertions": 154,
+        "successfulAuthoredHttpAttempts": 14,
+        "gameAttempts": 2
+      },
+      "restart": {
+        "assertions": 9,
+        "successfulAuthoredHttpAttempts": 0,
+        "gameAttempts": 0
+      }
+    },
+    {
+      "viewport": [
+        1280,
+        800
+      ],
+      "applicationTextScalePercent": 200,
+      "seed": {
+        "assertions": 154,
+        "successfulAuthoredHttpAttempts": 14,
+        "gameAttempts": 2
+      },
+      "restart": {
+        "assertions": 9,
+        "successfulAuthoredHttpAttempts": 0,
+        "gameAttempts": 0
+      }
+    }
+  ],
+  "totalAssertions": 652,
+  "totalCapturedImages": 32,
+  "selectedImages": [
+    {
+      "file": "atlas-mining-seed-selected-1440x1100-100pct.png",
+      "sha256": "00a5eba6a7a85805bd4b29d458de16582aedd260b313aee4d1fbb0143484329f"
+    },
+    {
+      "file": "atlas-mining-seed-partial-1440x1100-100pct.png",
+      "sha256": "6dfd5395a9a63471cb1950e2210c7e0c4567375b4fbd27259c79839ec17950bd"
+    },
+    {
+      "file": "atlas-mining-seed-downloading-1440x1100-100pct.png",
+      "sha256": "c15ae3900e971b84a2aa6ec6d1ea05b7440f982ec8239945f80ed9731f7e0c6d"
+    },
+    {
+      "file": "atlas-mining-seed-downloading-header-1440x1100-100pct.png",
+      "sha256": "724fb5547f55c80387007fe7359af0d07b12cad5050dcb2069a7ff00faf36fc9"
+    },
+    {
+      "file": "atlas-mining-seed-full-1440x1100-100pct.png",
+      "sha256": "7e338fc8d51badf8659946e6c150049e5467a84c89dc36231d60f017e8b740c6"
+    },
+    {
+      "file": "atlas-mining-seed-full-on-demand-1440x1100-100pct.png",
+      "sha256": "528e1cf725af33b1214732b298d90401391612f4fc2c9807525ef29d766839d7"
+    },
+    {
+      "file": "atlas-mining-seed-downloading-header-1280x800-200pct.png",
+      "sha256": "54bfb439ed92e1692f8f69fb9ba86bfcc48d2418c090c453b725c73b57cd2787"
+    },
+    {
+      "file": "atlas-mining-restart-offline-full-1280x800-200pct.png",
+      "sha256": "46d434e7ed97a7a7bacbb2d6b5536c33c3753084b265667ddcc740e5135aea07"
+    }
+  ],
+  "scopeLimits": [
+    "One authored content member, 68 encoded bytes; not a retail-size throughput test.",
+    "Discovery deliberately attempts an offline refresh before reopening; the retained metadata/content reopen itself makes zero additional attempts.",
+    "Not a live-CDN compatibility check or a release.",
+    "Chooser readiness observations remain a separate unfinished acceptance gate."
+  ],
+  "subsequentCi": {
+    "source": "072b46e278f72df17b17500f7fdd6e44ba1a9764",
+    "url": "https://github.com/aircan80/vibeminer/actions/runs/39159259610",
+    "nativePlatformsPassed": 4,
+    "linuxUiWorkflowsPassed": 15,
+    "miningAssertions": 652,
+    "releasePublished": false
+  }
+}
