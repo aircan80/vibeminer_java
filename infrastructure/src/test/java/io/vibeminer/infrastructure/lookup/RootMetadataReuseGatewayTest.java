@@ -183,7 +183,7 @@ class RootMetadataReuseGatewayTest {
     try (var setup = setup(true);
         var gateway = new OfficialMetadataReuseGateway(setup.store())) {
       assertThrows(
-          FileLookupException.class,
+          ContentClaimException.class,
           () -> gateway.replay(plan(setup), LookupBudgets.defaults(), CancellationToken.none()));
     }
   }

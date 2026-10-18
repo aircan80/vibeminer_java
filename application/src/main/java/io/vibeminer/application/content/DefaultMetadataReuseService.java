@@ -2,6 +2,7 @@ package io.vibeminer.application.content;
 
 import io.vibeminer.application.CancellationToken;
 import io.vibeminer.application.catalog.BuildObjectCatalog;
+import io.vibeminer.application.catalog.CatalogException;
 import io.vibeminer.application.lookup.LookupBudgets;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.*;
@@ -229,7 +230,7 @@ public final class DefaultMetadataReuseService implements MetadataReuseService {
               token.throwIfCancellationRequested();
               future.complete(work.run(token));
             } catch (Throwable failure) {
-              future.completeExceptionally(failure);
+              future.completeExceptionally(normalize(failure));
             } finally {
               synchronized (this) {
                 active.remove(future);
@@ -252,6 +253,33 @@ public final class DefaultMetadataReuseService implements MetadataReuseService {
     closed = true;
     issued.clear();
     for (var future : active) future.cancel(false);
+  }
+
+  private static Throwable normalize(Throwable failure) {
+    if (failure instanceof CatalogException catalog) {
+      var code =
+          switch (catalog.code()) {
+            case MISSING_OBJECT, UNKNOWN_SNAPSHOT -> ContentClaimException.Code.MISSING_LOCAL;
+            case INTEGRITY_FAILURE, CORRUPT_METADATA, INVALID_EVIDENCE ->
+                ContentClaimException.Code.INTEGRITY_FAILURE;
+            case IMMUTABLE_CONFLICT -> ContentClaimException.Code.REPLAN_REQUIRED;
+            case STORAGE_UNAVAILABLE -> ContentClaimException.Code.STORAGE_UNAVAILABLE;
+          };
+      return new ContentClaimException(code, catalog.getMessage(), catalog);
+    }
+    if (failure instanceof io.vibeminer.application.ObjectStoreException stored) {
+      var code =
+          switch (stored.code()) {
+            case MISSING_OBJECT -> ContentClaimException.Code.MISSING_LOCAL;
+            case INTEGRITY_FAILURE -> ContentClaimException.Code.INTEGRITY_FAILURE;
+            case BUSY, STORE_IN_USE -> ContentClaimException.Code.BUSY;
+            case LIMIT_EXCEEDED -> ContentClaimException.Code.UNSUPPORTED_REUSE;
+            case CLOSED -> ContentClaimException.Code.INVALID_STATE;
+            case IO_FAILURE -> ContentClaimException.Code.STORAGE_UNAVAILABLE;
+          };
+      return new ContentClaimException(code, stored.getMessage(), stored);
+    }
+    return failure;
   }
 
   private static ContentClaimException failure(ContentClaimException.Code code, String message) {

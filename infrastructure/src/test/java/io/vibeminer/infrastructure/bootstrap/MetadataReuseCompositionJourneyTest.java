@@ -188,11 +188,11 @@ class MetadataReuseCompositionJourneyTest {
             assertThrows(
                 CompletionException.class,
                 () -> s.service.apply(plan).toCompletableFuture().join());
-        var storeFailure = assertInstanceOf(ObjectStoreException.class, failure.getCause());
+        var storeFailure = assertInstanceOf(ContentClaimException.class, failure.getCause());
         assertEquals(
             missing
-                ? ObjectStoreException.Code.MISSING_OBJECT
-                : ObjectStoreException.Code.INTEGRITY_FAILURE,
+                ? ContentClaimException.Code.MISSING_LOCAL
+                : ContentClaimException.Code.INTEGRITY_FAILURE,
             storeFailure.code());
         assertTrue(
             s.associations
@@ -236,8 +236,12 @@ class MetadataReuseCompositionJourneyTest {
       bytes[0] ^= 1;
       Files.write(path, bytes);
       int requests = f.requests().get();
-      assertThrows(
-          CompletionException.class, () -> s.service.apply(plan).toCompletableFuture().join());
+      var configFailure =
+          assertThrows(
+              CompletionException.class, () -> s.service.apply(plan).toCompletableFuture().join());
+      assertEquals(
+          ContentClaimException.Code.INTEGRITY_FAILURE,
+          assertInstanceOf(ContentClaimException.class, configFailure.getCause()).code());
       assertEquals(0, count(s.sql, "retention_scopes"));
       assertEquals(1, count(s.sql, "build_object_memberships"));
       assertTrue(

@@ -24,6 +24,7 @@ class DefaultMetadataReuseServiceTest {
       attaches = new AtomicInteger();
   final AtomicLong nanos = new AtomicLong();
   boolean missing, changed, badReplay;
+  RuntimeException catalogFailure;
   MetadataDeclaration suppliedDeclaration = declaration();
   MetadataContentProof suppliedProof = proof(true, true);
   Clock serviceClock = Clock.fixed(ASSOCIATED, ZoneOffset.UTC);
@@ -62,6 +63,7 @@ class DefaultMetadataReuseServiceTest {
             (p, m, a) -> {
               if (!m.getName().equals("findVerifiedObject"))
                 throw new AssertionError("Unexpected catalog write: " + m);
+              if (catalogFailure != null) throw catalogFailure;
               var c = configuration();
               return missing
                   ? Optional.empty()
@@ -282,6 +284,37 @@ class DefaultMetadataReuseServiceTest {
       var result = s.apply(p).toCompletableFuture().join();
       assertEquals(suppliedDeclaration, result.declaration());
       assertEquals(ScopeKind.ROOT_METADATA, scope.kind());
+    }
+  }
+
+  @Test
+  void catalogIntegrityFailureBeforeGatewayKeepsTypedReadinessFailureAndCause() {
+    for (var code :
+        List.of(
+            CatalogException.Code.MISSING_OBJECT,
+            CatalogException.Code.INTEGRITY_FAILURE,
+            CatalogException.Code.CORRUPT_METADATA)) {
+      catalogFailure = null;
+      try (var s = service(Runnable::run)) {
+        var plan =
+            s.planRetained(
+                    build(), MetadataStructureAttestation.Kind.INSTALL, LookupBudgets.defaults())
+                .toCompletableFuture()
+                .join();
+        var cause = new CatalogException(code, "local config failed");
+        catalogFailure = cause;
+        var failed =
+            assertThrows(
+                CompletionException.class, () -> s.apply(plan).toCompletableFuture().join());
+        var typed = assertInstanceOf(ContentClaimException.class, failed.getCause());
+        assertEquals(
+            code == CatalogException.Code.MISSING_OBJECT
+                ? ContentClaimException.Code.MISSING_LOCAL
+                : ContentClaimException.Code.INTEGRITY_FAILURE,
+            typed.code());
+        assertSame(cause, typed.getCause());
+        assertEquals(0, attaches.get());
+      }
     }
   }
 }

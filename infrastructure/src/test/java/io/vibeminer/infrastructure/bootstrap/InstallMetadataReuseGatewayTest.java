@@ -223,11 +223,11 @@ class InstallMetadataReuseGatewayTest {
       Files.write(file, corrupt);
       int requests = setup.requests().get();
       assertThrows(
-          ObjectStoreException.class,
+          ContentClaimException.class,
           () -> gateway.replay(plan(setup), LookupBudgets.defaults(), CancellationToken.none()));
       Files.delete(file);
       assertThrows(
-          ObjectStoreException.class,
+          ContentClaimException.class,
           () -> gateway.replay(plan(setup), LookupBudgets.defaults(), CancellationToken.none()));
       assertEquals(requests, setup.requests().get());
     }
@@ -250,7 +250,7 @@ class InstallMetadataReuseGatewayTest {
     try (var setup = setup(invalid, true);
         var gateway = new OfficialMetadataReuseGateway(setup.store())) {
       assertThrows(
-          io.vibeminer.application.bootstrap.BootstrapException.class,
+          ContentClaimException.class,
           () -> gateway.replay(plan(setup), LookupBudgets.defaults(), CancellationToken.none()));
     }
   }
@@ -456,7 +456,7 @@ class InstallMetadataReuseGatewayTest {
               b.fixture(),
               b.evidence());
       assertThrows(
-          io.vibeminer.infrastructure.acquisition.SourceContextException.class,
+          ContentClaimException.class,
           () ->
               gateway.readDeclaration(
                   changed,
@@ -566,7 +566,7 @@ class InstallMetadataReuseGatewayTest {
           new MetadataBuildAssociation(
               a.declaration(), a.canonicalReservationToken(), badProof, a.associatedAt());
       assertThrows(
-          io.vibeminer.infrastructure.acquisition.SourceContextException.class,
+          ContentClaimException.class,
           () ->
               gateway.inspectAssociatedInstall(
                   plan, badAssociation, LookupBudgets.defaults(), CancellationToken.none()));
@@ -583,7 +583,7 @@ class InstallMetadataReuseGatewayTest {
       var a = association(setup);
       int requests = setup.requests().get();
       assertThrows(
-          io.vibeminer.application.bootstrap.BootstrapException.class,
+          ContentClaimException.class,
           () ->
               gateway.inspectAssociatedInstall(
                   plan, a, LookupBudgets.defaults(), CancellationToken.none()));
@@ -594,7 +594,7 @@ class InstallMetadataReuseGatewayTest {
               .resolve(digest.substring(0, 2))
               .resolve(digest.substring(2)));
       assertThrows(
-          ObjectStoreException.class,
+          ContentClaimException.class,
           () ->
               gateway.inspectAssociatedInstall(
                   plan, a, LookupBudgets.defaults(), CancellationToken.none()));
@@ -643,10 +643,84 @@ class InstallMetadataReuseGatewayTest {
       int requests = setup.requests().get();
       var failure =
           assertThrows(
-              ObjectStoreException.class,
+              ContentClaimException.class,
               () -> gateway.inspectAssociatedInstall(plan, a, b, CancellationToken.none()));
-      assertEquals(ObjectStoreException.Code.INTEGRITY_FAILURE, failure.code());
+      assertEquals(ContentClaimException.Code.INTEGRITY_FAILURE, failure.code());
       assertEquals(requests, setup.requests().get());
+    }
+  }
+
+  @Test
+  void allLocalPublicBoundariesNormalizeStoreFailuresWithoutChangingCauses() throws Exception {
+    try (var setup = setup(manifest())) {
+      var plan = declaredPlan(setup);
+      var association = association(setup);
+      var declaration = setup.declaration();
+      var expected =
+          Map.of(
+              ObjectStoreException.Code.MISSING_OBJECT,
+              ContentClaimException.Code.MISSING_LOCAL,
+              ObjectStoreException.Code.INTEGRITY_FAILURE,
+              ContentClaimException.Code.INTEGRITY_FAILURE,
+              ObjectStoreException.Code.BUSY,
+              ContentClaimException.Code.BUSY,
+              ObjectStoreException.Code.STORE_IN_USE,
+              ContentClaimException.Code.BUSY,
+              ObjectStoreException.Code.LIMIT_EXCEEDED,
+              ContentClaimException.Code.UNSUPPORTED_REUSE,
+              ObjectStoreException.Code.IO_FAILURE,
+              ContentClaimException.Code.STORAGE_UNAVAILABLE,
+              ObjectStoreException.Code.CLOSED,
+              ContentClaimException.Code.INVALID_STATE);
+      for (var entry : expected.entrySet()) {
+        var cause = new ObjectStoreException(entry.getKey(), "synthetic local failure");
+        ObjectStore failedStore =
+            new ObjectStore() {
+              public StoredObject publish(
+                  InputStream s, ExpectedObjectChecksum e, long m, CancellationToken c) {
+                throw new AssertionError("No publication");
+              }
+
+              public StoredObject publishVerified(
+                  InputStream s, long l, long m, CompletionVerification v, CancellationToken c) {
+                throw new AssertionError("No publication");
+              }
+
+              public Optional<StoredObject> verify(ObjectDigest d, CancellationToken c) {
+                throw new AssertionError("Lease required");
+              }
+
+              public ObjectReadLease openRead(ObjectDigest d, CancellationToken c) {
+                throw cause;
+              }
+
+              public void close() {}
+            };
+        try (var gateway = new OfficialMetadataReuseGateway(failedStore)) {
+          for (Runnable operation :
+              List.<Runnable>of(
+                  () ->
+                      gateway.readDeclaration(
+                          declaration.build(),
+                          declaration.configuration(),
+                          declaration.kind(),
+                          LookupBudgets.defaults(),
+                          CancellationToken.none()),
+                  () ->
+                      gateway.validateDeclaration(
+                          declaration, LookupBudgets.defaults(), CancellationToken.none()),
+                  () ->
+                      gateway.replay(
+                          plan(setup), LookupBudgets.defaults(), CancellationToken.none()),
+                  () ->
+                      gateway.inspectAssociatedInstall(
+                          plan, association, LookupBudgets.defaults(), CancellationToken.none()))) {
+            var failure = assertThrows(ContentClaimException.class, operation::run);
+            assertEquals(entry.getValue(), failure.code());
+            assertSame(cause, failure.getCause());
+          }
+        }
+      }
     }
   }
 }

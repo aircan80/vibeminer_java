@@ -3,6 +3,7 @@ package io.vibeminer.infrastructure.lookup;
 import static io.vibeminer.application.content.ContentClaimException.Code.*;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.bootstrap.BootstrapException;
 import io.vibeminer.application.bootstrap.InstallInspection;
 import io.vibeminer.application.bootstrap.InstallPlan;
 import io.vibeminer.application.content.*;
@@ -18,6 +19,7 @@ import java.time.Clock;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /** Local config/A replay only. Its root reader has a structurally forbidden transport. */
 public final class OfficialMetadataReuseGateway implements MetadataReuseGateway, AutoCloseable {
@@ -55,6 +57,16 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
       MetadataStructureAttestation.Kind kind,
       LookupBudgets budgets,
       CancellationToken cancellation) {
+    return local(
+        () -> readDeclarationInternal(build, retainedConfiguration, kind, budgets, cancellation));
+  }
+
+  private MetadataDeclaration readDeclarationInternal(
+      BuildSnapshot build,
+      VerifiedSourceAlias retainedConfiguration,
+      MetadataStructureAttestation.Kind kind,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
     ensureOpen();
     Objects.requireNonNull(build);
     Objects.requireNonNull(retainedConfiguration);
@@ -72,6 +84,15 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
   @Override
   public void validateDeclaration(
       MetadataDeclaration declaration, LookupBudgets budgets, CancellationToken cancellation) {
+    local(
+        () -> {
+          validateDeclarationInternal(declaration, budgets, cancellation);
+          return null;
+        });
+  }
+
+  private void validateDeclarationInternal(
+      MetadataDeclaration declaration, LookupBudgets budgets, CancellationToken cancellation) {
     ensureOpen();
     try (var lease = store.openRead(declaration.configuration().object().digest(), cancellation)) {
       validateConfiguration(declaration, budgets, cancellation, lease);
@@ -80,6 +101,15 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
 
   @Override
   public InstallInspection inspectAssociatedInstall(
+      InstallPlan declaredPlanB,
+      MetadataBuildAssociation association,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
+    return local(
+        () -> inspectAssociatedInstallInternal(declaredPlanB, association, budgets, cancellation));
+  }
+
+  private InstallInspection inspectAssociatedInstallInternal(
       InstallPlan declaredPlanB,
       MetadataBuildAssociation association,
       LookupBudgets budgets,
@@ -151,6 +181,11 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
 
   @Override
   public MetadataContentProof replay(
+      MetadataReusePlan plan, LookupBudgets budgets, CancellationToken cancellation) {
+    return local(() -> replayInternal(plan, budgets, cancellation));
+  }
+
+  private MetadataContentProof replayInternal(
       MetadataReusePlan plan, LookupBudgets budgets, CancellationToken cancellation) {
     ensureOpen();
     Objects.requireNonNull(plan);
@@ -371,6 +406,64 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
     } catch (IOException invalid) {
       throw new ContentClaimException(STORAGE_UNAVAILABLE, "Cannot read local metadata", invalid);
     }
+  }
+
+  private static <T> T local(Supplier<T> operation) {
+    try {
+      return operation.get();
+    } catch (RuntimeException failure) {
+      throw normalize(failure);
+    }
+  }
+
+  private static RuntimeException normalize(RuntimeException failure) {
+    if (failure instanceof ContentClaimException || failure instanceof CancellationException)
+      return failure;
+    ContentClaimException.Code code;
+    if (failure instanceof ObjectStoreException stored) {
+      code =
+          switch (stored.code()) {
+            case MISSING_OBJECT -> MISSING_LOCAL;
+            case INTEGRITY_FAILURE -> INTEGRITY_FAILURE;
+            case BUSY, STORE_IN_USE -> BUSY;
+            case LIMIT_EXCEEDED -> UNSUPPORTED_REUSE;
+            case CLOSED -> INVALID_STATE;
+            case IO_FAILURE -> STORAGE_UNAVAILABLE;
+          };
+    } else if (failure instanceof FileLookupException lookup) {
+      code =
+          switch (lookup.code()) {
+            case MISSING_LOCAL, UNAVAILABLE -> MISSING_LOCAL;
+            case INTEGRITY_FAILURE -> INTEGRITY_FAILURE;
+            case UNSUPPORTED, BUDGET_EXCEEDED -> UNSUPPORTED_REUSE;
+            case CAPACITY_EXCEEDED -> BUSY;
+            case INVALID_PLAN, INVALID_REQUEST -> INVALID_REQUEST;
+            case CLOSED -> INVALID_STATE;
+            case STORAGE_FAILURE -> STORAGE_UNAVAILABLE;
+          };
+    } else if (failure instanceof BootstrapException install) {
+      if (install.reason() == BootstrapException.Reason.CANCELLED) {
+        var cancelled = new CancellationException(install.getMessage());
+        cancelled.initCause(install);
+        return cancelled;
+      }
+      code =
+          switch (install.reason()) {
+            case MISSING_LOCAL, UNAVAILABLE -> MISSING_LOCAL;
+            case INTEGRITY, MALFORMED -> INTEGRITY_FAILURE;
+            case UNSUPPORTED, LIMIT -> UNSUPPORTED_REUSE;
+            case CAPACITY -> BUSY;
+            case CLOSED -> INVALID_STATE;
+            case STORAGE, TRANSPORT -> STORAGE_UNAVAILABLE;
+            case CANCELLED -> throw new AssertionError("Cancellation classified above");
+          };
+    } else if (failure instanceof SourceContextException context) {
+      code =
+          context.reason() == SourceContextException.Reason.UNSUPPORTED
+              ? UNSUPPORTED_REUSE
+              : INTEGRITY_FAILURE;
+    } else return failure;
+    return new ContentClaimException(code, failure.getMessage(), failure);
   }
 
   private void ensureOpen() {
