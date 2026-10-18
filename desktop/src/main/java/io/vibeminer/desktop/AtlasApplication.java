@@ -4,6 +4,7 @@ import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.application.WorkspaceService;
 import io.vibeminer.application.ProductDiscoveryService;
 import io.vibeminer.application.bootstrap.BootstrapService;
+import io.vibeminer.application.lookup.FileLookupService;
 import io.vibeminer.domain.PublishedProduct;
 import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.Workspace;
@@ -37,6 +38,7 @@ public final class AtlasApplication extends Application {
     private static WorkspaceService configuredWorkspaces;
     private static ProductDiscoveryService configuredProducts;
     private static BootstrapService configuredBootstrap;
+    private static FileLookupService configuredLookup;
     public static synchronized void configure(DiscoveryService service, boolean fixtureMode) {
         configure(service,null,fixtureMode);
     }
@@ -47,12 +49,16 @@ public final class AtlasApplication extends Application {
         configure(service,workspaces,products,null,fixtureMode);
     }
     public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, ProductDiscoveryService products, BootstrapService bootstrap, boolean fixtureMode) {
+        configure(service,workspaces,products,bootstrap,null,fixtureMode);
+    }
+    public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, ProductDiscoveryService products, BootstrapService bootstrap, FileLookupService lookup, boolean fixtureMode) {
         if (configuredService != null) throw new IllegalStateException("Desktop has already been configured");
         configuredService = Objects.requireNonNull(service);
         initialFixtureMode = fixtureMode;
         configuredWorkspaces = workspaces;
         configuredProducts = products;
         configuredBootstrap = bootstrap;
+        configuredLookup = lookup;
     }
 
     private Stage stage;
@@ -71,6 +77,11 @@ public final class AtlasApplication extends Application {
     private InstallPresentationModel.State installState;
     private boolean updatingContext;
     private boolean archiveInstallMode;
+    private boolean archiveFindMode;
+    private FileLookupPresentationModel lookupModel;
+    private FileLookupPresentationModel.State lookupState;
+    private FileLookupPane lookupPane;
+    private String selectedFileVariant;
     private String installQuery="";
     private String selectedInstallEntry;
     private WorkspacePresentationModel workspaceModel;
@@ -81,7 +92,7 @@ public final class AtlasApplication extends Application {
     private VBox workspaceFeedback;
     private String currentLocale = "enUS";
     private final java.util.Map<String,WorkspaceView> workspaceViews = new java.util.HashMap<>();
-    private record WorkspaceView(String destination,String topic,String query,String note,boolean installMode,String installQuery,String installSelection) {}
+    private record WorkspaceView(String destination,String topic,String query,String note,boolean installMode,String installQuery,String installSelection,boolean findMode,String fileInput,String fileVariant) {}
     private String destination = "Research";
     private String researchTopic = "All research areas";
     private String searchText = "";
@@ -124,6 +135,7 @@ public final class AtlasApplication extends Application {
         });
         stage.setTitle("VibeMiner · Atlas research workbench"); stage.setMinWidth(940); stage.setMinHeight(650);
         stage.setScene(scene);
+        if(configuredLookup!=null){lookupModel=new FileLookupPresentationModel(configuredLookup,Platform::runLater,this::onLookupState);lookupState=lookupModel.state();}
         if(configuredBootstrap!=null){installModel=new InstallPresentationModel(configuredBootstrap,Platform::runLater,this::onInstallState);installState=installModel.state();}
         if(configuredProducts!=null){productModel=new ProductPresentationModel(configuredProducts,Platform::runLater,this::onProductState);productState=productModel.state();}
         if(configuredWorkspaces!=null){
@@ -165,28 +177,45 @@ public final class AtlasApplication extends Application {
     private void onState(DiscoveryPresentationModel.State next) {
         state=next;
         updatingContext=true;
-        try{if(installModel!=null)installModel.selectBuild(next.selected());}finally{updatingContext=false;}
+        try{if(installModel!=null)installModel.selectBuild(next.selected());if(lookupModel!=null)lookupModel.selectContext(next.selected(),currentLocale);}finally{updatingContext=false;}
         refreshContextStripe();updateSavedWorkspaceBar();
         status.setText(next.busy()?"Discovery in progress · interface remains available":next.message());render();
     }
     private void refreshContextStripe(){
         mode.setText(state.fixtureMode()?"FICTIONAL FIXTURE MODE":"OFFICIAL METADATA DISCOVERY");
         context.getChildren().clear();BuildSnapshot b=state.selected();
+        boolean rootVerified=b!=null&&lookupState!=null&&lookupState.result()!=null&&lookupState.build()!=null&&lookupState.build().snapshotId().equals(b.snapshotId());
         boolean installVerified=b!=null&&installState!=null&&installState.inspection()!=null&&installState.build()!=null&&installState.build().snapshotId().equals(b.snapshotId());
         context.getChildren().addAll(contextItem("GAME / EDITION",b==null?"No workspace selected":b.editionLabel().replace("World of Warcraft","WoW")),
                 contextItem("PRODUCT ID",b==null?"Not selected":b.productId()),
                 contextItem("CHANNEL / REGION",b==null?"Not selected":b.channel()+" / "+b.region()),
                 contextItem("EXACT BUILD",b==null?"Not selected":b.versionLabel()),
                 contextItem("LOCALE",b==null?"Not selected":currentLocale+" · view preference"),
-                contextItem("COVERAGE",b==null?"No data loaded":installVerified?"Install list verified":"Metadata only"),
-                contextItem("CONTENT",b==null?"Not checked":installVerified?"Game files not acquired":"Unverified"));
-        Button change=button(b==null?"Choose a build →":"Change build",()->{archiveInstallMode=false;navigate("Archive");},"context-action");context.getChildren().add(change);
+                contextItem("COVERAGE",b==null?"No data loaded":rootVerified?"Root map verified":installVerified?"Install list verified":"Metadata only"),
+                contextItem("CONTENT",b==null?"Not checked":rootVerified?"Game files not acquired":installVerified?"Game files not acquired":"Unverified"));
+        Button change=button(b==null?"Choose a build →":"Change build",()->{archiveInstallMode=false;archiveFindMode=false;navigate("Archive");},"context-action");context.getChildren().add(change);
         if(b!=null&&installModel!=null){Button files=button("Install files",()->openInstallFiles(b),"context-action");files.setId("open-install-files");context.getChildren().add(files);}
     }
+    private void onLookupState(FileLookupPresentationModel.State next){
+        FileLookupPresentationModel.State previous=lookupState;lookupState=next;
+        if(updatingContext||state==null)return;
+        if(previous==null||previous.result()!=next.result())refreshContextStripe();status.setText(next.message());
+        if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null){
+            boolean candidateOnly=previous!=null&&previous.stage()==next.stage()&&Objects.equals(previous.input(),next.input())&&previous.plan()==next.plan()&&previous.result()==next.result();
+            if(candidateOnly)return;
+            Node focused=stage.getScene().getFocusOwner();String id=focused==null?null:focused.getId();
+            lookupPane.refreshState();
+            if(id!=null&&List.of("file-check-requirements","file-download-metadata","file-reopen-evidence","file-cancel").contains(id)){
+                String target=next.busy()?"file-cancel":next.stage()==FileLookupPresentationModel.Stage.READY?(next.result().variants().isEmpty()?"file-proof-summary":"file-variant-table"):next.stage()==FileLookupPresentationModel.Stage.PLANNED?"file-root-candidate":"file-check-requirements";
+                Platform.runLater(()->{if(destination.equals("Archive")&&archiveFindMode){Node control=root.lookup("#"+target);if(control!=null)control.requestFocus();}});
+            }
+        }else if(destination.equals("Activity"))render();
+    }
+    private void openFileLookup(){archiveFindMode=true;archiveInstallMode=false;navigate("Archive");}
     private void onInstallState(InstallPresentationModel.State next){
         installState=next;if(updatingContext||state==null)return;
         refreshContextStripe();status.setText(next.message());
-        if(destination.equals("Archive")&&archiveInstallMode){
+        if(destination.equals("Archive")&&archiveInstallMode&&!archiveFindMode){
             Node focused=stage.getScene().getFocusOwner();String id=focused==null?null:focused.getId();
             render();String target=id;
             if(id==null||List.of("install-check","install-download","install-reopen","install-cancel").contains(id)){
@@ -200,7 +229,7 @@ public final class AtlasApplication extends Application {
     }
     private void openInstallFiles(BuildSnapshot build){
         if(state.selected()==null||!state.selected().snapshotId().equals(build.snapshotId())){leaveSavedWorkspace();model.select(build);}
-        archiveInstallMode=true;navigate("Archive");
+        archiveInstallMode=true;archiveFindMode=false;navigate("Archive");
     }
     private VBox contextItem(String title, String value) {
         Label text = label(value, "context-value"); text.setWrapText(false); text.setMaxWidth(Double.MAX_VALUE); text.setMinHeight(Region.USE_PREF_SIZE);
@@ -276,12 +305,15 @@ public final class AtlasApplication extends Application {
     }
     private VBox archive() {
         VBox page;
-        if(archiveInstallMode&&state.selected()!=null&&installModel!=null){page=new VBox(14);page.getStyleClass().add("workspace");page.getChildren().add(label("ARCHIVE / INSTALL FILES","eyebrow"));}
+        if((archiveInstallMode&&installModel!=null||archiveFindMode&&lookupModel!=null)&&state.selected()!=null){page=new VBox(14);page.getStyleClass().add("workspace");page.getChildren().add(label(archiveFindMode?"ARCHIVE / FIND FILE":"ARCHIVE / INSTALL FILES","eyebrow"));}
         else page=page("CDN SOURCES / BUILD ARCHIVE","Choose a build. Keep its identity.","Discovery lists published pointers. It does not guarantee that historical content remains available.");
-        if(state.selected()!=null&&installModel!=null){
-            FlowPane views=new FlowPane(8,8,button("Builds & sources",()->{archiveInstallMode=false;render();},archiveInstallMode?"quiet-button":"primary"),button("Install files",()->{archiveInstallMode=true;render();},archiveInstallMode?"primary":"quiet-button"));
+        if(state.selected()!=null&&(installModel!=null||lookupModel!=null)){
+            FlowPane views=new FlowPane(8,8,button("Builds & sources",()->{archiveInstallMode=false;archiveFindMode=false;render();},archiveInstallMode||archiveFindMode?"quiet-button":"primary"));
+            if(installModel!=null)views.getChildren().add(button("Install files",()->{archiveInstallMode=true;archiveFindMode=false;render();},archiveInstallMode?"primary":"quiet-button"));
+            if(lookupModel!=null){Button find=button("Find file",this::openFileLookup,archiveFindMode?"primary":"quiet-button");find.setId("open-file-lookup");views.getChildren().add(find);}
             views.setId("archive-views");page.getChildren().add(views);
-            if(archiveInstallMode){page.getChildren().add(new InstallFilesPane(installModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,installQuery,selectedInstallEntry,q->installQuery=q,key->selectedInstallEntry=key));return page;}
+            if(archiveFindMode&&lookupModel!=null){lookupPane=new FileLookupPane(lookupModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,selectedFileVariant,key->selectedFileVariant=key);page.getChildren().add(lookupPane);return page;}
+            if(archiveInstallMode&&installModel!=null){page.getChildren().add(new InstallFilesPane(installModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,installQuery,selectedInstallEntry,q->installQuery=q,key->selectedInstallEntry=key));return page;}
         }
         ComboBox<String> product=new ComboBox<>();product.setId("discovery-product");product.setPrefWidth(240);product.setPromptText("Refresh products first");product.setAccessibleText("Discovered raw official product identifier");
         ComboBox<String> region=new ComboBox<>(FXCollections.observableArrayList("us","eu","kr","tw"));region.setId("discovery-region");region.setValue(selectedRegion);region.valueProperty().addListener((o,a,b)->selectedRegion=b);region.setAccessibleText("Discovery region");
@@ -332,12 +364,12 @@ public final class AtlasApplication extends Application {
         Button inspect=button("Inspect identity",()->{BuildSnapshot b=table.getSelectionModel().getSelectedItem();if(b!=null)buildDetails(b);},"quiet-button");inspect.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
         Button install=button("Install files…",()->{BuildSnapshot selected=table.getSelectionModel().getSelectedItem();if(selected!=null)openInstallFiles(selected);},"quiet-button");install.setId("inspect-install-files");install.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(installModel==null)));
         VBox buildResults=panel(label("OBSERVED BUILD METADATA · EXACT SOURCE PER ROW","eyebrow"),table,new FlowPane(10,8,open,inspect,install));
-        if(state.builds().isEmpty())page.getChildren().add(buildResults);else page.getChildren().add(state.selected()!=null&&installModel!=null?2:1,buildResults);
+        if(state.builds().isEmpty())page.getChildren().add(buildResults);else page.getChildren().add(state.selected()!=null&&(installModel!=null||lookupModel!=null)?2:1,buildResults);
         page.getChildren().add(note("RETAINED SCOPE","Exact build metadata and verified install lists can be retained locally; identical bytes are shared. Full game-file catalogues, complete build archives and cleanup controls remain unavailable. Unmeasured storage totals stay unknown."));return page;
     }
     private void onProductState(ProductPresentationModel.State next){
         productState=next;status.setText(next.error().isBlank()?next.message():next.error());
-        if(destination.equals("Archive")&&!archiveInstallMode){
+        if(destination.equals("Archive")&&!archiveInstallMode&&!archiveFindMode){
             Node focused=stage.getScene().getFocusOwner();String focusId=focused==null?null:focused.getId();
             render();if(focusId!=null)Platform.runLater(()->{Node restored=root.lookup("#"+focusId);if(restored!=null)restored.requestFocus();});
         }else if(destination.equals("Activity"))render();
@@ -374,7 +406,7 @@ public final class AtlasApplication extends Application {
         workspaceFeedback.getChildren().clear();workspaceFeedback.setManaged(showFeedback);workspaceFeedback.setVisible(showFeedback);
         if(showFeedback){Label message=wrap(next.error().isBlank()?next.message():next.error());HBox.setHgrow(message,Priority.ALWAYS);Button dismiss=button("Dismiss",()->{workspaceFeedback.setVisible(false);workspaceFeedback.setManaged(false);},"quiet-button");HBox row=new HBox(12,message,dismiss);row.setAlignment(Pos.CENTER_LEFT);workspaceFeedback.getChildren().add(row);workspaceFeedback.getStyleClass().setAll("workspace-feedback");}
         status.setText(next.error().isBlank()?next.message():next.error());
-        if(destination.equals("Archive")&&!archiveInstallMode){
+        if(destination.equals("Archive")&&!archiveInstallMode&&!archiveFindMode){
             Node focused=stage.getScene().getFocusOwner();String focusId=focused==null?null:focused.getId();
             render();if(focusId!=null)Platform.runLater(()->{Node restored=root.lookup("#"+focusId);if(restored!=null)restored.requestFocus();});
         }
@@ -422,14 +454,15 @@ public final class AtlasApplication extends Application {
         FlowPane actions=new FlowPane(8,8,openButton,inspect,rename,remove);
         p.getChildren().addAll(table,actions,wrap("Each entry pins its original build/configuration identity and locale. Reopening does not contact the CDN or substitute a newer build. Game files and decoded records are not retained by this metadata save."));return p;
     }
-    private void rememberWorkspaceView(){if(activeWorkspace!=null)workspaceViews.put(activeWorkspace.id(),new WorkspaceView(destination,researchTopic,searchText,privateNote,archiveInstallMode,installQuery,selectedInstallEntry));}
-    private void leaveSavedWorkspace(){rememberWorkspaceView();activeWorkspace=null;currentLocale="enUS";researchTopic="All research areas";searchText="";privateNote="";archiveInstallMode=false;installQuery="";selectedInstallEntry=null;}
+    private void rememberWorkspaceView(){if(activeWorkspace!=null)workspaceViews.put(activeWorkspace.id(),new WorkspaceView(destination,researchTopic,searchText,privateNote,archiveInstallMode,installQuery,selectedInstallEntry,archiveFindMode,lookupState==null?"":lookupState.input(),selectedFileVariant));}
+    private void leaveSavedWorkspace(){rememberWorkspaceView();activeWorkspace=null;currentLocale="enUS";researchTopic="All research areas";searchText="";privateNote="";archiveInstallMode=false;installQuery="";selectedInstallEntry=null;archiveFindMode=false;selectedFileVariant=null;if(lookupModel!=null)lookupModel.setInput("");}
     private void openWorkspace(Workspace w){
         rememberWorkspaceView();activeWorkspace=w;currentLocale=w.locale();
         WorkspaceView view=workspaceViews.get(w.id());
-        destination=view==null?"Research":view.destination();researchTopic=view==null?"All research areas":view.topic();searchText=view==null?"":view.query();privateNote=view==null?"":view.note();archiveInstallMode=view!=null&&view.installMode();installQuery=view==null?"":view.installQuery();selectedInstallEntry=view==null?null:view.installSelection();
+        destination=view==null?"Research":view.destination();researchTopic=view==null?"All research areas":view.topic();searchText=view==null?"":view.query();privateNote=view==null?"":view.note();archiveInstallMode=view!=null&&view.installMode();installQuery=view==null?"":view.installQuery();selectedInstallEntry=view==null?null:view.installSelection();archiveFindMode=view!=null&&view.findMode();selectedFileVariant=view==null?null:view.fileVariant();
         navigation.getToggles().forEach(t->t.setSelected(destination.equals(t.getUserData())));
         model.restore(w.build());
+        if(lookupModel!=null)lookupModel.setInput(view==null?"":view.fileInput());
         Platform.runLater(()->{Node picker=root.lookup("#saved-workspace-picker");if(picker!=null)picker.requestFocus();});
     }
     private void saveWorkspaceDialog(){
@@ -500,6 +533,9 @@ public final class AtlasApplication extends Application {
     private VBox activity(){
         VBox page=page("BACKGROUND ACTIVITY","Keep the work visible.","Acquisition, verification and metadata operations run outside the JavaFX application thread.");
         boolean any=false;
+        if(lookupState!=null&&lookupState.busy()){
+            any=true;VBox job=busyPanel("FileDataID lookup metadata",lookupState.message(),()->lookupModel.cancel());job.lookupAll(".button").stream().filter(n->n instanceof Button).map(n->(Button)n).forEach(button->button.setText("Cancel request"));page.getChildren().add(job);
+        }
         if(installState!=null&&installState.busy()){
             any=true;VBox installJob=busyPanel("Install file list",installState.message(),()->installModel.cancel());installJob.lookupAll(".button").stream().filter(n->n instanceof Button).map(n->(Button)n).forEach(button->button.setText("Cancel request"));page.getChildren().add(installJob);
         }
@@ -510,7 +546,7 @@ public final class AtlasApplication extends Application {
             any=true;page.getChildren().add(busyPanel("Official metadata discovery","Waiting for the application discovery service. Progress bytes are unknown for this operation.",()->model.stopWaiting()));
         }
         if(!any)page.getChildren().add(panel(label("NO ACTIVE UI REQUEST","eyebrow"),label("A quiet workspace.","section-heading"),wrap("Choose a source in Archive, or inspect an exact build's installation file list. No unrelated acquisition or export jobs are started automatically."),button("Open archive →",()->navigate("Archive"),"primary")));
-        page.getChildren().add(note("CANCELLATION SCOPE","Metadata discovery's Stop waiting detaches its view. Cancelling an install-list request stops only that request. Other requests using the same download may continue."));return page;
+        page.getChildren().add(note("CANCELLATION SCOPE","Metadata discovery's Stop waiting detaches its view. Cancelling an install-list or lookup request stops only that request. Other requests using the same download may continue."));return page;
     }
     private VBox settings(){
         VBox page=page("WORKSPACE PREFERENCES","A careful local workspace.","No game installations, Battle.net folders or game-generated caches are read.");
@@ -549,5 +585,5 @@ public final class AtlasApplication extends Application {
     private static Region spacer(){Region r=new Region();HBox.setHgrow(r,Priority.ALWAYS);return r;}
     private static Button button(String title,Runnable action,String style){Button b=new Button(title);b.getStyleClass().add(style);b.setOnAction(e->action.run());return b;}
     private static TableColumn<BuildSnapshot,String> column(String title,Function<BuildSnapshot,String> value,double width){TableColumn<BuildSnapshot,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
-    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();}
+    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();if(lookupModel!=null)lookupModel.close();}
 }
