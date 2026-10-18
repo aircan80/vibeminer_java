@@ -1,0 +1,69 @@
+# Open an exact build through verified metadata
+
+**Contract plan for [#100](https://github.com/aircan80/vibeminer/issues/100), dependent on [#98](https://github.com/aircan80/vibeminer/issues/98) identity/state and the admitted grammar in [#101](https://github.com/aircan80/vibeminer/issues/101). No new opening service or complete metadata admission is implemented by this document.** The selected interaction is one **Open Build** action in Discover, followed by C Build overview after successful admission. It is not a separate Prepare, Start or Save-workspace sequence. See the [two-screen plan](BUILD-BROWSER-IMPLEMENTATION.md) and [format matrix](BUILD-INVENTORY-FORMATS.md).
+
+## Admission is stricter than current inspection
+
+C may display **Partial** while payload membership enumeration and derived inventory indexes are Preparing, with unknown counts. It must not open Partial while required metadata is missing, corrupt, unreadable, unsupported or unfetched. The Open progress state can explain those prerequisites without claiming a ready build home.
+
+The admitted grammar determines the complete required metadata closure: exact build/CDN configuration and source context, ROOT, IN, EN, applicable DL, and the index/catalog inputs required to authenticate and locate those metadata objects. Every required object's bytes and declared proof capabilities must be verified retained before admission. An authenticated configuration may establish that an optional role is not published; a 404, a parser omission or an absent session cache cannot establish that fact. Unknown required families block admission rather than becoming an empty successful catalog.
+
+All declared language/platform variants are retained and interpreted nonselectively in the initial scope. Research locale is an independent view value. Host OS, friendly edition labels, opaque root flags and install/download tags do not silently select a Windows/enUS game scope.
+
+## Current implementation and precise gaps
+
+There is no `MetadataService` or `DefaultMetadataService` in the current source. Existing responsibilities are deliberately narrower:
+
+| Existing component | Verified scope available now | Gap for Open Build |
+| --- | --- | --- |
+| `OfficialBootstrapArtifactGateway` / `DefaultBootstrapService` | Raw MD5-verified build config, exact known-cost IN acquisition, complete BLTE decoded-CKey and supported IN grammar, retained reopen | IN is not the complete game catalog; no complete metadata-closure admission |
+| `OfficialFileLookupGateway` / `DefaultFileLookupService` | Authenticated selected EN pages resolve ROOT candidates; one encoded ROOT CAS object, full decoded CKey and supported TSFM structural EOF; selected-ID offline lookup | EN ranges are bounded session data, not a retained complete encoding catalog; selected ROOT lookup is not full inventory enumeration |
+| `OfficialSelectedFileGateway` / `DefaultSelectedFileService` | Exact retained root variant replay, selected EN candidate facts, loose/selected archive locator proof and complete encoded target retention | CDN config and archive footer/ToC/page reads support one bounded locator search; they are not a durable complete catalog/index closure |
+| `DefaultMetadataReuseService`, repair service and local verifiers | Strong ROOT/IN canonical-A reuse, explicit same-A repair, original evidence preservation and fresh verification facts | Current metadata proof kinds and admitted source tuples are ROOT/INSTALL only; they must not be relabeled EN, DL or archive-index evidence |
+| Existing config, EN, IN, BLTE and archive-index parsers | Bounded pure format primitives and full in-memory EN parsing | No delivered DL parser; no bounded durable full-EN ingestion/index; no general complete ROOT/IN/DL inventory enumeration |
+| Shared CAS, build-object catalog, canonical claims, retention and actual-worker permits | One physical object per SHA, exact source aliases/build memberships, fenced publication and recovery | Opening needs a reviewed exact required-role closure and persisted admission, not another object store or arbitrary metadata cache |
+
+A successful current install-list/root inspection therefore cannot be promoted to complete Open readiness. Existing services remain regression-tested research primitives; a new facade must not reinterpret their successful narrow results as the missing proof.
+
+## Required-role resolution
+
+1. Reread the chosen event-specific build reference and its original versions/CDNs documents. Validate the exact product/channel/region/config identities, raw row ordinal and supported current route. Preserve the reference even when the canonical snapshot's first registered documents differ.
+2. Verify and retain both exact configuration roles. Interpret supported declarations without dropping unknown fields or silently treating a declared role as optional. Known encoded/decoded costs come from authenticated declarations or an explicitly admitted observation; unknown sizes remain unknown.
+3. Retain the complete required EN as **one encoded CAS object**, with its own explicit EN identity and complete supported verification. Derive any needed lookup index offline in bounded batches. Do not persist selected EN page buffers beside a later full encoded copy, enumerate every EN row as game payload, or reuse ROOT proof semantics for EN.
+4. Resolve every required ROOT/IN/applicable DL representation from authenticated configuration and EN facts. Verify the complete required encoded object, full decoded CKey/length where declared and supported grammar/EOF. Only the final complete proof admits that role; provisional rows do not.
+5. Resolve locator prerequisites for metadata objects through supported pinned routes. Archive indexes are locator catalogs, not payload inventories. The closure must explicitly identify which complete index resources are required for this metadata acquisition or its admitted catalog contract. Do not automatically claim every CDN archive index is required, or silently omit an index needed by the selected metadata chain. Exact index applicability and integrity roots remain a grammar/design review gate with #101.
+6. Recheck the complete required-role set and its physical proofs under the shared authority before committing one admission. Missing references, unresolved mappings or unsupported required interpretation prevent admission. Payload enumeration may begin independently only after this metadata closure is complete.
+
+An index resource without an independently declared content CKey must not receive an invented CKey or a whole-file MD5 claim derived from its filename. Define explicit kind-specific resource identity, whole-byte retention and actual supported footer/ToC/page checks before implementation. If a required index will be retained whole, consume its authenticated windows from that same object rather than create a permanent duplicate range cache. The existing source-key alias and physical SHA responsibilities stay distinct from protocol content identity.
+
+## Shared ownership and one action
+
+The minimal new application responsibility is a narrow build-opening use case, tentatively `BuildOpeningService`, rather than an invented generic replacement for all metadata services. Exact port/value names require ownership review before coding. Its input pins the #98 regional build reference, research locale and admitted metadata-scope revision; its output is one immutable exact-build admission result. It exposes staged operation progress with known verified costs where available and indeterminate progress where genuinely unknown.
+
+The single Open action authorizes only its disclosed metadata operation limits. Progressive resolution may discover previously unknown exact costs, but it must stay inside reviewed wire, decoded-work, time and additional-physical-byte ceilings; crossing a ceiling refuses the stage on the same exact selection. It does not silently schedule an unbounded full EN transfer or introduce a second Prepare/Start workflow. Concrete ceilings and any retry consent are part of the protocol/cost review before implementation.
+
+The content runtime owns the facade, borrows the existing CAS/catalog/retention/canonical authority and existing transport/source owners, and initializes only after the explicit Open action. The discovery/history runtime remains metadata-only; selecting a row does not acquire the content-store lock. Do not construct a second root gateway to validate a session issued by another instance, create a new coalescer per consumer or join another async service on the same bounded worker pool. Existing blocking outbound mechanics may be composed or narrowly extracted with agreed ownership.
+
+ROOT/IN can reuse existing ordinary acquisition/reuse/repair behavior within its actual consent and proof contracts. EN/DL/index support requires explicit new typed identities/capabilities and policy integration; the current sealed proof model is not permission to reuse a ROOT/INSTALL receipt for another family. Share actual-worker fencing, byte/disk/time reservations, cancellation and CAS publication rather than add a parallel publisher. A same-content canonical A must remain A; a newly selected mirror or declared B must not restamp original acquisition evidence or bypass canonical reuse/refusal policy.
+
+One persisted exact build/scope admission references the existing shared objects and required-role proofs. Reopening does not create a named duplicate workspace/archive. Existing saved-workspace metadata can remain compatible internally, but the product action neither asks for a name nor equates workspace presence with Local or ready admission. First-seen/New acknowledgement is committed only after successful Open metadata admission, never on selection, refresh or download start. A persisted observation or a failed prerequisite is insufficient acknowledgement.
+
+## Outcomes, retry and cancellation
+
+- **Opening:** resolve/verify the exact required closure, reuse current verified retained bytes and acquire only missing consented metadata. Show actual stages and measured transfer observations; no invented overall percentage.
+- **Admitted / Partial:** every required metadata role is verified retained. Payload inventory can be Preparing/Unknown, with zero retained payloads and no claimed complete denominator.
+- **Not ready:** preserve the exact selection and explain missing, corrupt, unavailable, unsupported or unresolved prerequisite and the failed stage. No navigation to a substitute build, alternate locale or silently smaller closure.
+- **Retry:** repeat only through a newly valid plan/consent and current authority. Reuse completed verified prerequisites; do not duplicate transfers, rewrite first provenance or automatically repair corrupted canonical content under ordinary consent.
+- **Reopen:** reread persisted admission and reverify required current local evidence. A healthy exact closure reopens with **zero HTTP**; missing/corrupt evidence becomes Not ready and cannot cause implicit repair or a current-pointer refresh.
+
+A consumer context change or cancellation fences navigation to C. Durable publication may have won a late cancellation; retain truthful committed metadata/admission outcomes while the UI's request generation prevents opening a stale selection. Actual source workers retain permits/resources until I/O and verifier cleanup finish. Admission completion callbacks run outside service monitors after actual retirement. Closing a facade does not close shared runtime ownership. No permanently pending operation may be created by dropping accepted queued tasks during shutdown.
+
+## Narrow implementation partitions and evidence
+
+1. **Grammar/closure contract:** freeze required-role applicability, supported version matrix, EN/DL/index proof semantics and unknown-family refusal with the mining and architecture reviewers. Publish concrete supported synthetic examples before source changes.
+2. **Pure protocols and bounded catalogs:** #101 owns full enumeration/DL grammar work. Opening may use complete metadata verification before the payload inventory index is sealed, but cannot declare missing grammar supported. Full EN acquisition/derived lookup must avoid full-map memory dependence.
+3. **Typed metadata retention/adapters:** add only the new kinds actually required by the admitted closure, through the existing canonical/source authority and CAS. Retain one encoded representation; use authored transport fixtures and real CAS/SQLite to prove proof/publication/recovery.
+4. **Application admission/persistence:** one exact build/scope use case, staged known/unknown cost, role-completeness check, immutable admission and #98 Open acknowledgement. No unrelated research navigation or new async framework.
+5. **Composition and the two screens:** Discover's one Open action consumes the immutable result; C renders supplied readiness/inventory state without downloads, persistence or binary parsing. Exact ownership and UI ports are reviewed before edits.
+
+Required tests include complete metadata with unknown payload inventory; declared DL-only/unsupported required role; absent-by-authenticated-config versus 404; full-EN unknown/unsupported proof; metadata locator/index failure; wrong SHA/EKey/CKey/length/grammar; shared physical objects across builds; actual mirror receipt versus canonical-first source; ready offline zero-HTTP reopen; corrupt/missing prerequisite after prior admission; retry reusing completed roles; held ignored-cancellation workers; stale UI/context completion; crash before/after admission and acknowledgement; bounded memory/queues and no permanent page/whole-object duplication. Ordinary checks are authored and offline. Relevant native Atlas screenshots/keyboard/scaling, packaged-runtime lifecycle and separate explicit official evidence remain delivery gates, not inferred from pure tests.
