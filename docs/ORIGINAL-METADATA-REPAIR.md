@@ -1,6 +1,6 @@
 # Explicit repair of original canonical metadata
 
-**Status: approved contract for [#83](https://github.com/aircan80/vibeminer/issues/83), with immutable consent/observation values and an exact-object CAS repair primitive implemented. The metadata repair workflow is not implemented or enabled.** The contract values landed in `7514541`; the physical repair primitive landed in `6c5014d`. These foundations do not authorize repair from a current download action, introduce a repair gateway or audit schema, or establish native repair acceptance.
+**Status: approved contract for [#83](https://github.com/aircan80/vibeminer/issues/83). Immutable consent/observation values (`7514541`), the exact-object CAS repair primitive (`6c5014d`) and the bounded HEAD/consent issuer (`60ce294`) are implemented. Actual metadata repair, durable attempt auditing, application orchestration and runtime enablement are not implemented.** These foundations do not authorize repair from a current download action or establish native metadata-repair acceptance.
 
 This contract extends the [canonical metadata guard](METADATA-DEDUP.md), [actual publisher ownership](PUBLISHER-OWNERSHIP.md) and [shared storage](STORAGE.md). It covers app-owned install and root metadata only. VibeMiner does not access a game installation. It introduces no deletion, GC, encoding replacement, automatic retry or additional product namespace binding.
 
@@ -23,13 +23,15 @@ Current missing/corrupt outcomes remain explicit and perform no automatic repair
 
 The intended UI can retain its existing explicit Check → review cost → Download sequence. A fresh repair-bearing plan must exist before the separate download action is treated as repair consent. A small state/message distinction must explain that the action repairs original retained metadata. No new navigation or asynchronous framework is required by this contract, and no such presentation behavior is currently delivered.
 
-A future issuer must:
+The application and planning issuer must divide responsibilities as follows:
 
 1. Replay the exact build configuration and current supported root/install selection. Read canonical history without creating a publisher or changing existing references.
-2. Establish local missing/corrupt status without discarding the original proof. Planning reads are bounded and confined to app-owned storage.
+2. The application establishes local missing/corrupt or uncertain status without discarding the original proof before calling the issuer. The issuer has no object-store dependency and does not detect readiness. Planning reads are bounded and confined to app-owned storage. Before execution, the actual worker must reread authoritative history and check local readiness under its permit; healthy A requires local replay rather than a repair GET.
 3. Make a bounded, explicit metadata HEAD observation for exact A through its supported official source context. Authenticate the actual route, status, complete identity-encoded length and unambiguous response framing. No redirect or arbitrary URL supplied by a DTO is trusted.
 4. Issue a fresh opaque issuance UUID and retain a bounded canonical session containing the complete plan tuple, original reservation/proof, source observation, costs and expiry.
 5. Before acquisition, replay that issued session and current canonical authority. Unknown, altered, expired, differently scoped or replanned identity/cost invalidates consent before payload transfer.
+
+The implemented issuer borrows the same root session authority and replays the retained raw install configuration. It permits one HEAD with zero observed body bytes and a fifteen-second deadline. It retains at most sixteen opaque five-minute sessions, checked against both wall and monotonic time. Its validation methods perform no HTTP. This planning-only slice creates no publisher permit, repair attempt, CAS publication or canonical mutation.
 
 A successful HEAD is evidence of availability at one observed instant. It is neither payload integrity nor a promise that the later GET succeeds. HEAD requests have their own disclosed metadata bounds; they are not hidden payload transfers. A later 404 remains unavailable and does not trigger another source automatically.
 
@@ -88,7 +90,7 @@ Failure before promotion never releases an existing canonical A merely because t
 
 Implementation proceeds in reviewed logical steps:
 
-1. **Port and source planning:** a narrow repair gateway/observer contract, bounded official HEAD issuance and exact canonical replay. Keep ordinary acquisition and local reuse behavior unchanged.
+1. **Port and source planning (delivered):** bounded official HEAD issuance and exact canonical replay, without repair execution or an audit observer. Keep ordinary acquisition and local reuse behavior unchanged.
 2. **Completing verifier:** reacquire only consented A through the exact-object primitive; emit truthful new attempt facts and verify full physical SHA, encoded integrity, decoded CKey/length and supported grammar. Reuse the shared bounded install verifier and existing root mechanics rather than duplicate parsers.
 3. **Persistence and worker policy:** append repair-attempt facts under the existing authority, persist prospective evidence before promotion, finalize under a physical lease, and prove crash/stale-nonce/cancellation recovery without changing original aliases, pins or memberships.
 4. **Application and presentation:** consume only newly issued positive-cost repair plans, preserve per-consumer cancellation and current plan validation, and wire the smallest explicit repair state/copy. Runtime enablement follows joint acceptance.

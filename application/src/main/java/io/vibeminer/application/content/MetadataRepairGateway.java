@@ -12,6 +12,10 @@ import java.time.Duration;
  * mutation. Callers supply authoritative history and must reread it under an actual worker permit
  * before any future execution; a caller-created claim or this port's issued plan cannot bypass that
  * authority.
+ *
+ * <p>This issuer does not inspect local object readiness. Before prepare, the application must
+ * establish that original A is missing, corrupt or uncertain. Under the actual worker permit it
+ * must check readiness again: healthy A requires local replay, not a repair GET.
  */
 public interface MetadataRepairGateway {
   int MAXIMUM_HEAD_REQUESTS = 1;
