@@ -23,10 +23,6 @@ The first detailed decoder will target World of Warcraft. Discovering another Bl
 
 Comparisons start within one game/edition. Cross-edition comparisons require validated record identities and compatible schemas; matching numeric IDs alone are insufficient. Product identifiers and decoding capabilities must be verified during implementation rather than inferred from edition display names.
 
-## Relationship to Vibecraft
-
-VibeMiner is a separate application and project. Vibecraft remains the polished Warcraft companion and must retain its own easy first-run setup. Neither application requires the other. Acquisition and decoding libraries may eventually be shared through explicit versioned dependencies; neither app should read the other app’s live database or cache.
-
 ## Technical direction
 
 **UI direction: Atlas.** Use its light ivory/teal research workbench, split views, readable comparisons, contextual inspectors and investigation notebook as the reference for the JavaFX implementation. Implement with JavaFX controls and CSS; the browser mockup is a design artifact. Forge and Observatory remain alternative design references. Asset preview support is staged separately, especially for models and maps.
@@ -35,7 +31,7 @@ The selected stack is Java with JavaFX, Gradle and embedded SQLite. Keep discove
 
 Blizzard is the default data source. Community filename lists or schema definitions, if introduced, are separate, identified metadata providers rather than silently treated as Blizzard-authored facts. Game-folder discovery, game-install reads and local game-cache imports are excluded.
 
-**Status: interactive UI mockups.** The mining application is not implemented. Open [the three design options](mockups/index.html). See [PLAN.md](PLAN.md) for milestones, acceptance criteria, architecture and research references. Initial tracking is [Vibecraft issue #10](https://github.com/aircan80/vibecraft/issues/10); move future implementation tracking to VibeMiner’s own GitHub repository when one exists.
+**Status: interactive UI mockups.** The mining application is not implemented. Open [the three design options](mockups/index.html). All enhancements, defects and implementation work are tracked in [GitHub Issues](https://github.com/aircan80/vibeminer/issues).
 
 ## Research-led workflows
 
@@ -48,8 +44,12 @@ VibeMiner starts with what people want to find, inspect, investigate and search:
 - Art and sound: models, textures, animations, music, voice lines and stable sound IDs.
 - Developer data: database relationships, UI files and exports for addons, simulations and research.
 
-Findings retain exact build and source context. Client data does not establish release timing, obtainable rewards, server-only behavior or market profitability. See [research journeys and archive requirements](mockups/WORKFLOWS.md).
+Findings retain exact build and source context. Client data does not establish release timing, obtainable rewards, server-only behavior or market profitability.
 
 ## Shared storage across builds
 
 Builds retain manifests and references into one app-owned content-addressed object store. Archives and caches are retention policies over that store, not duplicate copies. Identical data is reused across versions; derived data is shared when its source content, decoder/schema, locale and output settings match. Concurrent requests for the same object share a download. Removing a build releases its references; cleanup removes only objects unused by all remaining builds and active work. Storage screens distinguish logical build size, physically shared bytes, additional download bytes and reclaimable bytes.
+
+## Development workflow
+
+Track enhancements, defects and maintenance in GitHub Issues before implementation. Deliver small logical steps with explicit acceptance criteria. Use test-driven development where practical, meaningful unit and regression tests, and integration/UI/packaging checks where needed. Record validation results and remaining work in the issue before closing it.
