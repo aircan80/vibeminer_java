@@ -23,7 +23,7 @@ Ordinary tests use synthetic fixtures and do not depend on live CDN availability
 
 ## Native packages
 
-Each package is built on its matching OS/architecture. Cross-compiling a runtime image from another OS is not supported.
+Each package is built on its matching OS/architecture. Cross-compiling a runtime image from another OS is not supported. Public application versions and artifact names retain their semantic version. For macOS only, the internal native bundle version increments the numeric major by one (`0.1.0` → `1.1.0`), because [JDK 25 requires a positive first CFBundleVersion component](https://github.com/openjdk/jdk25u/blob/master/src/jdk.jpackage/macosx/classes/jdk/jpackage/internal/CFBundleVersion.java). This does not indicate a 1.x feature release.
 
 | Target | GitHub runner | Portable package |
 | --- | --- | --- |

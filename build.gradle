@@ -10,6 +10,12 @@ ext.hostTarget = os.contains('win') && x64 ? 'windows-x64' : os.contains('mac') 
 ext.javafxClassifier = os.contains('win') ? 'win' : os.contains('mac') ? (hostTarget == 'macos-arm64' ? 'mac-aarch64' : 'mac') : 'linux'
 def selectedTarget = providers.gradleProperty('distributionTarget').getOrElse(hostTarget)
 def packageVersion = providers.gradleProperty('packageVersion').getOrElse('0.1.0')
+// CFBundleVersion rejects a zero major; keep public semantic versions unchanged.
+def nativePackageVersion = providers.provider {
+    if (!packageVersion.matches('[0-9]+\\.[0-9]+\\.[0-9]+')) throw new GradleException('packageVersion must be numeric major.minor.patch')
+    def components = packageVersion.split('\\.')
+    os.contains('mac') ? "${new BigInteger(components[0]) + BigInteger.ONE}.${components[1]}.${components[2]}" : packageVersion
+}
 
 subprojects {
     apply plugin: 'java-library'
@@ -47,14 +53,20 @@ tasks.register('packageImage') {
         delete imageRoot
         def javaHome = packageJdk.get().metadata.installationPath.asFile
         def jpackage = new File(javaHome, "bin/jpackage${os.contains('win') ? '.exe' : ''}")
-        providers.exec {
+        def packaging = providers.exec {
+            ignoreExitValue = true
             commandLine jpackage.absolutePath, '--type', 'app-image', '--name', 'VibeMiner',
                 '--input', bootstrapLibs.get().asFile,
                 '--main-jar', "bootstrap-${version}.jar", '--main-class', 'io.vibeminer.bootstrap.Main',
-                '--app-version', packageVersion, '--vendor', 'VibeMiner', '--dest', imageRoot.get().asFile,
+                '--app-version', nativePackageVersion.get(), '--vendor', 'VibeMiner', '--dest', imageRoot.get().asFile,
                 '--java-options', '--enable-native-access=ALL-UNNAMED',
                 '--add-modules', 'java.base,java.desktop,java.logging,java.net.http,java.sql,java.xml,jdk.unsupported,jdk.crypto.ec'
-        }.result.get().assertNormalExitValue()
+        }
+        def result = packaging.result.get()
+        logger.lifecycle(packaging.standardOutput.asText.get().trim())
+        def diagnostics = packaging.standardError.asText.get().trim()
+        if (diagnostics) logger.lifecycle(diagnostics)
+        if (result.exitValue != 0) throw new GradleException("jpackage failed (${result.exitValue}): ${diagnostics}")
     }
 }
 
