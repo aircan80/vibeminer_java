@@ -1,1 +1,2 @@
 // Pure bounded WoW-specific format parsing; JDK only.
+dependencies { api project(':protocol-db2') }
