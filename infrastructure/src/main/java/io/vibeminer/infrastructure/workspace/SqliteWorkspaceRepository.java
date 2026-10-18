@@ -3,8 +3,8 @@ package io.vibeminer.infrastructure.workspace;
 import io.vibeminer.application.WorkspaceException;
 import io.vibeminer.application.WorkspaceRepository;
 import io.vibeminer.domain.*;
-import java.io.IOException;
-import java.nio.file.Files;
+import io.vibeminer.infrastructure.persistence.SqliteCatalog;
+import io.vibeminer.application.catalog.CatalogException;
 import java.nio.file.Path;
 import java.sql.*;
 import java.time.Instant;
@@ -15,9 +15,9 @@ import static io.vibeminer.application.WorkspaceException.Code.*;
 
 /** App-owned metadata catalog. Each write is a single SQLite transaction; restore has no network port. */
 public final class SqliteWorkspaceRepository implements WorkspaceRepository {
-    private final Path database;
-    private boolean initialized;
-    public SqliteWorkspaceRepository(Path database) { this.database = database.toAbsolutePath().normalize(); }
+    private final SqliteCatalog catalog;
+    public SqliteWorkspaceRepository(Path database) { this(new SqliteCatalog(database)); }
+    public SqliteWorkspaceRepository(SqliteCatalog catalog) { this.catalog = java.util.Objects.requireNonNull(catalog); }
 
     @Override public synchronized List<Workspace> list() {
         try (var connection = connect(); var query = connection.prepareStatement("SELECT id FROM workspaces ORDER BY saved_at DESC,id")) {
@@ -42,30 +42,7 @@ public final class SqliteWorkspaceRepository implements WorkspaceRepository {
                     }
                 }
                 var build = value.build();
-                int inserted;
-                try (var statement = connection.prepareStatement("INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
-                    statement.setString(1, build.snapshotId()); statement.setString(2, build.productId());
-                    statement.setString(3, build.editionLabel()); statement.setString(4, build.channel());
-                    statement.setString(5, build.region()); statement.setString(6, build.versionLabel());
-                    statement.setString(7, build.buildConfig()); statement.setString(8, build.cdnConfig());
-                    statement.setString(9, build.observedAt().toString()); statement.setInt(10, build.fixture() ? 1 : 0);
-                    statement.setString(11, build.evidence().upstreamBuildId()); statement.setString(12, build.evidence().productConfig());
-                    statement.setInt(13, build.evidence().documents().size());
-                    inserted = statement.executeUpdate();
-                }
-                if (inserted == 1) {
-                    int position = 0;
-                    for (var source : build.evidence().documents()) {
-                        try (var statement = connection.prepareStatement("INSERT OR IGNORE INTO source_blobs VALUES(?,?)")) {
-                            statement.setString(1, source.sha256()); statement.setBytes(2, source.bytes()); statement.executeUpdate();
-                        }
-                        try (var statement = connection.prepareStatement("INSERT INTO snapshot_sources VALUES(?,?,?,?,?)")) {
-                            statement.setString(1, build.snapshotId()); statement.setInt(2, position++);
-                            statement.setString(3, source.sha256()); statement.setString(4, source.sourceUrl());
-                            statement.setString(5, source.capturedAt().toString()); statement.executeUpdate();
-                        }
-                    }
-                }
+                catalog.ensureSnapshot(connection, build);
                 try (var statement = connection.prepareStatement("INSERT INTO workspaces VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name")) {
                     statement.setString(1, value.id()); statement.setString(2, build.snapshotId()); statement.setString(3, value.locale());
                     statement.setString(4, value.name()); statement.setString(5, value.savedAt().toString()); statement.executeUpdate();
@@ -73,7 +50,14 @@ public final class SqliteWorkspaceRepository implements WorkspaceRepository {
                 var saved = read(connection, value.id()).orElseThrow();
                 connection.commit();
                 return saved;
-            } catch (SQLException | RuntimeException failure) { connection.rollback(); throw failure; }
+            } catch (SQLException | RuntimeException failure) {
+                try { connection.rollback(); } catch (SQLException suppressed) { failure.addSuppressed(suppressed); }
+                if (failure instanceof CatalogException catalogFailure) {
+                    throw new WorkspaceException(catalogFailure.code() == CatalogException.Code.CORRUPT_METADATA ? CORRUPT_METADATA : STORAGE_UNAVAILABLE,
+                            "Saved metadata failed integrity checks", catalogFailure);
+                }
+                throw failure;
+            }
         } catch (SQLException failure) { throw unavailable(failure); }
     }
     @Override public synchronized Workspace rename(String id, String name) {
@@ -94,64 +78,25 @@ public final class SqliteWorkspaceRepository implements WorkspaceRepository {
     }
 
     private Optional<Workspace> read(Connection connection, String id) throws SQLException {
-        try (var query = connection.prepareStatement("SELECT w.id,w.locale,w.name,w.saved_at,w.snapshot_id,s.id AS pinned_id,s.* FROM workspaces w LEFT JOIN snapshots s ON s.id=w.snapshot_id WHERE w.id=?")) {
+        try (var query = connection.prepareStatement("SELECT id,locale,name,saved_at,snapshot_id FROM workspaces WHERE id=?")) {
             query.setString(1, id);
             try (var rows = query.executeQuery()) {
                 if (!rows.next()) return Optional.empty();
-                if (rows.getString("pinned_id") == null) throw new WorkspaceException(CORRUPT_METADATA, "Saved workspace references missing metadata");
-                var documents = new ArrayList<SourceDocument>();
-                try (var sources = connection.prepareStatement("SELECT r.url,r.captured_at,r.digest,b.bytes FROM snapshot_sources r LEFT JOIN source_blobs b ON b.digest=r.digest WHERE r.snapshot_id=? ORDER BY r.position")) {
-                    sources.setString(1, rows.getString("snapshot_id"));
-                    try (var sourceRows = sources.executeQuery()) {
-                        while (sourceRows.next()) {
-                            var bytes = sourceRows.getBytes(4);
-                            if (bytes == null) throw new IllegalArgumentException("Missing captured source blob");
-                            documents.add(new SourceDocument(sourceRows.getString(1), Instant.parse(sourceRows.getString(2)), sourceRows.getString(3), bytes));
-                        }
-                    }
+                try {
+                    var build = catalog.readSnapshot(connection, rows.getString("snapshot_id"))
+                            .orElseThrow(() -> new WorkspaceException(CORRUPT_METADATA, "Saved workspace references missing metadata"));
+                    return Optional.of(new Workspace(rows.getString("id"), build, rows.getString("locale"), rows.getString("name"), Instant.parse(rows.getString("saved_at"))));
+                } catch (RuntimeException invalid) {
+                    if (invalid instanceof WorkspaceException typed) throw typed;
+                    throw new WorkspaceException(CORRUPT_METADATA, "Saved metadata failed integrity checks", invalid);
                 }
-                if (documents.size() != rows.getInt("source_count")) throw new IllegalArgumentException("Source evidence membership is incomplete");
-                var build = new BuildSnapshot(rows.getString("product_id"), rows.getString("edition_label"), rows.getString("channel"),
-                    rows.getString("region"), rows.getString("version_label"), rows.getString("build_config"), rows.getString("cdn_config"),
-                    Instant.parse(rows.getString("observed_at")), rows.getInt("fixture") != 0,
-                    new BuildEvidence(rows.getString("upstream_build_id"), rows.getString("product_config"), documents));
-                if (!build.snapshotId().equals(rows.getString("snapshot_id"))) throw new IllegalArgumentException("Snapshot key mismatch");
-                return Optional.of(new Workspace(rows.getString(1), build, rows.getString(2), rows.getString(3), Instant.parse(rows.getString(4))));
-            } catch (IllegalArgumentException failure) {
-                throw new WorkspaceException(CORRUPT_METADATA, "Saved metadata failed integrity checks", failure);
             }
         }
     }
 
     private Connection connect() throws SQLException {
-        if (!initialized) {
-            try { if (database.getParent() != null) Files.createDirectories(database.getParent()); }
-            catch (IOException failure) { throw new WorkspaceException(STORAGE_UNAVAILABLE, "Cannot open VibeMiner data storage", failure); }
-        }
-        var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
-        try {
-            try (var statement = connection.createStatement()) {
-                statement.execute("PRAGMA foreign_keys=ON"); statement.execute("PRAGMA busy_timeout=5000"); statement.execute("PRAGMA synchronous=FULL");
-                if (!initialized) {
-                    int schemaVersion;
-                    try (var version = statement.executeQuery("PRAGMA user_version")) {
-                        schemaVersion = version.next() ? version.getInt(1) : 0;
-                        if (schemaVersion > 2) throw new WorkspaceException(STORAGE_UNAVAILABLE, "This catalog requires a newer VibeMiner version");
-                    }
-                    connection.setAutoCommit(false);
-                    statement.execute("CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY,product_id TEXT NOT NULL,edition_label TEXT NOT NULL,channel TEXT NOT NULL,region TEXT NOT NULL,version_label TEXT NOT NULL,build_config TEXT NOT NULL,cdn_config TEXT NOT NULL,observed_at TEXT NOT NULL,fixture INTEGER NOT NULL,upstream_build_id TEXT NOT NULL,product_config TEXT NOT NULL,source_count INTEGER NOT NULL)");
-                    statement.execute("CREATE TABLE IF NOT EXISTS source_blobs(digest TEXT PRIMARY KEY,bytes BLOB NOT NULL)");
-                    statement.execute("CREATE TABLE IF NOT EXISTS snapshot_sources(snapshot_id TEXT NOT NULL REFERENCES snapshots(id),position INTEGER NOT NULL,digest TEXT NOT NULL REFERENCES source_blobs(digest),url TEXT NOT NULL,captured_at TEXT NOT NULL,PRIMARY KEY(snapshot_id,position))");
-                    statement.execute("CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,snapshot_id TEXT NOT NULL REFERENCES snapshots(id),locale TEXT NOT NULL,name TEXT NOT NULL,saved_at TEXT NOT NULL)");
-                    if (schemaVersion == 1) {
-                        statement.execute("ALTER TABLE snapshots ADD COLUMN source_count INTEGER NOT NULL DEFAULT 0");
-                        statement.execute("UPDATE snapshots SET source_count=(SELECT count(*) FROM snapshot_sources r WHERE r.snapshot_id=snapshots.id)");
-                    }
-                    statement.execute("PRAGMA user_version=2"); connection.commit(); connection.setAutoCommit(true); initialized = true;
-                }
-            }
-            return connection;
-        } catch (SQLException | RuntimeException failure) { connection.close(); throw failure; }
+        try { return catalog.connect(); }
+        catch (CatalogException failure) { throw new WorkspaceException(STORAGE_UNAVAILABLE, "VibeMiner metadata storage is unavailable", failure); }
     }
     private WorkspaceException unavailable(SQLException failure) {
         return new WorkspaceException(STORAGE_UNAVAILABLE, "VibeMiner metadata storage is unavailable", failure);
