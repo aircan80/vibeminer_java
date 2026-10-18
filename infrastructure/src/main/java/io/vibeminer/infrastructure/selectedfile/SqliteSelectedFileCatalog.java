@@ -4,14 +4,18 @@ import static io.vibeminer.application.selectedfile.SelectedFileException.Code.*
 
 import io.vibeminer.application.*;
 import io.vibeminer.application.catalog.*;
+import io.vibeminer.application.content.ContentClaimException;
 import io.vibeminer.application.retention.*;
 import io.vibeminer.application.selectedfile.*;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.content.*;
 import io.vibeminer.domain.retention.*;
 import io.vibeminer.domain.selectedfile.*;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
+import io.vibeminer.infrastructure.content.*;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.retention.SqliteRetentionRepository;
+import io.vibeminer.infrastructure.storage.FileObjectStore;
 import java.sql.*;
 import java.util.*;
 
@@ -22,6 +26,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   private final SqliteCatalog catalog;
   private final ObjectStore store;
   private final UUID session;
+  private final FileObjectStore.StoreSession storeSession;
   private final SqliteBuildObjectCatalog objects;
   private final SqliteRetentionRepository retention;
 
@@ -29,12 +34,35 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     this(catalog, store, UUID.randomUUID());
   }
 
+  /** Pass the same process session used by the shared canonical-content repository. */
   public SqliteSelectedFileCatalog(SqliteCatalog catalog, ObjectStore store, UUID session) {
+    this(catalog, store, session, null);
+  }
+
+  public SqliteSelectedFileCatalog(
+      SqliteCatalog catalog, ObjectStore store, FileObjectStore.StoreSession capability) {
+    this(catalog, store, Objects.requireNonNull(capability).epoch(), capability);
+    if (!(store instanceof FileObjectStore physical) || physical.contentSession() != capability)
+      throw new IllegalArgumentException("Content session belongs to another object store");
+  }
+
+  private SqliteSelectedFileCatalog(
+      SqliteCatalog catalog,
+      ObjectStore store,
+      UUID session,
+      FileObjectStore.StoreSession capability) {
     this.catalog = Objects.requireNonNull(catalog);
     this.store = Objects.requireNonNull(store);
     this.session = Objects.requireNonNull(session);
+    this.storeSession = capability;
     objects = new SqliteBuildObjectCatalog(catalog, store);
     retention = new SqliteRetentionRepository(catalog);
+  }
+
+  private SqliteCanonicalContentRepository authority() {
+    return storeSession == null
+        ? new SqliteCanonicalContentRepository(catalog, store, session)
+        : new SqliteCanonicalContentRepository(catalog, store, storeSession);
   }
 
   private record Row(CanonicalReservation reservation, UUID owner) {}
@@ -53,62 +81,43 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   @Override
   public CanonicalReservation reserve(
       ContentSlotKey slot, String encodingKey, long encodedBytes, CancellationToken token) {
-    Objects.requireNonNull(slot);
-    var key = ContentRepresentation.sourceIdentity(encodingKey).immutableSourceKey();
-    if (encodedBytes < 1)
-      throw new IllegalArgumentException("Known positive encoded size required");
-    return tx(
-        token,
-        c -> {
-          var existing = readSlot(c, slot);
-          if (existing.isPresent()) {
-            var row = existing.get();
-            var reservation = row.reservation();
-            if (!reservation.actualEncodingKey().equals(key))
-              throw failure(
-                  reservation.status() == CanonicalReservation.Status.RETAINED
-                      ? REPLAN_REQUIRED
-                      : BUSY,
-                  "Canonical content already owns a different encoding");
-            if (reservation.encodedBytes() != encodedBytes)
-              throw failure(INTEGRITY_FAILURE, "Canonical encoded size conflicts");
-            if (!row.owner().equals(session)
-                && reservation.status() != CanonicalReservation.Status.RETAINED)
-              try (var query =
-                  c.prepareStatement(
-                      "UPDATE canonical_content_slots SET owner_session=?,status='RECOVERY' WHERE"
-                          + " token=?")) {
-                query.setString(1, session.toString());
-                query.setString(2, reservation.token().toString());
-                query.executeUpdate();
-              }
-            adoptAvailableOrigin(c, reservation);
-            return readToken(c, reservation.token()).reservation();
-          }
-          var id = UUID.randomUUID();
-          try (var query =
-              c.prepareStatement(
-                  "INSERT INTO canonical_content_slots VALUES(?,?,?,?,?,?,?,NULL)")) {
-            query.setString(1, slot.namespace());
-            query.setString(2, slot.contentKey());
-            query.setString(3, key);
-            query.setLong(4, encodedBytes);
-            query.setString(5, id.toString());
-            query.setString(6, "PENDING");
-            query.setString(7, session.toString());
-            query.executeUpdate();
-          }
-          adoptAvailableOrigin(c, readToken(c, id).reservation());
-          return readToken(c, id).reservation();
-        });
+    try {
+      var claim = authority().reserve(slot, encodingKey, encodedBytes, token);
+      Optional<ContentRepresentation> representation = Optional.empty();
+      if (claim.proof().isPresent()) {
+        if (!(claim.proof().get() instanceof EncodedContentProof encoded))
+          throw failure(
+              UNSUPPORTED, "Canonical metadata requires explicit encoded capability before reuse");
+        representation = Optional.of(encoded.receipt());
+      }
+      return new CanonicalReservation(
+          claim.slot(),
+          claim.actualEncodingKey(),
+          claim.encodedBytes(),
+          claim.token(),
+          claim.status(),
+          representation);
+    } catch (RuntimeException failure) {
+      throw classify(failure);
+    }
   }
 
   @Override
   public void markPublishing(UUID id, CancellationToken token) {
+    markPublishing(id, null, token);
+  }
+
+  @Override
+  public void markPublishing(ContentWorkerPermit permit, CancellationToken token) {
+    Objects.requireNonNull(permit);
+    markPublishing(permit.reservationToken(), permit, token);
+  }
+
+  private void markPublishing(UUID id, ContentWorkerPermit permit, CancellationToken token) {
     tx(
         token,
         c -> {
-          var row = readToken(c, id);
+          var row = readWorkerToken(c, id, permit);
           if (row.reservation().status() == CanonicalReservation.Status.RETAINED) return null;
           requireOwner(row);
           updateState(c, id, "PUBLISHING");
@@ -119,11 +128,26 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   @Override
   public void recordVerifiedCompletion(
       UUID id, ContentRepresentation representation, CancellationToken token) {
+    recordVerifiedCompletion(id, null, representation, token);
+  }
+
+  @Override
+  public void recordVerifiedCompletion(
+      ContentWorkerPermit permit, ContentRepresentation representation, CancellationToken token) {
+    Objects.requireNonNull(permit);
+    recordVerifiedCompletion(permit.reservationToken(), permit, representation, token);
+  }
+
+  private void recordVerifiedCompletion(
+      UUID id,
+      ContentWorkerPermit permit,
+      ContentRepresentation representation,
+      CancellationToken token) {
     Objects.requireNonNull(representation);
     tx(
         token,
         c -> {
-          var row = readToken(c, id);
+          var row = readWorkerToken(c, id, permit);
           match(row.reservation(), representation);
           if (row.reservation().representation().isPresent()) {
             equivalent(row.reservation().representation().get(), representation);
@@ -146,6 +170,21 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   @Override
   public ContentRepresentation completePublication(
       UUID id, ContentRepresentation representation, CancellationToken token) {
+    return completePublication(id, null, representation, token);
+  }
+
+  @Override
+  public ContentRepresentation completePublication(
+      ContentWorkerPermit permit, ContentRepresentation representation, CancellationToken token) {
+    Objects.requireNonNull(permit);
+    return completePublication(permit.reservationToken(), permit, representation, token);
+  }
+
+  private ContentRepresentation completePublication(
+      UUID id,
+      ContentWorkerPermit permit,
+      ContentRepresentation representation,
+      CancellationToken token) {
     Objects.requireNonNull(representation);
     Objects.requireNonNull(token);
     token.throwIfCancellationRequested();
@@ -153,7 +192,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
         tx(
             token,
             c -> {
-              var row = readToken(c, id);
+              var row = readWorkerToken(c, id, permit);
               match(row.reservation(), representation);
               var proof =
                   row.reservation()
@@ -170,7 +209,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
       return tx(
           token,
           c -> {
-            var row = readToken(c, id);
+            var row = readWorkerToken(c, id, permit);
             var original = row.reservation().representation().orElseThrow();
             equivalent(original, representation);
             if (row.reservation().status() == CanonicalReservation.Status.RETAINED) return original;
@@ -217,7 +256,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     tx(
         token,
         c -> {
-          var row = readToken(c, id);
+          var row = readWorkerToken(c, id, null);
           requireOwner(row);
           if (row.reservation().status() == CanonicalReservation.Status.RECOVERY
               || row.reservation().status() == CanonicalReservation.Status.RETAINED
@@ -238,7 +277,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     tx(
         token,
         c -> {
-          var row = readToken(c, id);
+          var row = readWorkerToken(c, id, null);
           if (row.reservation().status() == CanonicalReservation.Status.RETAINED) return null;
           requireOwner(row);
           updateState(c, id, "RECOVERY");
@@ -324,8 +363,32 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     return tx(token, c -> readAssociation(c, snapshot, role));
   }
 
+  @Override
+  public Optional<SelectedFileAssociation> findOriginalAssociation(
+      SelectedFileDescriptor descriptor, CancellationToken token) {
+    Objects.requireNonNull(descriptor);
+    var snapshot = descriptor.association().build().snapshotId();
+    return tx(
+        token,
+        c -> {
+          var found = readAssociation(c, snapshot, descriptor.role(), true);
+          if (found.isPresent()
+              && (!found.get().snapshotId().equals(snapshot)
+                  || !found.get().descriptor().role().equals(descriptor.role())))
+            throw failure(
+                INTEGRITY_FAILURE,
+                "Historical descriptor differs from exact immutable association");
+          return found;
+        });
+  }
+
   private Optional<SelectedFileAssociation> readAssociation(
       Connection c, String snapshot, String role) throws SQLException {
+    return readAssociation(c, snapshot, role, false);
+  }
+
+  private Optional<SelectedFileAssociation> readAssociation(
+      Connection c, String snapshot, String role, boolean originalOnly) throws SQLException {
     try (var query =
         c.prepareStatement(
             "SELECT slot_namespace,slot_content_key,length(record),record FROM"
@@ -337,20 +400,43 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
         if (rows.getLong(3) > SelectedFileRecords.MAX_BYTES)
           throw failure(INTEGRITY_FAILURE, "Association metadata too large");
         var slot = new ContentSlotKey(rows.getString(1), rows.getString(2));
-        var canonical =
-            readSlot(c, slot)
-                .orElseThrow(() -> failure(INTEGRITY_FAILURE, "Association canonical slot missing"))
-                .reservation();
-        if (canonical.status() != CanonicalReservation.Status.RETAINED)
-          throw failure(INTEGRITY_FAILURE, "Association canonical representation is incomplete");
+        ContentRepresentation representation;
+        if (originalOnly) {
+          var membership =
+              objects
+                  .findInTransaction(c, snapshot, role)
+                  .orElseThrow(
+                      () -> failure(INTEGRITY_FAILURE, "Original encoded membership missing"));
+          var ekey = membership.source().immutableSourceKey();
+          if (!membership.source().equals(ContentRepresentation.sourceIdentity(ekey)))
+            throw failure(
+                INTEGRITY_FAILURE, "Original file membership is not a complete encoded receipt");
+          var origin =
+              readOrigin(c, ekey)
+                  .orElseThrow(() -> failure(INTEGRITY_FAILURE, "Original encoded origin missing"));
+          var alias =
+              objects
+                  .findAliasInTransaction(c, origin.encoded().source())
+                  .orElseThrow(() -> failure(INTEGRITY_FAILURE, "Original encoded alias missing"));
+          if (!alias.equals(origin.encoded()))
+            throw failure(INTEGRITY_FAILURE, "Original encoded alias differs from retained origin");
+          representation = rebind(origin, slot);
+        } else {
+          var canonical =
+              readSlot(c, slot)
+                  .orElseThrow(
+                      () -> failure(INTEGRITY_FAILURE, "Association canonical slot missing"))
+                  .reservation();
+          if (canonical.status() != CanonicalReservation.Status.RETAINED)
+            throw failure(INTEGRITY_FAILURE, "Association canonical representation is incomplete");
+          representation = canonical.representation().orElseThrow();
+        }
         var build =
             catalog
                 .readSnapshot(c, snapshot)
                 .orElseThrow(
                     () -> failure(INTEGRITY_FAILURE, "Association exact snapshot missing"));
-        var association =
-            SelectedFileRecords.association(
-                rows.getBytes(4), build, canonical.representation().orElseThrow());
+        var association = SelectedFileRecords.association(rows.getBytes(4), build, representation);
         if (!association.role().equals(role))
           throw failure(INTEGRITY_FAILURE, "Association descriptor role mismatch");
         requireDependency(c, snapshot, "BUILD_CONFIG", association.configuration());
@@ -436,25 +522,6 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     return lease;
   }
 
-  private void adoptAvailableOrigin(Connection connection, CanonicalReservation reservation)
-      throws SQLException {
-    if (reservation.status() == CanonicalReservation.Status.RETAINED) return;
-    var origin = readOrigin(connection, reservation.actualEncodingKey());
-    if (origin.isEmpty()) return;
-    var adopted = rebind(origin.get(), reservation.slot());
-    match(reservation, adopted);
-    if (reservation.representation().isPresent())
-      equivalent(reservation.representation().get(), adopted);
-    try (var query =
-        connection.prepareStatement(
-            "UPDATE canonical_content_slots SET status='RETAINED',representation=? WHERE"
-                + " token=?")) {
-      query.setBytes(1, SelectedFileRecords.representation(adopted));
-      query.setString(2, reservation.token().toString());
-      query.executeUpdate();
-    }
-  }
-
   private Optional<ContentRepresentation> readOrigin(Connection c, String ekey)
       throws SQLException {
     var source = ContentRepresentation.sourceIdentity(ekey);
@@ -503,6 +570,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   }
 
   private Optional<Row> readSlot(Connection c, ContentSlotKey slot) throws SQLException {
+    CanonicalContentGuards.check(c, slot);
     try (var query =
         c.prepareStatement(
             "SELECT *,length(representation) AS representation_bytes FROM canonical_content_slots"
@@ -515,6 +583,31 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
     }
   }
 
+  private Row readWorkerToken(Connection c, UUID id, ContentWorkerPermit permit)
+      throws SQLException {
+    CanonicalContentGuards.requireWorker(c, id, session, permit);
+    return readToken(c, id);
+  }
+
+  @Override
+  public ContentWorkerPermit claimWorker(UUID id, CancellationToken token) {
+    try {
+      return authority().claimWorker(id, token);
+    } catch (RuntimeException failure) {
+      throw classify(failure);
+    }
+  }
+
+  @Override
+  public void finishWorker(
+      ContentWorkerPermit permit, ContentWorkerFinishOutcome outcome, CancellationToken token) {
+    try {
+      authority().finishWorker(permit, outcome, token);
+    } catch (RuntimeException failure) {
+      throw classify(failure);
+    }
+  }
+
   private Row readToken(Connection c, UUID id) throws SQLException {
     Objects.requireNonNull(id);
     try (var query =
@@ -524,7 +617,9 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
       query.setString(1, id.toString());
       try (var rows = query.executeQuery()) {
         if (!rows.next()) throw failure(NOT_FOUND, "Canonical reservation token not found");
-        return validateRetainedOrigin(c, row(rows));
+        var parsed = row(rows);
+        CanonicalContentGuards.check(c, parsed.reservation().slot());
+        return validateRetainedOrigin(c, parsed);
       }
     }
   }
@@ -542,8 +637,16 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
           && rows.getLong("representation_bytes") > SelectedFileRecords.MAX_BYTES)
         throw failure(INTEGRITY_FAILURE, "Canonical representation metadata exceeds limit");
       byte[] bytes = rows.getBytes("representation");
-      Optional<ContentRepresentation> representation =
-          bytes == null ? Optional.empty() : Optional.of(SelectedFileRecords.representation(bytes));
+      Optional<ContentRepresentation> representation = Optional.empty();
+      if (bytes != null) {
+        var proof = CanonicalContentRecords.decode(bytes);
+        if (!(proof instanceof EncodedContentProof encoded))
+          throw failure(
+              UNSUPPORTED,
+              "Canonical metadata bytes require explicit encoded capability before selected-file"
+                  + " reuse");
+        representation = Optional.of(encoded.receipt());
+      }
       return new Row(
           new CanonicalReservation(
               new ContentSlotKey(rows.getString("namespace"), rows.getString("content_key")),
@@ -593,6 +696,12 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   private <T> T tx(CancellationToken token, Work<T> work) {
     Objects.requireNonNull(token);
     token.throwIfCancellationRequested();
+    try {
+      if (storeSession != null) storeSession.beforeProducerOperation();
+      else store.publisherStarted();
+    } catch (RuntimeException failure) {
+      throw classify(failure);
+    }
     try (var c = catalog.connect()) {
       c.setAutoCommit(false);
       try {
@@ -618,6 +727,18 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
   private static RuntimeException classify(RuntimeException error) {
     if (error instanceof SelectedFileException
         || error instanceof java.util.concurrent.CancellationException) return error;
+    if (error instanceof ContentClaimException content)
+      return failure(
+          switch (content.code()) {
+            case LEGACY_CONFLICT, INTEGRITY_FAILURE -> INTEGRITY_FAILURE;
+            case BUSY -> BUSY;
+            case REPLAN_REQUIRED -> REPLAN_REQUIRED;
+            case RECOVERY_REQUIRED -> RECOVERY_REQUIRED;
+            case UNSUPPORTED_REUSE -> UNSUPPORTED;
+            default -> STORAGE_UNAVAILABLE;
+          },
+          content.getMessage(),
+          content);
     if (error instanceof ObjectStoreException storage)
       return failure(
           switch (storage.code()) {

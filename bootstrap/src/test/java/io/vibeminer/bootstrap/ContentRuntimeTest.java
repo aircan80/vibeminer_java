@@ -147,4 +147,97 @@ class ContentRuntimeTest {
                 failure.getCause())
             .code());
   }
+
+  @Test
+  void runtimeFencesAbandonedWorkerBeforeAnyProducerExists() throws Exception {
+    var catalog =
+        new io.vibeminer.infrastructure.persistence.SqliteCatalog(
+            directory.resolve("catalog.sqlite"));
+    var abandoned = seedAbandonedWorker(catalog);
+    try (var runtime = ContentRuntime.open(directory, RetentionRuntimeTest.ForbiddenHttp::new);
+        var connection = catalog.connect();
+        var query =
+            connection.prepareStatement(
+                "SELECT status,owner_session,worker_nonce FROM canonical_content_slots WHERE"
+                    + " token=?")) {
+      assertNotNull(runtime.service());
+      assertNotNull(runtime.lookup());
+      assertNotNull(runtime.selectedFiles());
+      query.setString(1, abandoned.token());
+      try (var row = query.executeQuery()) {
+        assertTrue(row.next());
+        assertEquals("RECOVERY", row.getString(1));
+        assertNotEquals(abandoned.session(), row.getString(2));
+        assertNull(row.getString(3));
+      }
+    }
+  }
+
+  @Test
+  void failedStartupFenceRollsBackAndReleasesExclusiveStore() throws Exception {
+    var catalog =
+        new io.vibeminer.infrastructure.persistence.SqliteCatalog(
+            directory.resolve("catalog.sqlite"));
+    var abandoned = seedAbandonedWorker(catalog);
+    try (var connection = catalog.connect();
+        var statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TRIGGER fail_startup_fence BEFORE UPDATE OF owner_session ON"
+              + " canonical_content_slots BEGIN SELECT RAISE(ABORT,'synthetic fence failure');"
+              + " END");
+    }
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            ContentRuntime.open(
+                directory,
+                () -> {
+                  throw new AssertionError(
+                      "No HTTP client or producer should exist before the startup fence succeeds");
+                }));
+    try (var reopened = new FileObjectStore(directory.resolve("content"))) {
+      assertNotNull(reopened);
+    }
+    try (var connection = catalog.connect();
+        var query =
+            connection.prepareStatement(
+                "SELECT status,owner_session,worker_nonce FROM canonical_content_slots WHERE"
+                    + " token=?")) {
+      query.setString(1, abandoned.token());
+      try (var row = query.executeQuery()) {
+        assertTrue(row.next());
+        assertEquals("PUBLISHING", row.getString(1));
+        assertEquals(abandoned.session(), row.getString(2));
+        assertNotNull(row.getString(3));
+      }
+      try (var statement = connection.createStatement()) {
+        statement.execute("DROP TRIGGER fail_startup_fence");
+      }
+    }
+    try (var runtime = ContentRuntime.open(directory, RetentionRuntimeTest.ForbiddenHttp::new)) {
+      assertNotNull(runtime.selectedFiles());
+    }
+  }
+
+  private record AbandonedWorker(String token, String session) {}
+
+  private AbandonedWorker seedAbandonedWorker(
+      io.vibeminer.infrastructure.persistence.SqliteCatalog catalog) throws Exception {
+    String oldSession = java.util.UUID.randomUUID().toString();
+    String token = java.util.UUID.randomUUID().toString();
+    try (var connection = catalog.connect();
+        var insert =
+            connection.prepareStatement(
+                "INSERT INTO"
+                    + " canonical_content_slots(namespace,content_key,encoding_key,encoded_bytes,token,status,owner_session,representation,worker_nonce)"
+                    + " VALUES('wow',?,?,80,?,'PUBLISHING',?,NULL,?)")) {
+      insert.setString(1, "a".repeat(32));
+      insert.setString(2, "b".repeat(32));
+      insert.setString(3, token);
+      insert.setString(4, oldSession);
+      insert.setString(5, java.util.UUID.randomUUID().toString());
+      insert.executeUpdate();
+    }
+    return new AbandonedWorker(token, oldSession);
+  }
 }

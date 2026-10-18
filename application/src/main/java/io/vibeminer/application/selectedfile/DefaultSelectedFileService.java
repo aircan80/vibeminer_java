@@ -6,6 +6,7 @@ import io.vibeminer.application.*;
 import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.retention.*;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.content.*;
 import io.vibeminer.domain.retention.*;
 import io.vibeminer.domain.selectedfile.*;
 import java.util.*;
@@ -47,6 +48,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     final CompletableFuture<ContentRepresentation> result = new CompletableFuture<>();
     final Map<ContentSlotKey, CanonicalReservation> reservations = new LinkedHashMap<>();
     final Set<Slot> heldSlots = new HashSet<>();
+    final Map<ContentSlotKey, ContentWorkerPermit> permits = new LinkedHashMap<>();
     int consumers;
     volatile boolean cancelled;
     boolean accepting = true;
@@ -235,23 +237,13 @@ public final class DefaultSelectedFileService implements SelectedFileService {
                             + " plan"));
     var reservation = files.reserve(slot.key, slot.encodingKey, length, token);
     checkReservation(reservation, slot.key, slot.encodingKey, length);
-    if (reservation.representation().isPresent()
-        && (reservation.status() == CanonicalReservation.Status.RETAINED
-            || reservation.status() == CanonicalReservation.Status.RECOVERY)) {
+    if (reservation.status() == CanonicalReservation.Status.RETAINED
+        && reservation.representation().isPresent()) {
       var local = inspectAvailable(choice, reservation.representation().get(), token);
-      if (local.isPresent()) {
-        if (reservation.status() == CanonicalReservation.Status.RETAINED) return local.get();
-        files.markPublishing(reservation.token(), token);
-        var committed = files.completePublication(reservation.token(), local.get(), token);
-        checkSameEncoded(local.get(), committed);
-        if (!committed.slot().equals(reservation.slot()))
-          throw error(INTEGRITY_FAILURE, "Recovered publication changed content slot");
-        return committed;
-      }
+      if (local.isPresent()) return local.get();
     }
     FlightJoin joined;
     try {
-      files.markPublishing(reservation.token(), token);
       joined = join(slot, reservation, located);
     } catch (RuntimeException rejected) {
       scheduleUnownedReservationCleanup(slot, reservation, rejected);
@@ -319,7 +311,8 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       SelectedFileDescriptor descriptor, SelectedFileBudgets budgets) {
     Objects.requireNonNull(descriptor);
     Objects.requireNonNull(budgets);
-    return submit(token -> inspectOfflineBlocking(descriptor, budgets, token, MISSING_LOCAL));
+    return submit(
+        token -> inspectOfflineBlocking(descriptor, budgets, token, MISSING_LOCAL, false));
   }
 
   @Override
@@ -358,7 +351,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
                       .encoded()
                       .source()
                       .verificationSemantics());
-          return inspectOfflineBlocking(descriptor, budgets, token, NOT_FOUND);
+          return inspectOfflineBlocking(descriptor, budgets, token, NOT_FOUND, true);
         });
   }
 
@@ -366,11 +359,11 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       SelectedFileDescriptor descriptor,
       SelectedFileBudgets budgets,
       CancellationToken token,
-      SelectedFileException.Code absentCode) {
+      SelectedFileException.Code absentCode,
+      boolean requireCanonicalSelection) {
     var value =
         files
-            .findAssociation(
-                descriptor.association().build().snapshotId(), descriptor.role(), token)
+            .findOriginalAssociation(descriptor, token)
             .orElseThrow(() -> error(absentCode, "Selected-file association is not retained"));
     if (!value.descriptor().role().equals(descriptor.role())
         || !value.snapshotId().equals(descriptor.association().build().snapshotId()))
@@ -379,13 +372,15 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     if (!retained(build, "BUILD_CONFIG", token).equals(value.configuration())
         || !retained(build, "ROOT_MANIFEST", token).equals(value.root()))
       throw error(INTEGRITY_FAILURE, "Stored dependency provenance changed");
-    var canonical =
-        files
-            .lookup(value.representation().slot(), token)
-            .orElseThrow(() -> error(RECOVERY_REQUIRED, "Canonical representation missing"));
-    if (canonical.status() != CanonicalReservation.Status.RETAINED
-        || !canonical.representation().orElseThrow().equals(value.representation()))
-      throw error(INTEGRITY_FAILURE, "Stored association is not the canonical representation");
+    if (requireCanonicalSelection) {
+      var canonical =
+          files
+              .lookup(value.representation().slot(), token)
+              .orElseThrow(() -> error(RECOVERY_REQUIRED, "Canonical representation missing"));
+      if (canonical.status() != CanonicalReservation.Status.RETAINED
+          || !canonical.representation().orElseThrow().equals(value.representation()))
+        throw error(INTEGRITY_FAILURE, "Stored association is not the canonical representation");
+    }
     if (value.representation().encoded().object().length() > budgets.maximumEncodedFileBytes())
       throw error(BUDGET_EXCEEDED, "Retained file exceeds offline read budget");
     var checked = gateway.inspectRetained(value, budgets, token);
@@ -558,7 +553,9 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     try {
       // The repository refuses prospective, retained or recovery proof. Actual
       // source workers are independently protected by their slot worker holds.
-      files.releaseUnpublished(cleanupReservation.token(), CancellationToken.none());
+      var permit = files.claimWorker(cleanupReservation.token(), CancellationToken.none());
+      files.finishWorker(
+          permit, ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED, CancellationToken.none());
     } catch (RuntimeException failure) {
       cleanupFailure.addSuppressed(failure);
     } finally {
@@ -604,6 +601,10 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         throw error(INTEGRITY_FAILURE, "Shared content slot changed its reservation token");
       if (!flight.reservations.containsKey(slot.key) && flight.reservations.size() >= 32)
         throw error(CAPACITY_EXCEEDED, "Shared source has reached its bounded content-slot fanout");
+      if (!start && existingReservation == null) {
+        var permit = files.claimWorker(reservation.token(), CancellationToken.none());
+        flight.permits.put(slot.key, permit);
+      }
       flight.consumers++;
       flight.reservations.putIfAbsent(slot.key, reservation);
       if (flight.heldSlots.add(slot)) slot.workers++;
@@ -613,13 +614,15 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       try {
         acquisitions.execute(() -> runSource(source, shared));
       } catch (RuntimeException rejected) {
-        finish(
-            source,
-            shared,
-            null,
+        RuntimeException failure =
             new SelectedFileException(
-                CAPACITY_EXCEEDED, "Encoded source executor rejected work", rejected),
-            true);
+                CAPACITY_EXCEEDED, "Encoded source executor rejected work", rejected);
+        try {
+          claimFirst(shared);
+        } catch (RuntimeException denied) {
+          failure.addSuppressed(denied);
+        }
+        finish(source, shared, null, failure, true);
       }
     }
     return new FlightJoin(shared, true);
@@ -634,6 +637,36 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     }
   }
 
+  private ContentWorkerPermit claimFirst(Flight flight) {
+    synchronized (coordinator) {
+      var slot = flight.firstReservation.slot();
+      if (!flight.permits.containsKey(slot))
+        flight.permits.put(
+            slot, files.claimWorker(flight.firstReservation.token(), CancellationToken.none()));
+      return flight.permits.get(slot);
+    }
+  }
+
+  private void freezeAndRecord(
+      Flight flight, ContentRepresentation prospective, CancellationToken token) {
+    List<Map.Entry<ContentSlotKey, ContentWorkerPermit>> owned;
+    synchronized (coordinator) {
+      flight.accepting = false;
+      flight.publicationClosing = true;
+      owned = List.copyOf(flight.permits.entrySet());
+    }
+    for (var entry : owned) {
+      var rebound =
+          new ContentRepresentation(
+              entry.getKey(),
+              prospective.encoded(),
+              prospective.scope(),
+              prospective.sourceReceipt());
+      files.markPublishing(entry.getValue(), token);
+      files.recordVerifiedCompletion(entry.getValue(), rebound, token);
+    }
+  }
+
   private void runSource(ResolvedSourceIdentity source, Flight flight) {
     synchronized (coordinator) {
       flight.worker = Thread.currentThread();
@@ -645,6 +678,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     boolean enteredGateway = false;
     var proof = new AtomicReference<ContentRepresentation>();
     try {
+      var firstPermit = claimFirst(flight);
       token.throwIfCancellationRequested();
       // A consumer may have reserved while an older flight was publishing, then joined
       // only after that flight retired. Re-read the durable actual EKey under this new
@@ -662,6 +696,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
           flight.firstReservation.encodedBytes());
       if (!refreshed.token().equals(flight.firstReservation.token()))
         throw error(INTEGRITY_FAILURE, "Source worker reservation token changed");
+      files.markPublishing(firstPermit, token);
       Optional<ContentRepresentation> local = Optional.empty();
       if (refreshed.representation().isPresent())
         local =
@@ -677,23 +712,19 @@ public final class DefaultSelectedFileService implements SelectedFileService {
                   checkRepresentation(flight.firstPlan, prospective);
                   if (!proof.compareAndSet(null, prospective))
                     throw error(INTEGRITY_FAILURE, "Completion gate invoked twice");
-                  files.recordVerifiedCompletion(
-                      flight.firstReservation.token(), prospective, token);
+                  freezeAndRecord(flight, prospective, token);
                 },
                 token);
         checkRepresentation(flight.firstPlan, acquired);
         if (proof.get() == null || !proof.get().equals(acquired))
           throw error(INTEGRITY_FAILURE, "Publication lacks its exact verified completion receipt");
       }
+      if (local.isPresent()) freezeAndRecord(flight, acquired, token);
       List<CanonicalReservation> reservations;
       synchronized (coordinator) {
-        flight.accepting = false;
-        flight.publicationClosing = true;
         reservations = List.copyOf(flight.reservations.values());
       }
-      ready =
-          files.completePublication(
-              flight.firstReservation.token(), acquired, CancellationToken.none());
+      ready = files.completePublication(firstPermit, acquired, CancellationToken.none());
       checkSameEncoded(acquired, ready);
       if (!ready.slot().equals(flight.firstReservation.slot()))
         throw error(INTEGRITY_FAILURE, "Canonical completion changed the content slot");
@@ -702,9 +733,9 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         var rebound =
             new ContentRepresentation(
                 reservation.slot(), ready.encoded(), ready.scope(), ready.sourceReceipt());
-        files.recordVerifiedCompletion(reservation.token(), rebound, CancellationToken.none());
         var committed =
-            files.completePublication(reservation.token(), rebound, CancellationToken.none());
+            files.completePublication(
+                flight.permits.get(reservation.slot()), rebound, CancellationToken.none());
         checkSameEncoded(ready, committed);
         if (!committed.slot().equals(reservation.slot()))
           throw error(INTEGRITY_FAILURE, "Shared completion changed its rebound content slot");
@@ -734,15 +765,20 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       flight.publicationClosing = failure == null && flight.publicationClosing;
       reservations = List.copyOf(flight.reservations.values());
     }
-    if (failure != null)
-      for (var reservation : reservations) {
-        try {
-          if (unpublished) files.releaseUnpublished(reservation.token(), CancellationToken.none());
-          else files.markUncertain(reservation.token(), CancellationToken.none());
-        } catch (RuntimeException cleanup) {
-          failure.addSuppressed(cleanup);
-        }
+    var outcome =
+        failure == null
+            ? ContentWorkerFinishOutcome.RETAINED
+            : unpublished
+                ? ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED
+                : ContentWorkerFinishOutcome.UNCERTAIN;
+    for (var permit : List.copyOf(flight.permits.values())) {
+      try {
+        files.finishWorker(permit, outcome, CancellationToken.none());
+      } catch (RuntimeException cleanup) {
+        if (failure == null) failure = cleanup;
+        else failure.addSuppressed(cleanup);
       }
+    }
     synchronized (coordinator) {
       flights.remove(source, flight);
       flight.worker = null;

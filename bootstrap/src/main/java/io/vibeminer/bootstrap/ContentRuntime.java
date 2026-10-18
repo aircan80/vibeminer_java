@@ -11,6 +11,7 @@ import io.vibeminer.infrastructure.acquisition.PinnedCdnRangeTransport;
 import io.vibeminer.infrastructure.acquisition.PinnedCdnTransport;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
+import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
 import io.vibeminer.infrastructure.lookup.OfficialSelectedFileGateway;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
@@ -72,27 +73,30 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   /** Composition seam for deterministic tests; this runtime owns the supplied client. */
   static ContentRuntime open(Path dataDirectory, Supplier<HttpClient> clientFactory) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
+    var storeSession = store.contentSession();
     HttpClient client = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     try {
+      var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
+      SqliteCanonicalContentRepository.recoverAtStartup(sharedCatalog, storeSession);
+      var contentClaims = new SqliteCanonicalContentRepository(sharedCatalog, store, storeSession);
       client = java.util.Objects.requireNonNull(clientFactory.get());
       var transport = new PinnedCdnTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
-      var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
       var catalog = new SqliteBuildObjectCatalog(sharedCatalog, store);
       var retention = new SqliteRetentionRepository(sharedCatalog);
       var gateway = new OfficialBootstrapArtifactGateway(store, transport, Clock.systemUTC());
       var service =
           new DefaultBootstrapService(
-              gateway, catalog, store, orchestration, acquisition, retention);
+              gateway, catalog, store, orchestration, acquisition, retention, contentClaims);
       var rangeTransport =
           new PinnedCdnRangeTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var lookupGateway =
           new OfficialFileLookupGateway(store, transport, rangeTransport, Clock.systemUTC());
       var lookup =
           new DefaultFileLookupService(
-              lookupGateway, catalog, store, orchestration, acquisition, retention);
-      var selectedCatalog = new SqliteSelectedFileCatalog(sharedCatalog, store);
+              lookupGateway, catalog, store, orchestration, acquisition, retention, contentClaims);
+      var selectedCatalog = new SqliteSelectedFileCatalog(sharedCatalog, store, storeSession);
       var metadataTransport =
           new CdnMetadataTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var selectedGateway =

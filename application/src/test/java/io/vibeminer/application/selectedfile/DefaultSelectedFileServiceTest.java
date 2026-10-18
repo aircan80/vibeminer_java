@@ -762,7 +762,7 @@ class DefaultSelectedFileServiceTest {
         var firstWorker = sourceQueue.poll(3, TimeUnit.SECONDS);
         assertNotNull(firstWorker);
         var pauseOnce = new java.util.concurrent.atomic.AtomicBoolean();
-        f.files.afterMarkPublishing =
+        f.files.afterReserve =
             () -> {
               if (pauseOnce.compareAndSet(false, true)) {
                 paused.countDown();
@@ -855,7 +855,7 @@ class DefaultSelectedFileServiceTest {
             try {
               assertTrue(publicationEntered.await(3, TimeUnit.SECONDS));
               // The source has frozen its publication list, but cannot commit or retire yet.
-              f.files.afterMarkPublishing = followerPublished::countDown;
+              f.files.afterReserve = followerPublished::countDown;
               nextIsFollower.set(true);
               var second = service.retain(bPlan).toCompletableFuture();
               assertTrue(followerPublished.await(3, TimeUnit.SECONDS));

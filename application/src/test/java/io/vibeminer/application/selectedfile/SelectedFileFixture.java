@@ -6,6 +6,7 @@ import io.vibeminer.application.*;
 import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.retention.*;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.content.*;
 import io.vibeminer.domain.retention.*;
 import io.vibeminer.domain.selectedfile.*;
 import java.time.Instant;
@@ -193,6 +194,10 @@ final class SelectedFileFixture {
     final Set<ObjectDigest> physical = ConcurrentHashMap.newKeySet();
     final Map<String, RetentionScope> attachedScopes = new ConcurrentHashMap<>();
     int released, uncertain;
+    final Map<UUID, ContentWorkerPermit> workers = new HashMap<>();
+    final List<ContentWorkerPermit> retiredWorkers = new ArrayList<>();
+    Runnable afterReserve = () -> {};
+    java.util.function.Consumer<ContentWorkerPermit> afterWorkerClaim = permit -> {};
     java.util.function.Consumer<SelectedFileAssociation> beforeAttach = association -> {};
     Runnable afterMarkPublishing = () -> {};
 
@@ -201,7 +206,17 @@ final class SelectedFileFixture {
       return Optional.ofNullable(slots.get(slot));
     }
 
-    public synchronized CanonicalReservation reserve(
+    public CanonicalReservation reserve(
+        ContentSlotKey slot, String key, long length, CancellationToken token) {
+      CanonicalReservation result;
+      synchronized (this) {
+        result = reserveInternal(slot, key, length, token);
+      }
+      afterReserve.run();
+      return result;
+    }
+
+    private CanonicalReservation reserveInternal(
         ContentSlotKey slot, String key, long length, CancellationToken token) {
       token.throwIfCancellationRequested();
       var old = slots.get(slot);
@@ -279,6 +294,7 @@ final class SelectedFileFixture {
     public void markPublishing(UUID id, CancellationToken token) {
       synchronized (this) {
         token.throwIfCancellationRequested();
+        unowned(id);
         var old = find(id);
         if (old.status() != CanonicalReservation.Status.RETAINED)
           status(old, CanonicalReservation.Status.PUBLISHING, old.representation());
@@ -287,6 +303,12 @@ final class SelectedFileFixture {
     }
 
     public synchronized void recordVerifiedCompletion(
+        UUID id, ContentRepresentation value, CancellationToken token) {
+      unowned(id);
+      recordVerifiedCompletionInternal(id, value, token);
+    }
+
+    private void recordVerifiedCompletionInternal(
         UUID id, ContentRepresentation value, CancellationToken token) {
       token.throwIfCancellationRequested();
       var old = find(id);
@@ -298,6 +320,12 @@ final class SelectedFileFixture {
     }
 
     public synchronized ContentRepresentation completePublication(
+        UUID id, ContentRepresentation value, CancellationToken token) {
+      unowned(id);
+      return completePublicationInternal(id, value, token);
+    }
+
+    private ContentRepresentation completePublicationInternal(
         UUID id, ContentRepresentation value, CancellationToken token) {
       var old = find(id);
       if (old.representation().isEmpty() || !physical.contains(value.encoded().object().digest()))
@@ -311,6 +339,11 @@ final class SelectedFileFixture {
     }
 
     public synchronized void releaseUnpublished(UUID id, CancellationToken token) {
+      unowned(id);
+      releaseUnpublishedInternal(id, token);
+    }
+
+    private void releaseUnpublishedInternal(UUID id, CancellationToken token) {
       var old = find(id);
       if (old.representation().isPresent()
           || old.status() == CanonicalReservation.Status.RECOVERY
@@ -320,10 +353,78 @@ final class SelectedFileFixture {
     }
 
     public synchronized void markUncertain(UUID id, CancellationToken token) {
+      unowned(id);
+      markUncertainInternal(id, token);
+    }
+
+    private void markUncertainInternal(UUID id, CancellationToken token) {
       var old = find(id);
       if (old.status() != CanonicalReservation.Status.RETAINED)
         status(old, CanonicalReservation.Status.RECOVERY, old.representation());
       uncertain++;
+    }
+
+    private void unowned(UUID token) {
+      if (workers.containsKey(token)) throw error(BUSY);
+    }
+
+    private void owned(ContentWorkerPermit permit) {
+      if (!permit.equals(workers.get(permit.reservationToken()))) throw error(BUSY);
+    }
+
+    public ContentWorkerPermit claimWorker(UUID id, CancellationToken token) {
+      ContentWorkerPermit permit;
+      synchronized (this) {
+        token.throwIfCancellationRequested();
+        find(id);
+        unowned(id);
+        permit = new ContentWorkerPermit(id, UUID.randomUUID());
+        workers.put(id, permit);
+      }
+      afterWorkerClaim.accept(permit);
+      return permit;
+    }
+
+    public void markPublishing(ContentWorkerPermit permit, CancellationToken token) {
+      synchronized (this) {
+        token.throwIfCancellationRequested();
+        owned(permit);
+        var old = find(permit.reservationToken());
+        if (old.status() != CanonicalReservation.Status.RETAINED)
+          status(old, CanonicalReservation.Status.PUBLISHING, old.representation());
+      }
+      afterMarkPublishing.run();
+    }
+
+    public synchronized void recordVerifiedCompletion(
+        ContentWorkerPermit permit, ContentRepresentation value, CancellationToken token) {
+      owned(permit);
+      recordVerifiedCompletionInternal(permit.reservationToken(), value, token);
+    }
+
+    public synchronized ContentRepresentation completePublication(
+        ContentWorkerPermit permit, ContentRepresentation value, CancellationToken token) {
+      owned(permit);
+      return completePublicationInternal(permit.reservationToken(), value, token);
+    }
+
+    public synchronized void finishWorker(
+        ContentWorkerPermit permit, ContentWorkerFinishOutcome outcome, CancellationToken token) {
+      owned(permit);
+      var old = find(permit.reservationToken());
+      if (old.status() != CanonicalReservation.Status.RETAINED) {
+        if (outcome == ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED
+            && old.representation().isEmpty()
+            && old.status() != CanonicalReservation.Status.RECOVERY) {
+          slots.remove(old.slot());
+          released++;
+        } else {
+          status(old, CanonicalReservation.Status.RECOVERY, old.representation());
+          uncertain++;
+        }
+      }
+      workers.remove(permit.reservationToken());
+      retiredWorkers.add(permit);
     }
 
     public SelectedFileAssociation attachAssociation(
@@ -379,6 +480,7 @@ final class SelectedFileFixture {
     EncodedAcquisitionFailure acquisitionFailure;
     boolean failAfterPublication;
     Runnable enteringAcquisition = () -> {};
+    Runnable afterProspectiveGate = () -> {};
 
     Gateway(Files files) {
       this.files = files;
@@ -489,6 +591,7 @@ final class SelectedFileFixture {
       if (acquisitionFailure != null) throw acquisitionFailure;
       var value = representation(plan);
       observer.verifiedBeforePromotion(value);
+      afterProspectiveGate.run();
       files.physical.add(value.encoded().object().digest());
       if (failAfterPublication) throw new IllegalStateException("Crash after physical promotion");
       return value;
