@@ -157,9 +157,12 @@ class DefaultItemEvidenceServiceTest {
             });
     try (var executor = Executors.newSingleThreadExecutor();
         var service = new DefaultItemEvidenceService(backend, ignoring, executor)) {
-      var captured =
-          service.capture(selection(false)).toCompletableFuture().get(10, TimeUnit.SECONDS);
-      var saving = service.save(captured, DESTINATION);
+      var saving =
+          service
+              .capture(selection(false))
+              .thenApply(snapshot -> service.save(snapshot, DESTINATION))
+              .toCompletableFuture()
+              .get(10, TimeUnit.SECONDS);
       assertTrue(entered.await(10, TimeUnit.SECONDS));
       saving.requestCancellation();
       assertTrue(writeToken.get().isCancellationRequested());
@@ -284,9 +287,12 @@ class DefaultItemEvidenceServiceTest {
             });
     try (var executor = Executors.newSingleThreadExecutor();
         var service = new DefaultItemEvidenceService(backend, ignoring, executor)) {
-      var captured =
-          service.capture(selection(false)).toCompletableFuture().get(10, TimeUnit.SECONDS);
-      var saving = service.save(captured, DESTINATION);
+      var saving =
+          service
+              .capture(selection(false))
+              .thenApply(snapshot -> service.save(snapshot, DESTINATION))
+              .toCompletableFuture()
+              .get(10, TimeUnit.SECONDS);
       assertTrue(entered.await(10, TimeUnit.SECONDS));
       service.close();
       assertFalse(saving.completion().toCompletableFuture().isDone());
@@ -349,6 +355,59 @@ class DefaultItemEvidenceServiceTest {
           receipt,
           service.save(captured, absolute.toString()).completion().toCompletableFuture().join());
       assertEquals(1, writes.get());
+    }
+  }
+
+  @Test
+  void completedCaptureCallbackCanImmediatelyAdmitSave() {
+    try (var service = new DefaultItemEvidenceService(backend, writer, queued::add)) {
+      var saved =
+          service
+              .capture(selection(false))
+              .thenCompose(snapshot -> service.save(snapshot, DESTINATION).completion());
+      queued.removeFirst().run();
+      assertEquals(1, queued.size(), "Capture completion must observe actual source retirement");
+      queued.removeFirst().run();
+      assertEquals(receipt, saved.toCompletableFuture().join());
+    }
+  }
+
+  @Test
+  void captureCompletionCanIssueNewSnapshotWithoutOldCallbackRevocation() {
+    try (var service = new DefaultItemEvidenceService(backend, writer, queued::add)) {
+      var first = service.capture(selection(false)).toCompletableFuture();
+      var replacement = first.thenCompose(ignored -> service.capture(selection(false)));
+      queued.removeFirst().run();
+      assertEquals(1, queued.size());
+      queued.removeFirst().run();
+      var current = replacement.toCompletableFuture().join();
+      assertFalse(first.cancel(false));
+      var saved = service.save(current, DESTINATION);
+      queued.removeFirst().run();
+      assertEquals(receipt, saved.completion().toCompletableFuture().join());
+    }
+  }
+
+  @Test
+  void failedCaptureCompletionCanImmediatelyAdmitRetry() {
+    var calls = new AtomicInteger();
+    ItemEvidenceSnapshotBackend controlled =
+        (selection, token) -> {
+          if (calls.getAndIncrement() == 0)
+            throw new ItemEvidenceException(
+                ItemEvidenceException.Code.MISSING_LOCAL, "first attempt");
+          return backend.capture(selection, token);
+        };
+    try (var service = new DefaultItemEvidenceService(controlled, writer, queued::add)) {
+      var retried =
+          service
+              .capture(selection(false))
+              .handle((snapshot, failure) -> service.capture(selection(false)))
+              .thenCompose(stage -> stage);
+      queued.removeFirst().run();
+      assertEquals(1, queued.size());
+      queued.removeFirst().run();
+      assertEquals(selection(false), retried.toCompletableFuture().join().selection());
     }
   }
 }

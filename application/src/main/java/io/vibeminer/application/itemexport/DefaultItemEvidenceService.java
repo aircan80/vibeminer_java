@@ -126,16 +126,21 @@ public final class DefaultItemEvidenceService implements ItemEvidenceService {
             accept(job);
             CancellationToken token =
                 () -> closed || job.cancellation.get() || job.result.isCancelled();
+            T value = null;
+            Throwable failed = null;
             try {
               token.throwIfCancellationRequested();
-              job.result.complete(work.run(token));
+              value = work.run(token);
             } catch (Throwable failure) {
-              job.result.completeExceptionally(failure);
+              failed = failure;
             } finally {
               synchronized (this) {
                 if (active == job) active = null;
               }
             }
+            // Source I/O and leases have retired; callbacks may now admit their next job.
+            if (failed == null) job.result.complete(value);
+            else job.result.completeExceptionally(failed);
           });
       accept(job);
     } catch (RuntimeException rejected) {
