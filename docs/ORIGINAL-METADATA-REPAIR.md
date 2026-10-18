@@ -114,3 +114,73 @@ Every audit write validates the existing canonical token, current store session 
 Canonical capability addition or publication remains a separate, explicitly permitted step. Any later addition may fill missing capabilities only after fresh full-CKey and grammar verification; existing capabilities and original acquisition evidence remain unchanged. A crash between audit completion and canonical finalization therefore leaves conservative canonical state rather than invented readiness. Consumer association follows its own transaction after source-worker retirement and does not reuse that worker's permit.
 
 Synthetic real-CAS/SQLite tests cover gate durability before promotion, ROOT/INSTALL ordering, exact original versus fresh receipts, missing/corrupt physical objects, expiry while waiting for SQLite, cancellation at final commit, stale/session fencing, blocked-worker cancellation, bounded admission and migration preservation. This accepted backend slice does not deliver the executing repair workflow, automatic recovery, runtime wiring or repair UI.
+
+## Approved Atlas presentation and isolated model foundation
+
+The repair branch belongs in the existing Root or Install missing/corrupt context, as one compact
+**Repair original retained metadata** card. Keep it separate from #85's explicitly zero-payload
+local-reuse branch. The original source selection, exact snapshot and workspace locale remain
+visible. Selecting a build, changing locale or offering a different original source clears pending
+consent and suppresses older asynchronous results. No context change initiates a check, download,
+retry, metadata query or offline opening.
+
+The state sequence is explicit:
+
+1. **Check required:** explain that **Check original source availability** permits one HEAD request,
+   zero response-body bytes and up to fifteen seconds. It does not authorize payload transfer.
+2. **Checking:** expose cancellation of this request. Availability is not integrity, current
+   readability or a guarantee that a later GET succeeds.
+3. **Review fresh plan:** show original A and its exact build/locale beside positive maximum
+   download, temporary physical staging and local decoded-verification work. Root verification's
+   two passes remain included in the issued local-work ceiling. Full original SHA, original
+   receipt, actual newly pinned resource URL, HEAD observation time and expiry are copyable in
+   evidence details. Only **Download original and verify** grants the separate issued consent.
+4. **Repairing:** show actual stage/progress only when the service supplies it. Cancellation does
+   not imply retirement of a shared publisher, absence of publication or cleared ownership.
+5. **Completed:** distinguish a fresh completed repair audit from an execution that found A
+   healthy and replayed it locally with zero payload. Offer a later explicit offline-open action;
+   completion alone does not run a root lookup, install query or Item preparation.
+
+At 100% and 200%, context, cost and the consent action stay adjacent and wrap vertically. Detailed
+identifiers expand below them rather than pushing consent into another panel. Keyboard focus
+progresses from explicit Check to plan review, explicit Download and result/offline opening.
+Enter elsewhere must not authorize either network operation. Native controls, screenshots and
+runtime wiring require their own subsequent acceptance; the isolated presentation-model tests
+are not evidence that this interface has shipped.
+
+`MetadataRepairPresentationModel` borrows `MetadataRepairService` and accepts an explicit ordinary
+`RootSelectionPlan`, or an ordinary `InstallPlan` plus its local budgets. It never closes the shared
+service. It preserves typed canonical and repair outcomes, clears invalid consent/results and
+provides a snapshot/kind/locale-scoped readiness-revocation callback for explicit local
+`ContentClaimException.MISSING_LOCAL` or `INTEGRITY_FAILURE` outcomes. A HEAD/transport
+`MetadataRepairException.INTEGRITY` does not identify a corrupt local component; unknown
+exceptions receive a generic storage failure without parsing their text or inventing a missing
+source. Malformed returned plan/result facts likewise invalidate repair consent without diagnosing
+local physical corruption. After an observer or readiness callback, the model rechecks context
+before starting service work or publishing another state; a future returned after cancellation or
+closure is immediately detached. Root and Install readiness are separate, and neither callback authorizes automatic Item
+preparation or repair of another component.
+
+An executing `MetadataAcquisitionFailure` keeps its outer publication certainty in presentation
+state. `CONCLUSIVELY_UNPUBLISHED` means this attempt promoted no replacement, not that no GET or
+payload transfer occurred. `UNCERTAIN` means bytes may be present or restored while current
+readiness remains unknown; the next supported action is explicit local verification before a fresh
+repair plan. Both outcomes clear consent and successful-result claims. Nested transport,
+verification or cancellation causes do not become a confirmed local-component failure, a
+zero-payload success, a rollback claim, or automatic retry/opening.
+
+Execution consumes `MetadataRepairResult(association, completedAudit)`. A present audit must be
+completed and belong to the exact issued plan; the UI keeps its fresh transfer URL/time/counts
+separate from unchanged original acquisition history and the earlier HEAD observation. An empty
+audit means the executing service actually performed the verified healthy-race local replay;
+only that explicit success can say **No payload download was needed**. A planning
+`REPLAN_REQUIRED` outcome cannot establish health: it also covers an ordinary B plan that cannot
+repair actual A. Such an association remains explicitly unsupported until an exact supported
+original-A context is available. It may expose its original receipt and the separate local-reuse
+branch, but never download preferred B as a repair fallback.
+
+Expired, altered, unavailable, cancelled, over-budget and unsupported plans require another
+explicit supported action. HEAD200 followed by GET404 leaves the repair unavailable, with no
+automatic retry, mirror, archive search or encoding substitution. The phase-one implementation
+contains only the pure presentation model and synthetic fixtures/tests. Service composition,
+native controls and runtime enablement remain separate gates.
