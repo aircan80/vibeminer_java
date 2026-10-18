@@ -4,10 +4,10 @@ Formalized test strategy. GitHub Issues records actual implementation and valida
 
 ## Recorded delivery evidence and limits
 
-[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved. Names/search and exact-original repair are included. #91 export starts application-contract TDD after this completed checkpoint, without delivered export capability; #92 metadata history remains planned. Broad relations/official-run research, GC and full historical availability remain separate unfinished acceptance.
+[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved. Names/search and exact-original repair are included. #91 export has accepted local native source qualification but is not in this release; #92 metadata history remains planned. Broad relations/official-run research, GC and full historical availability remain separate unfinished acceptance.
 
 
-Current development qualification: exact `62513a2` passed [CI 39127264974](https://github.com/aircan80/vibeminer/actions/runs/39127264974), all four native targets and eleven Linux UI workflows. Independently reviewed logs include repair 71, paired names 63 and literal search 109 assertions. The 1,333 Java-case total is from local XML, not inferred from CI logs. Scoped #83/#89 are closed; broad #21 still needs relations/official-run evidence. Alpha.6 publication and independent final-asset verification are complete as recorded above. #91 export is starting application-contract TDD and #92 history remains planned.
+Current development qualification: exact `62513a2` passed [CI 39127264974](https://github.com/aircan80/vibeminer/actions/runs/39127264974), all four native targets and eleven Linux UI workflows. Independently reviewed logs include repair 71, paired names 63 and literal search 109 assertions. The 1,333 Java-case total is from local XML, not inferred from CI logs. Scoped #83/#89 are closed; broad #21 still needs relations/official-run evidence. Alpha.6 publication and independent final-asset verification are complete as recorded above. #91 export awaits its newer four-platform/twelve-workflow gate and #92 history remains planned.
 
 
 Historical published [alpha.5](releases/v0.1.0-alpha.5.md) is exact `f3c4d46e42451bfc7941959b862143a462a3ddd6`: 1,113 Java cases, all four native targets, eight Linux UI workflows and all 12 independently verified final assets. The release includes explicit retained-metadata reuse alongside the admitted physical Item and earlier acquisition/metadata workflows. It does not include later names or repair workflows.
@@ -23,6 +23,14 @@ Accepted same-issued-plan sharing `7613751` has 260 application cases, 41 indepe
 For the most recent completed cross-platform development evidence, see [central checkpoint](PLAN.md#delivered-baseline-and-current-work); the successful `492eab1` four-target/eight-workflow run cannot certify newer source. [Protocol evidence](PROTOCOL-EVIDENCE.md) separately distinguishes bounded live observations, authored offline fixtures and complete versus partial proof. A diagnostic record projection does not establish general whole-table compatibility or names-search acceptance.
 
 For each subsequent validation claim, record exact commands, source revision and runner/architecture. Preserve failed/unrun checks explicitly. Normal CI uses deterministic synthetic inputs without live CDN or private working documents. Package checks do not certify signing/notarization, all assistive technologies or the unfinished research MVP. The matrices below include acceptance still to deliver.
+
+## Current branding and next-screen qualification
+
+Exact `6bdba4f` passed 1,409 Java cases, 32 Python checks and local Linux package/smoke, plus two PNG verification passes for nine icon stages. [CI 39138548266](https://github.com/aircan80/vibeminer/actions/runs/39138548266) passed all four native targets and twelve Linux UI workflows for this exact branding source. Next-screen tests are specified in [the build-browser matrix](BUILD-BROWSER-ACCEPTANCE.md), limited to guided Discover and C overview. Runtime icon choice, table-provider boundaries and actual bulk content retention each retain distinct acceptance.
+
+## Current export qualification
+
+#91 export backend/runtime/controls are qualified source; its all-target gate passed and the issue remains open, without a new release. Clean `73c204a` passed 1,408 Java cases with zero failures/errors/skips and distribution assembly; subsequent `87b090c` changes only two layout lines and passed distribution assembly, without an inferred new full count. Native `87b090c` passed 177 assertions under each Noto/DejaVu run, two JVMs/zero HTTP, with 16 PNGs and ten JSON files/eleven entries per font. Independent strict-schema/actual-field-name checks and four hostile mutations passed. [CI 39132031837](https://github.com/aircan80/vibeminer/actions/runs/39132031837) at exact `b3aecf3` passed all four targets/twelve UI workflows, 269-document/259-mutation oracle checks and native saved-JSON validation (177 assertions, ten JSON files/eleven entries). Independent native-log/artifact review confirmed that scope. Prior [39130907881](https://github.com/aircan80/vibeminer/actions/runs/39130907881) at `9db204e` passed all four targets/eleven workflows and oracle checks, not the later export UI. Published alpha.6 contains no export. Failed prior gates remain recorded: the actual completion-race correction (`e16c155`), unset-Python correction (`d4d0e1e`) and Python 3.12 conditional-dependency correction (`9db204e`) were separate fixes, not skipped tests. No overlay/native success is represented as an untested whole-source gate.
 
 ## Delivery discipline
 
@@ -57,7 +65,7 @@ Before acquisition implementation grows, demonstrate:
 1. A clean clone builds with the committed Gradle wrapper and pinned Java/JavaFX configuration; reproducible synthetic tests run without internet after dependency provisioning.
 2. Core/domain/application modules compile and test without JavaFX initialization or concrete HTTP/JDBC/filesystem adapters; architecture violation tests demonstrate that forbidden edges fail.
 3. An Atlas shell launches with an empty app-owned data directory, offers discovery without a game-folder prompt, loads a synthetic product/build list asynchronously and distinguishes empty/offline/error states.
-4. Selection preserves product/channel/region/exact build/configuration identity and locale through close/reopen. A slower previous selection cannot replace a newer workspace response.
+4. Selection preserves product/channel/region/exact build/configuration identity and locale through close/reopen. A slower previous selection cannot replace a newer build-context response.
 5. Installation/runtime-image smoke checks on Windows, macOS and Linux prove launch without a preinstalled Java, Node, Python, game client or external database. Early packages may be unsigned development artifacts; label their verification limits.
 6. Dependency versions, licenses and native libraries have an initial inventory; no private working directories material, game data or cache enters source artifacts/packages.
 
@@ -69,15 +77,15 @@ These are foundation gates, not a claim of a useful production miner. Live offic
 
 - Units: immutable exact identity/value validation and task outcome types, unknown/unavailable/unsupported state distinctions.
 - Contracts: injected discovery, persistence, cancellation and scheduling ports; no network implicit in constructors.
-- UI/integration: synthetic discovery, one workspace persisted/restored, rapid switch with out-of-order replies; no game-install access.
+- UI/integration: synthetic discovery, one exact-build context persisted/restored, rapid switch with out-of-order replies; no game-install access.
 - Quality exit: first gate above plus explicit protocol evidence for a pinned official build; unresolved format/toolchain risks documented rather than treated as implemented.
 
-### M1 — Discovery and multiple persistent workspaces
+### M1 — Discovery and multiple persistent exact-build contexts
 
 - Fixtures: missing/extra columns, BOM/line endings/UTF-8, malformed size/identifier, duplicate rows, current/preload/unavailable products and unknown edition capability.
 - Units: discovery is observed history rather than a complete old-build catalogue; same version label in different editions does not collide; locale and configuration identity remain pinned.
 - Integration: migrations/reopen, offline with cached metadata versus empty offline installation, timeout/retry budgets, cancellation and last-known data after failed refresh.
-- UI: two build workspaces retain independent state; no stale data/title/provenance after switching; keyboard focus and useful error recovery.
+- UI: two exact-build contexts retain independent state; no stale data/title/provenance after switching; keyboard focus and useful error recovery.
 - Exit: fresh standalone discovery and reopen journey passes deterministically, with separate explicit live probe evidence.
 
 ### M2 — Verified content and durable shared archives

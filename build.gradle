@@ -50,6 +50,38 @@ def verifyNativeIcon = { File image = null ->
     }.result.get().assertNormalExitValue()
 }
 
+def legalPackager = layout.projectDirectory.file('tools/package_legal.py')
+def sourceRevision = providers.provider {
+    def revision = providers.gradleProperty('sourceRevision').orElse(providers.environmentVariable('GITHUB_SHA')).orNull
+    def checkoutRevision = null
+    try {
+        def git = providers.exec { ignoreExitValue = true; commandLine 'git', 'rev-parse', 'HEAD' }
+        if (git.result.get().exitValue == 0) checkoutRevision = git.standardOutput.asText.get().trim()
+    } catch (Exception ignored) { }
+    if (revision == null) revision = checkoutRevision
+    if (checkoutRevision != null && revision != checkoutRevision) {
+        throw new GradleException('Declared sourceRevision/GITHUB_SHA does not match the checked-out source HEAD.')
+    }
+    if (revision == null || !revision.matches('[0-9a-f]{40}')) {
+        throw new GradleException('Native packaging requires an exact source revision. Build source archives with -PsourceRevision=<40-character original Git SHA>.')
+    }
+    revision
+}
+def sourceDirty = providers.provider {
+    try {
+        def git = providers.exec { ignoreExitValue = true; commandLine 'git', 'status', '--porcelain', '--untracked-files=normal' }
+        git.result.get().exitValue == 0 && !git.standardOutput.asText.get().trim().isEmpty()
+    } catch (Exception ignored) { false }
+}
+def packageLegal = { String mode, File image ->
+    providers.exec {
+        commandLine os.contains('win') ? 'python' : 'python3', legalPackager.asFile, mode,
+            '--source', layout.projectDirectory.asFile, '--image', image, '--target', selectedTarget,
+            '--commit', sourceRevision.get(), '--version', version.toString()
+        if (sourceDirty.get()) args '--dirty'
+    }.result.get().assertNormalExitValue()
+}
+
 tasks.register('packageImage') {
     dependsOn ':bootstrap:installDist'
     inputs.property('appVersion', version.toString())
@@ -57,6 +89,10 @@ tasks.register('packageImage') {
     inputs.dir(bootstrapLibs)
     inputs.file(nativeIcon)
     inputs.file(iconVerifier)
+    inputs.files('LICENSE', 'NOTICE', 'docs/LICENSING.md')
+    inputs.file(legalPackager)
+    inputs.property('sourceRevision', sourceRevision)
+    inputs.property('sourceDirty', sourceDirty)
     inputs.property('distributionTarget', selectedTarget)
     outputs.dir(imageRoot)
     doLast {
@@ -85,6 +121,8 @@ tasks.register('packageImage') {
         if (diagnostics) logger.lifecycle(diagnostics)
         if (result.exitValue != 0) throw new GradleException("jpackage failed (${result.exitValue}): ${diagnostics}")
         verifyNativeIcon(imageDir.get())
+        packageLegal('copy', imageDir.get())
+        packageLegal('verify', imageDir.get())
     }
 }
 
@@ -124,6 +162,7 @@ tasks.register('verifyDistribution') {
         }
         def root = new File(verifyRoot, imageDir.get().name)
         verifyNativeIcon(root)
+        packageLegal('verify', root)
         def launcher = new File(root, os.contains('mac') ? 'Contents/MacOS/VibeMiner' : os.contains('win') ? 'VibeMiner.exe' : 'bin/VibeMiner')
         def selfTest = providers.exec { ignoreExitValue = true; commandLine launcher.absolutePath, '--self-test' }
         def selfResult = selfTest.result.get()

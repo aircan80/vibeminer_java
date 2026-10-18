@@ -2,12 +2,16 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved. See [release notes](releases/v0.1.0-alpha.6.md) and [central checkpoint](PLAN.md). Scoped names/search and original-metadata repair are released; #91 export is starting application-contract TDD and #92 history remains planned. Relations, general decoded-table support and GC remain unfinished.
+[Alpha.6](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.6) is published and independently verified at exact `ee6598f0369266c236b6c0f051e7974458d33905`, annotated tag `d6ba492e67834cf13b67daa9c43efb88c3734b1d`. [Publication run 39127913086](https://github.com/aircan80/vibeminer/actions/runs/39127913086) passed all four native targets and eleven Linux UI workflows. All 12 final assets were freshly downloaded and independently checked for version, exact source, target, manifests, SHA-256, byte counts and exclusion of private archive paths. Intel `es2,sw` configuration is preserved. See [release notes](releases/v0.1.0-alpha.6.md) and [central checkpoint](PLAN.md). Scoped names/search and original-metadata repair are released; #91 export has passed four-platform/twelve-workflow source qualification and remains unreleased; #92 history is under implementation. Relations, general decoded-table support and GC remain unfinished.
 
 - [Verified alpha.6 release notes](releases/v0.1.0-alpha.6.md)
 - [Verified alpha.5 release notes](releases/v0.1.0-alpha.5.md)
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
+- [Project license and third-party materials](LICENSING.md)
 - [Implementation plan and milestones](PLAN.md)
+- [Guided discovery and C overview implementation](BUILD-BROWSER-IMPLEMENTATION.md)
+- [Build browser delivery stories](BUILD-BROWSER-STORIES.md)
+- [Build browser acceptance](BUILD-BROWSER-ACCEPTANCE.md)
 - [Planned single Item JSON evidence export](ITEM-EVIDENCE-EXPORT.md)
 - [Planned exact discovery observation history](DISCOVERY-HISTORY.md)
 - [Layered architecture and contracts](ARCHITECTURE.md)

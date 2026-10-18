@@ -12,12 +12,14 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 This release adds paired physical Item names, explicit bounded literal name search and known-cost repair of the original canonical root/install representation. Discovery, saved metadata, retained-file inspection, local metadata reuse and admitted physical Item pages/lookup remain available. Packages bundle Java; they are unsigned and not notarized. See [verified release notes](docs/releases/v0.1.0-alpha.6.md) for exact scope and proof limits.
 
-Copies/other sections, whole decoded-table CKeys, validated relations, comparisons, exports, GC and complete historical archives remain unfinished. #91 one-record JSON export is starting application-contract TDD, not delivered; #92 metadata history remains planned. See [current status](docs/PLAN.md).
+Copies/other sections, whole decoded-table CKeys, validated relations, comparisons, exports, GC and complete historical archives remain unfinished. #91 one-record JSON export has qualified source at `b3aecf3` with four-platform/twelve-workflow acceptance, while remaining unreleased; #92 metadata history remains planned. See [current status](docs/PLAN.md).
+
+Current source export qualification passed all four targets/twelve native workflows at `b3aecf3`; #91 is still open and not included in alpha.6. Selected Excavate branding at `6bdba4f` passed all four native targets and twelve Linux UI workflows in [CI 39138548266](https://github.com/aircan80/vibeminer/actions/runs/39138548266). The next implementation scope is [guided Discover and C Build overview](docs/BUILD-BROWSER-IMPLEMENTATION.md) only, with real background retention; other research destinations remain planned.
 
 ## What it will do
 
 - Discover published products, builds and preload metadata directly from Blizzard.
-- Maintain separate game/edition workspaces, including WoW Forever and Retail, with multiple exact builds per edition and independent histories.
+- Maintain separate exact-build contexts across supported WoW products/editions, with retained state and independent histories; friendly edition bindings require verified identities.
 - Download and retain older available builds in VibeMiner’s own archive, keep several builds available, and reopen retained content offline.
 - Store identical data once across versions of the same game, shared by their build manifests rather than copied into per-build folders.
 - Browse file manifests, identifiers, metadata and supported decoded tables.
@@ -63,3 +65,7 @@ Builds retain manifests and references into one app-owned content-addressed obje
 ## Development workflow
 
 Track enhancements, defects and maintenance in GitHub Issues before implementation. Deliver small logical steps with explicit acceptance criteria. Use test-driven development where practical, meaningful unit and regression tests, and integration/UI/packaging checks where needed. Record validation results and remaining work in the issue before closing it.
+
+## License
+
+Original VibeMiner software is **GPL-3.0-or-later**. See [LICENSE](LICENSE), [NOTICE](NOTICE) and [licensing details](docs/LICENSING.md). Separately licensed third-party materials, including CC BY-SA 4.0 WoWDBDefs definitions, retain their own terms and notices.

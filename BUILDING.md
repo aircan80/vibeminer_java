@@ -40,6 +40,8 @@ Each package is built on its matching OS/architecture. Cross-compiling a runtime
   -PdistributionTarget=linux-x64
 ```
 
+Native packages include the project license, notices and exact source revision. Builds from a source archive without Git metadata must supply `-PsourceRevision=<40-character-commit-SHA>`; Git checkouts derive it from HEAD, and an explicit revision must match HEAD. A locally modified checkout is labeled as modified rather than claiming its base commit fully describes the source. See [licensing](docs/LICENSING.md).
+
 The macOS Intel package selects OpenGL with a software fallback (`prism.order=es2,sw`). Native CI diagnostics showed its virtual GPU aborting in Metal after OpenGL initialization failed; the software pipeline successfully rendered the same UI. Other targets keep their normal rendering selection. This compatibility setting is included in the distributed launcher and is tested by the same bundled GUI gate.
 
 On headless Linux wrap that command with `xvfb-run -a`. `packageDistribution` writes only package files to `build/distributions/<target>/`. `verifyDistribution` extracts the generated archive to a separate location and checks its actual bundled launcher/runtime and JavaFX smoke launch. These checks establish launchability, not a complete research workflow or full accessibility certification.

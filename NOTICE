@@ -1,0 +1,24 @@
+VibeMiner
+Copyright (C) 2026 aircan80 and VibeMiner contributors
+
+VibeMiner original software is licensed under the GNU General Public License,
+version 3 or (at your option) any later version (GPL-3.0-or-later).
+See LICENSE for the complete GNU GPL version 3 text. VibeMiner is distributed
+without warranty; see that license for the applicable terms.
+
+This project license does not replace licenses applying to third-party works.
+In particular, the bundled unmodified WoWDBDefs Item/ItemSparse definitions
+are licensed CC BY-SA 4.0; their full upstream license, contributor attribution,
+immutable source revision and modification notice remain alongside the data at
+io/vibeminer/schema/wowdbdefs/b9a63096cdd99b26967f17f9515377ae62cadfd7/.
+No upstream WoWDBDefs parser code is bundled.
+
+Bundled Java/OpenJDK/JavaFX runtimes, SQLite JDBC and other dependencies retain
+their own applicable licenses and notices. Runtime legal directories and
+upstream JAR notices must be preserved. The Gradle wrapper is a separately
+licensed development tool; its license is not changed by this notice.
+
+VibeMiner's license grants no rights to Blizzard game content or trademarks,
+and no Blizzard, WoWDBDefs or Java endorsement is implied.
+
+See docs/LICENSING.md and the packaged SOURCE.txt for source/build information.
