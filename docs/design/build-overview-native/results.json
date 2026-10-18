@@ -1,0 +1,231 @@
+{
+  "sourceRevision": "d627a93140c0277a47e0cc1ce9818bce6d770f5a",
+  "fixtureOnly": true,
+  "productionBinding": false,
+  "cases": [
+    {
+      "state": "preparing",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "partial",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "downloading",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "paused",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "full",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "corrupt",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "preparing",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "partial",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "downloading",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "paused",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "full",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "corrupt",
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "preparing",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "partial",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "downloading",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "paused",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "full",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "corrupt",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "preparing",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 139,
+      "result": "PASS"
+    },
+    {
+      "state": "partial",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "downloading",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "paused",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 138,
+      "result": "PASS"
+    },
+    {
+      "state": "full",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 134,
+      "result": "PASS"
+    },
+    {
+      "state": "corrupt",
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 139,
+      "result": "PASS"
+    }
+  ],
+  "publishedImages": [
+    {
+      "file": "overview-partial-1440x1100-100pct.png",
+      "sha256": "93f5b1bb73dd4044e03b66aa64a9b256d59a812287914f4d630a98f093a91ab8"
+    },
+    {
+      "file": "overview-downloading-1440x1100-100pct.png",
+      "sha256": "00f3222893c26a5673a3be85210255631de19b261791de1dba25011d869700b6"
+    },
+    {
+      "file": "overview-full-1440x1100-100pct.png",
+      "sha256": "1a0f703c3c75da668da0aa89fa1a9bcd6f577714e724f0f6717e2a59b58e6d93"
+    },
+    {
+      "file": "overview-paused-1280x800-100pct.png",
+      "sha256": "0e7c89594a9d278fbd1ec8686d1f9079b87b9ca14eda06df6a6fc5ad04bf11b9"
+    },
+    {
+      "file": "overview-preparing-1280x800-200pct.png",
+      "sha256": "e23b173006a93f96de093f2907504d360b0777765915b1df73ec456892585369"
+    },
+    {
+      "file": "overview-corrupt-1280x800-200pct.png",
+      "sha256": "362e9e79e9f54a7b994c55f393f9c64ecf253b9d3a0fc24b2dffaf6fdd019348"
+    }
+  ],
+  "limitations": [
+    "Standalone pane, not Atlas integration",
+    "Authored projections; no services, CAS, database or HTTP",
+    "JavaFX application text scaling, not OS DPI",
+    "Programmatic focus/actions, not physical input or assistive technology"
+  ]
+}

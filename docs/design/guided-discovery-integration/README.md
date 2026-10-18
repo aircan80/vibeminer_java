@@ -28,7 +28,7 @@ javac -cp 'desktop/build/classes/java/main:desktop/build/resources/main:applicat
   -d /tmp/vibeminer-guided-integration-classes tools/ui/CaptureGuidedDiscoveryIntegration.java
 ```
 
-On an explicitly owned isolated display, for example the root reviewer's `:191`:
+On an explicitly owned isolated display, for example `:191`:
 
 ```sh
 DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
