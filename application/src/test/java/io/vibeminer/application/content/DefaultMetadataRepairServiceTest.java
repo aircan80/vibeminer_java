@@ -37,6 +37,7 @@ class DefaultMetadataRepairServiceTest {
   MetadataStructureAttestation.Kind kind = MetadataStructureAttestation.Kind.ROOT;
   RuntimeException publicationFailure, finishFailure, failBeforeGate;
   Runnable publicationHook;
+  Runnable attachmentHook;
   CountDownLatch retired;
   RetentionScope pinned;
   MetadataRepairAudit completedAudit;
@@ -314,6 +315,7 @@ class DefaultMetadataRepairServiceTest {
             (p, m, a) -> {
               assertEquals("attach", m.getName());
               assertNull(owner, "Consumer attachment must follow actual retirement");
+              if (attachmentHook != null) attachmentHook.run();
               events.add("attach");
               pinned = (RetentionScope) a[1];
               return a[0];

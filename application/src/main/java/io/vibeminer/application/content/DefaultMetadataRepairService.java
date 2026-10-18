@@ -33,7 +33,19 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
   private final LongSupplier nanos;
   private final Map<UUID, Context> plans = new LinkedHashMap<>();
   private final Set<CompletableFuture<?>> active = new HashSet<>();
-  private final Set<UUID> executing = new HashSet<>();
+  private final Map<UUID, RepairFlight> flights = new HashMap<>();
+
+  private static final class RepairFlight {
+    final Context context;
+    final CompletableFuture<Void> actual = new CompletableFuture<>();
+    final List<CompletableFuture<MetadataRepairResult>> subscribers = new ArrayList<>();
+    boolean stopping;
+
+    RepairFlight(Context context) {
+      this.context = context;
+    }
+  }
+
   private volatile boolean closed;
 
   private record Context(
@@ -204,43 +216,114 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
 
   @Override
   public CompletionStage<MetadataRepairResult> execute(MetadataRepairPlan issued) {
-    return submit(
-        token -> {
-          Context context;
-          synchronized (this) {
-            context = issued == null ? null : plans.get(issued.issuanceId());
-            if (context == null || !context.plan().equals(issued) || expired(context))
-              throw failure(REPLAN_REQUIRED, "Repair plan is unknown, altered or expired");
-            if (!executing.add(issued.issuanceId()))
-              throw failure(BUSY, "This repair plan has an active actual worker");
+    RepairFlight flight;
+    var subscriber = new CompletableFuture<MetadataRepairResult>();
+    synchronized (this) {
+      if (closed)
+        return CompletableFuture.failedFuture(
+            failure(INVALID_STATE, "Metadata repair service is closed"));
+      var context = issued == null ? null : plans.get(issued.issuanceId());
+      if (context == null || !context.plan().equals(issued) || expired(context))
+        return CompletableFuture.failedFuture(
+            failure(REPLAN_REQUIRED, "Repair plan is unknown, altered or expired"));
+      flight = flights.get(issued.reservationToken());
+      if (flight != null) {
+        if (!flight.context.equals(context)
+            || sourceCancelled(flight)
+            || flight.subscribers.size() >= 32)
+          return CompletableFuture.failedFuture(
+              failure(BUSY, "Repair flight cannot admit this consumer"));
+        flight.subscribers.add(subscriber);
+        return subscriber;
+      }
+      if (active.size() >= 4)
+        return CompletableFuture.failedFuture(
+            failure(BUSY, "Actual repair job capacity is occupied"));
+      flight = new RepairFlight(context);
+      flight.subscribers.add(subscriber);
+      flights.put(issued.reservationToken(), flight);
+      active.add(flight.actual);
+    }
+    var admitted = flight;
+    try {
+      executor.execute(() -> runFlight(admitted));
+    } catch (RuntimeException rejected) {
+      failSubscribers(admitted, failure(BUSY, "Repair executor rejected actual worker"));
+      retireFlight(admitted);
+    }
+    return subscriber;
+  }
+
+  private synchronized boolean sourceCancelled(RepairFlight flight) {
+    if (closed || flight.subscribers.stream().allMatch(CompletableFuture::isDone))
+      flight.stopping = true;
+    return flight.stopping;
+  }
+
+  private void runFlight(RepairFlight flight) {
+    CancellationToken shared = () -> sourceCancelled(flight);
+    try {
+      shared.throwIfCancellationRequested();
+      var context = flight.context;
+      validate(context, shared);
+      var initial = current(context.plan().request(), shared);
+      exact(initial, context.plan());
+      var source = owned(context, initial, shared);
+      int next = 0;
+      while (true) {
+        CompletableFuture<MetadataRepairResult> subscriber;
+        synchronized (this) {
+          if (next == flight.subscribers.size() || sourceCancelled(flight)) {
+            flight.stopping = true;
+            break;
           }
-          try {
-            validate(context, token);
-            var initial = current(issued.request(), token);
-            exact(initial, issued);
-            var source = owned(context, initial, token);
-            var completed = source.representation();
-            // owned() returns only after its source finally has retired the actual permit.
-            token.throwIfCancellationRequested();
-            declarations.validateDeclaration(context.declaration(), context.budgets(), token);
-            var requested =
-                new MetadataBuildAssociation(
-                    context.declaration(), issued.reservationToken(), completed, clock.instant());
-            var attached = associations.attach(requested, scope(requested), token);
-            if (!sameDeclaration(attached.declaration(), requested.declaration())
-                || !attached
-                    .canonicalReservationToken()
-                    .equals(requested.canonicalReservationToken())
-                || !attached.actualRepresentation().equals(completed))
-              throw failure(
-                  INTEGRITY_FAILURE, "Consumer attachment changed immutable metadata facts");
-            return new MetadataRepairResult(attached, source.audit());
-          } finally {
-            synchronized (this) {
-              executing.remove(issued.issuanceId());
-            }
-          }
-        });
+          subscriber = flight.subscribers.get(next++);
+        }
+        if (subscriber.isCancelled()) continue;
+        CancellationToken consumer = () -> subscriber.isCancelled() || closed;
+        try {
+          consumer.throwIfCancellationRequested();
+          if (!configuration(context.plan().request().build(), consumer)
+              .equals(context.plan().request().configuration()))
+            throw failure(INTEGRITY_FAILURE, "Consumer configuration changed after repair");
+          declarations.validateDeclaration(context.declaration(), context.budgets(), consumer);
+          var requested =
+              new MetadataBuildAssociation(
+                  context.declaration(),
+                  context.plan().reservationToken(),
+                  source.representation(),
+                  clock.instant());
+          var attached = associations.attach(requested, scope(requested), consumer);
+          if (!sameDeclaration(attached.declaration(), requested.declaration())
+              || !attached.canonicalReservationToken().equals(requested.canonicalReservationToken())
+              || !attached.actualRepresentation().equals(source.representation()))
+            throw failure(
+                INTEGRITY_FAILURE, "Consumer attachment changed immutable metadata facts");
+          subscriber.complete(new MetadataRepairResult(attached, source.audit()));
+        } catch (Throwable failed) {
+          subscriber.completeExceptionally(normalize(failed));
+        }
+      }
+    } catch (Throwable failed) {
+      failSubscribers(flight, normalize(failed));
+    } finally {
+      retireFlight(flight);
+    }
+  }
+
+  private void failSubscribers(RepairFlight flight, Throwable failed) {
+    List<CompletableFuture<MetadataRepairResult>> subscribers;
+    synchronized (this) {
+      flight.stopping = true;
+      subscribers = List.copyOf(flight.subscribers);
+    }
+    for (var subscriber : subscribers) subscriber.completeExceptionally(failed);
+  }
+
+  private synchronized void retireFlight(RepairFlight flight) {
+    flight.stopping = true;
+    flights.remove(flight.context.plan().reservationToken(), flight);
+    active.remove(flight.actual);
   }
 
   private record CompletedSource(
@@ -615,7 +698,11 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
       if (closed) return;
       closed = true;
       plans.clear();
-      pending = List.copyOf(active);
+      pending = new ArrayList<>(active);
+      for (var flight : flights.values()) {
+        flight.stopping = true;
+        pending.addAll(flight.subscribers);
+      }
     }
     for (var future : pending) future.cancel(false);
   }
