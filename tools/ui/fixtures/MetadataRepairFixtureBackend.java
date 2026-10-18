@@ -37,6 +37,11 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
       installReads = new AtomicInteger();
   public final AtomicLong payloadBytes = new AtomicLong(), monotonic = new AtomicLong();
   public volatile PayloadMode payloadMode = PayloadMode.SUCCESS;
+
+  /** Deliberate test callback failure after actual CAS promotion and durable structure evidence. */
+  public final AtomicBoolean failAfterStructure = new AtomicBoolean();
+
+  public final AtomicInteger postStructureFaults = new AtomicInteger();
   public volatile CompletableFuture<?> heldPayload;
   private final Path contentRoot;
   private final FileObjectStore store;
@@ -254,7 +259,7 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
     repairs =
         new DefaultMetadataRepairService(
             issuer,
-            execution,
+            faultableExecution(),
             local,
             declarations,
             builds,
@@ -277,6 +282,46 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
           Workspace.create(build, "deDE", "Synthetic original A German view", clock.instant()));
     }
     workspaces = new DefaultWorkspaceService(repository, jobs, clock);
+  }
+
+  private MetadataRepairExecutionGateway faultableExecution() {
+    return new MetadataRepairExecutionGateway() {
+      public MetadataRepairObservation repairInstall(
+          InstallPlan ordinary,
+          MetadataRepairPlan plan,
+          UUID attempt,
+          MetadataRepairObserver observer,
+          CancellationToken token) {
+        return execution.repairInstall(ordinary, plan, attempt, faultableObserver(observer), token);
+      }
+
+      public MetadataRepairObservation repairRoot(
+          RootSelectionPlan ordinary,
+          MetadataRepairPlan plan,
+          UUID attempt,
+          MetadataRepairObserver observer,
+          CancellationToken token) {
+        return execution.repairRoot(ordinary, plan, attempt, faultableObserver(observer), token);
+      }
+    };
+  }
+
+  private MetadataRepairObserver faultableObserver(MetadataRepairObserver actual) {
+    return new MetadataRepairObserver() {
+      public void beforePromotion(MetadataRepairObservation value, CancellationToken token) {
+        actual.beforePromotion(value, token);
+      }
+
+      public void afterStructureValidation(
+          MetadataRepairObservation value, CancellationToken token) {
+        actual.afterStructureValidation(value, token);
+        if (failAfterStructure.getAndSet(false)) {
+          postStructureFaults.incrementAndGet();
+          throw new IllegalStateException(
+              "Authored post-structure callback fault after actual promotion");
+        }
+      }
+    };
   }
 
   private void countOrdinary() {
@@ -391,6 +436,18 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
 
   public Optional<MetadataRepairAudit> audit(UUID id) {
     return audits.find(id, CancellationToken.none());
+  }
+
+  public Optional<MetadataRepairAudit> latestAudit() throws Exception {
+    UUID id;
+    try (var connection = sql.connect();
+        var query = connection.createStatement();
+        var rows =
+            query.executeQuery(
+                "SELECT attempt_id FROM metadata_repair_attempts ORDER BY rowid DESC LIMIT 1")) {
+      id = rows.next() ? UUID.fromString(rows.getString(1)) : null;
+    }
+    return id == null ? Optional.empty() : audits.find(id, CancellationToken.none());
   }
 
   public long count(String table) throws Exception {

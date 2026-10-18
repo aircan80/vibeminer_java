@@ -1,6 +1,7 @@
 # Explicit repair of original canonical metadata
 
-**Status: approved contract for [#83](https://github.com/aircan80/vibeminer/issues/83). Immutable consent/observation values (`7514541`), the exact-object CAS repair primitive (`6c5014d`) and the bounded HEAD/consent issuer (`60ce294`) are implemented. Actual metadata repair, durable attempt auditing, application orchestration and runtime enablement are not implemented.** These foundations do not authorize repair from a current download action or establish native metadata-repair acceptance.
+**Status: #83 backend/runtime and explicit Atlas repair controls are locally qualified at immutable `7b188d7`; published alpha.5 does not include this later workflow.** Full check/distribution assembly passed 1,271 Java cases. The authored repair workflow passed 62+9 assertions across two JVMs with zero HTTP and 21 captures, including a real post-STRUCTURE UNCERTAIN fault, explicit local verification and ordinary ROOT-download refusal. Symmetric IN uncertainty is unit-tested only. See [visual acceptance](design/metadata-repair/README.md) and [central status](PLAN.md#delivered-baseline-and-current-work). New native workflows nine/ten are not yet in a completed four-platform gate; no new release is claimed.
+
 
 This contract extends the [canonical metadata guard](METADATA-DEDUP.md), [actual publisher ownership](PUBLISHER-OWNERSHIP.md) and [shared storage](STORAGE.md). It covers app-owned install and root metadata only. VibeMiner does not access a game installation. It introduces no deletion, GC, encoding replacement, automatic retry or additional product namespace binding.
 

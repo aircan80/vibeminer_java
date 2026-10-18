@@ -1,6 +1,6 @@
 # Bounded Item names and exact-context join
 
-**Status: accepted #21 pure projector/domain foundations and application use cases in `11c5c10`; retained-source reader, shared name index and production view remain undelivered.** The application slice passed 14 cases and 3 independent adversarial checks. These are synthetic/fake-port contracts, not a names-search application or accepted end-to-end name preparation. The prerequisite physical Item view is published in [alpha.4](releases/v0.1.0-alpha.4.md); see [central source status](PLAN.md#delivered-baseline-and-current-work) for later unreleased checkpoints. No complete readable table or new content acquisition is claimed.
+**Status: names backend/runtime and paired physical-name Atlas controls are locally qualified at immutable `8ccbd42`; no newer four-platform or release qualification is claimed.** The authored workflow passed 46+17 assertions across two JVMs with zero HTTP and 21 captures. See [formal visual references](design/item-names/README.md) and [central checkpoint](PLAN.md#delivered-baseline-and-current-work). Published alpha.5 does not contain this later names workflow. Literal text search is a separate [#89 contract](ITEM-NAME-SEARCH.md), not part of this paging/exact-ID slice. Candidate attribution, physical/copy exclusions and partial proof limits below remain unchanged.
 
 
 ## Research outcome and source selection
