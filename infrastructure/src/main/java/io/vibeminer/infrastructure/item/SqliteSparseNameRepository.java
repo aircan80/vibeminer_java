@@ -152,48 +152,52 @@ final class SqliteSparseNameRepository {
       ItemProjectionEvidence evidence,
       PreparedSparseNames.Coverage coverage,
       CancellationToken token) {
-    return tx(
-        token,
-        c -> {
-          var header = requireStage(c, stage);
-          if (!header.definition().equals(definition))
-            throw failure(CORRUPT, "Publication definition changed");
-          verifyCounts(
-              c,
-              stage.artifactId(),
-              new Header(definition, stage.generation(), session.epoch(), false, coverage));
-          try (var query =
-              c.prepareStatement(
-                  "SELECT 1 FROM sparse_name_copies c JOIN sparse_name_rows r ON"
-                      + " r.artifact_id=c.artifact_id AND r.generation=c.generation AND"
-                      + " r.record_id=c.target_id WHERE c.artifact_id=? AND c.generation=?"
-                      + " LIMIT 1")) {
-            bind(query, stage);
-            try (var rows = query.executeQuery()) {
-              if (rows.next())
-                throw failure(CORRUPT, "Copy target overlaps an indexed physical row");
-            }
-          }
-          var handle = new PreparedSparseNames(definition, evidence, coverage);
-          var canonical = attachContext(c, handle);
-          try (var query =
-              c.prepareStatement(
-                  "UPDATE sparse_name_artifacts SET"
-                      + " status='READY',physical_rows=?,copy_count=?,excluded_sections=?,projected_utf8_bytes=?"
-                      + " WHERE artifact_id=? AND generation=? AND owner_epoch=? AND"
-                      + " status='STAGING'")) {
-            query.setLong(1, coverage.physicalRows());
-            query.setLong(2, coverage.unindexedCopyDeclarations());
-            query.setInt(3, coverage.excludedSections());
-            query.setLong(4, coverage.projectedUtf8Bytes());
-            query.setString(5, stage.artifactId());
-            query.setString(6, stage.generation().toString());
-            query.setString(7, session.epoch().toString());
-            if (query.executeUpdate() != 1)
-              throw failure(BUSY, "Projection generation retired before publication");
-          }
-          return canonical;
-        });
+    return tx(token, c -> publish(c, stage, definition, evidence, coverage));
+  }
+
+  PreparedSparseNames publish(
+      Connection c,
+      Stage stage,
+      SparseNameArtifactDefinition definition,
+      ItemProjectionEvidence evidence,
+      PreparedSparseNames.Coverage coverage)
+      throws SQLException {
+    var header = requireStage(c, stage);
+    if (!header.definition().equals(definition))
+      throw failure(CORRUPT, "Publication definition changed");
+    verifyCounts(
+        c,
+        stage.artifactId(),
+        new Header(definition, stage.generation(), session.epoch(), false, coverage));
+    try (var query =
+        c.prepareStatement(
+            "SELECT 1 FROM sparse_name_copies c JOIN sparse_name_rows r ON"
+                + " r.artifact_id=c.artifact_id AND r.generation=c.generation AND"
+                + " r.record_id=c.target_id WHERE c.artifact_id=? AND c.generation=?"
+                + " LIMIT 1")) {
+      bind(query, stage);
+      try (var rows = query.executeQuery()) {
+        if (rows.next()) throw failure(CORRUPT, "Copy target overlaps an indexed physical row");
+      }
+    }
+    var handle = new PreparedSparseNames(definition, evidence, coverage);
+    var canonical = attachContext(c, handle);
+    try (var query =
+        c.prepareStatement(
+            "UPDATE sparse_name_artifacts SET"
+                + " status='READY',physical_rows=?,copy_count=?,excluded_sections=?,projected_utf8_bytes=?"
+                + " WHERE artifact_id=? AND generation=? AND owner_epoch=? AND status='STAGING'")) {
+      query.setLong(1, coverage.physicalRows());
+      query.setLong(2, coverage.unindexedCopyDeclarations());
+      query.setInt(3, coverage.excludedSections());
+      query.setLong(4, coverage.projectedUtf8Bytes());
+      query.setString(5, stage.artifactId());
+      query.setString(6, stage.generation().toString());
+      query.setString(7, session.epoch().toString());
+      if (query.executeUpdate() != 1)
+        throw failure(BUSY, "Projection generation retired before publication");
+    }
+    return canonical;
   }
 
   PreparedSparseNames reuse(
@@ -201,20 +205,25 @@ final class SqliteSparseNameRepository {
       ItemProjectionEvidence evidence,
       List<SparseNameProjectionSourceReader.CopyDeclaration> authenticatedCopies,
       CancellationToken token) {
-    return tx(
-        token,
-        c -> {
-          var current =
-              readHeader(c, header.definition().artifactId())
-                  .orElseThrow(() -> failure(NOT_READY, "Projection disappeared"));
-          if (!current.ready() || !current.generation().equals(header.generation()))
-            throw failure(NOT_READY, "Projection is not ready");
-          verifyCounts(c, header.definition().artifactId(), current);
-          var handle = new PreparedSparseNames(current.definition(), evidence, current.coverage());
-          validateSourceCopies(c, handle, authenticatedCopies);
-          return attachContext(
-              c, new PreparedSparseNames(current.definition(), evidence, current.coverage()));
-        });
+    return tx(token, c -> reuse(c, header, evidence, authenticatedCopies));
+  }
+
+  PreparedSparseNames reuse(
+      Connection c,
+      Header header,
+      ItemProjectionEvidence evidence,
+      List<SparseNameProjectionSourceReader.CopyDeclaration> authenticatedCopies)
+      throws SQLException {
+    var current =
+        readHeader(c, header.definition().artifactId())
+            .orElseThrow(() -> failure(NOT_READY, "Projection disappeared"));
+    if (!current.ready() || !current.generation().equals(header.generation()))
+      throw failure(NOT_READY, "Projection is not ready");
+    verifyCounts(c, header.definition().artifactId(), current);
+    var handle = new PreparedSparseNames(current.definition(), evidence, current.coverage());
+    validateSourceCopies(c, handle, authenticatedCopies);
+    return attachContext(
+        c, new PreparedSparseNames(current.definition(), evidence, current.coverage()));
   }
 
   private PreparedSparseNames attachContext(Connection c, PreparedSparseNames handle)
@@ -280,39 +289,38 @@ final class SqliteSparseNameRepository {
   }
 
   <T> T query(PreparedSparseNames handle, CancellationToken token, Work<T> work) {
-    return tx(
-        token,
-        c -> {
-          var header =
-              readHeader(c, handle.artifactId())
-                  .orElseThrow(() -> failure(NOT_READY, "Projection is not prepared"));
-          if (!header.ready()) throw failure(NOT_READY, "Projection is still being prepared");
-          if (!header.definition().equals(handle.definition())
-              || !header.coverage().equals(handle.coverage()))
-            throw failure(CORRUPT, "Prepared handle differs from persisted artifact");
-          verifyCounts(c, handle.artifactId(), header);
-          requireDependencies(c, handle);
-          var build =
-              catalog
-                  .readSnapshot(c, handle.snapshotId())
-                  .orElseThrow(
-                      () -> failure(MISSING_LOCAL, "Exact projection snapshot is missing"));
-          try (var statement =
-              c.prepareStatement(
-                  "SELECT length(evidence),evidence,evidence_sha256 FROM sparse_name_contexts WHERE"
-                      + " artifact_id=? AND snapshot_id=? AND source_role=? AND locale=?")) {
-            context(statement, handle);
-            try (var rows = statement.executeQuery()) {
-              if (!rows.next())
-                throw failure(NOT_READY, "Projection is not attached to this exact source context");
-              if (rows.getLong(1) > SparseNameRecords.MAX_EVIDENCE_BYTES
-                  || !sha256(rows.getBytes(2)).equals(rows.getString(3))
-                  || !SparseNameRecords.evidence(rows.getBytes(2), build).equals(handle.evidence()))
-                throw failure(CORRUPT, "Prepared handle changed original evidence");
-            }
-          }
-          return work.run(c);
-        });
+    return tx(token, c -> query(c, handle, work));
+  }
+
+  <T> T query(Connection c, PreparedSparseNames handle, Work<T> work) throws SQLException {
+    var header =
+        readHeader(c, handle.artifactId())
+            .orElseThrow(() -> failure(NOT_READY, "Projection is not prepared"));
+    if (!header.ready()) throw failure(NOT_READY, "Projection is still being prepared");
+    if (!header.definition().equals(handle.definition())
+        || !header.coverage().equals(handle.coverage()))
+      throw failure(CORRUPT, "Prepared handle differs from persisted artifact");
+    verifyCounts(c, handle.artifactId(), header);
+    requireDependencies(c, handle);
+    var build =
+        catalog
+            .readSnapshot(c, handle.snapshotId())
+            .orElseThrow(() -> failure(MISSING_LOCAL, "Exact projection snapshot is missing"));
+    try (var statement =
+        c.prepareStatement(
+            "SELECT length(evidence),evidence,evidence_sha256 FROM sparse_name_contexts WHERE"
+                + " artifact_id=? AND snapshot_id=? AND source_role=? AND locale=?")) {
+      context(statement, handle);
+      try (var rows = statement.executeQuery()) {
+        if (!rows.next())
+          throw failure(NOT_READY, "Projection is not attached to this exact source context");
+        if (rows.getLong(1) > SparseNameRecords.MAX_EVIDENCE_BYTES
+            || !sha256(rows.getBytes(2)).equals(rows.getString(3))
+            || !SparseNameRecords.evidence(rows.getBytes(2), build).equals(handle.evidence()))
+          throw failure(CORRUPT, "Prepared handle changed original evidence");
+      }
+    }
+    return work.run(c);
   }
 
   PreparedSparseNames loadTrusted(PreparedSparseNames handle, CancellationToken token) {
@@ -419,13 +427,19 @@ final class SqliteSparseNameRepository {
   }
 
   private static long readCopy(ResultSet rows, long expectedId) throws SQLException {
-    if (rows.getObject(3) == null || rows.getLong(3) != 20)
+    return readCopy(rows, expectedId, 1);
+  }
+
+  static long readCopy(ResultSet rows, long expectedId, int first) throws SQLException {
+    if (rows.getObject(3) == null || rows.getLong(first + 2) != 20)
       throw failure(CORRUPT, "Missing or invalid copy proof record");
-    var record = rows.getBytes(4);
-    if (!sha256(record).equals(rows.getString(5)))
+    var record = rows.getBytes(first + 3);
+    if (!sha256(record).equals(rows.getString(first + 4)))
       throw failure(CORRUPT, "Copy declaration checksum changed");
     var decoded = readCopyRecord(record);
-    if (decoded[0] != expectedId || decoded[0] != rows.getLong(1) || decoded[1] != rows.getLong(2))
+    if (decoded[0] != expectedId
+        || decoded[0] != rows.getLong(first + 0)
+        || decoded[1] != rows.getLong(first + 1))
       throw failure(CORRUPT, "Indexed copy declaration differs from original record");
     return decoded[1];
   }
@@ -501,15 +515,20 @@ final class SqliteSparseNameRepository {
     }
   }
 
-  private DisplayCandidate readRow(ResultSet rows, PreparedSparseNames handle) throws SQLException {
-    if (rows.getLong(3) > SparseNameRecords.MAX_CANDIDATE_BYTES)
+  DisplayCandidate readRow(ResultSet rows, PreparedSparseNames handle) throws SQLException {
+    return readRow(rows, handle, 1);
+  }
+
+  DisplayCandidate readRow(ResultSet rows, PreparedSparseNames handle, int first)
+      throws SQLException {
+    if (rows.getLong(first + 2) > SparseNameRecords.MAX_CANDIDATE_BYTES)
       throw failure(CORRUPT, "Oversized projection row");
-    var bytes = rows.getBytes(4);
-    if (!sha256(bytes).equals(rows.getString(5)))
+    var bytes = rows.getBytes(first + 3);
+    if (!sha256(bytes).equals(rows.getString(first + 4)))
       throw failure(CORRUPT, "Projection row checksum changed");
     var row = SparseNameRecords.candidate(bytes);
-    if (row.physicalRecordId() != rows.getLong(1)
-        || row.physicalOrdinal() != rows.getInt(2)
+    if (row.physicalRecordId() != rows.getLong(first + 0)
+        || row.physicalOrdinal() != rows.getInt(first + 1)
         || row.sectionOrdinal() != handle.coverage().sectionOrdinal()
         || row.physicalOrdinal() >= handle.coverage().physicalRows())
       throw failure(CORRUPT, "Projected physical identity changed");

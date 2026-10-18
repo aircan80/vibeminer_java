@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.*;
 
-final class SparseNameSourceFixture {
+public final class SparseNameSourceFixture {
   static byte[] record1() {
     return "desc\0three\0two\0one\0Authored α\0tail".getBytes(StandardCharsets.UTF_8);
   }
@@ -58,7 +58,7 @@ final class SparseNameSourceFixture {
     return a;
   }
 
-  static byte[] encoded() {
+  public static byte[] encoded() {
     return encode(decoded());
   }
 
@@ -230,7 +230,7 @@ final class SparseNameSourceFixture {
         descriptor, config, root, proof, representation);
   }
 
-  static io.vibeminer.domain.selectedfile.SelectedFileAssociation association() {
+  public static io.vibeminer.domain.selectedfile.SelectedFileAssociation association() {
     return association("12.1.5.70448", java.time.Instant.EPOCH, encoded(), decoded().length);
   }
 }

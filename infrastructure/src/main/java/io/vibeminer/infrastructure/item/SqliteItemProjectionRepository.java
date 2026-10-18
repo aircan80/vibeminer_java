@@ -464,7 +464,7 @@ final class SqliteItemProjectionRepository {
     }
   }
 
-  private ItemPhysicalRow readRow(ResultSet rows, PreparedItemProjection handle)
+  ItemPhysicalRow readRow(ResultSet rows, PreparedItemProjection handle)
       throws SQLException {
     if (rows.getLong(3) > ItemProjectionRecords.MAX_ROW_BYTES)
       throw failure(CORRUPT, "Oversized projection row");
