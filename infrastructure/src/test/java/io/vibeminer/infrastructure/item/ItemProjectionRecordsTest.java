@@ -276,35 +276,20 @@ class ItemProjectionRecordsTest {
 
   @Test
   void invalidJavaSurrogatesCannotSilentlyRewriteInterpretationOrNestedProvenance() {
-    var definition = definition();
-    var i = definition.interpretation();
-    var s = i.schema();
-    var badSchema =
-        new ItemArtifactDefinition.Schema(
-            "unpaired-\ud800",
-            s.revision(),
-            s.definitionPath(),
-            s.definitionSha256(),
-            s.selectionDigest(),
-            s.license(),
-            s.attribution(),
-            s.fields());
-    var badDefinition =
-        new ItemArtifactDefinition(
-            definition.sources(),
-            new ItemArtifactDefinition.Interpretation(
-                i.decoderRevision(),
-                i.indexRevision(),
-                i.tableHash(),
-                i.layoutHash(),
-                i.sectionOrdinal(),
-                i.sectionDecodedOffset(),
-                i.sectionDecodedBytes(),
-                badSchema,
-                i.locale(),
-                i.optionsRevision(),
-                i.proofSemantics()));
-    corrupt(() -> ItemProjectionRecords.definition(badDefinition));
+    var s = definition().interpretation().schema();
+    // Malformed identity text is rejected before a definition can reach the codec.
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ItemArtifactDefinition.Schema(
+                "unpaired-\ud800",
+                s.revision(),
+                s.definitionPath(),
+                s.definitionSha256(),
+                s.selectionDigest(),
+                s.license(),
+                s.attribution(),
+                s.fields()));
     var e = evidence(false);
     var a = e.association();
     var c = a.configuration();

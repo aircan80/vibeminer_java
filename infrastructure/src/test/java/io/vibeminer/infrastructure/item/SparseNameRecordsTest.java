@@ -69,14 +69,32 @@ class SparseNameRecordsTest {
     assertEquals(
         large,
         SparseNameRecords.evidence(encoded, e.association().descriptor().association().build()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new io.vibeminer.domain.item.ItemProjectionEvidence.LocalVerification(
+                e.localVerification().object(), e.localVerification().verifiedAt(), "bad\ud800"));
+    // Nested source receipts have a separate codec boundary and must not be rewritten either.
+    var association = e.association();
+    var config = association.configuration();
+    var lossyConfig =
+        new io.vibeminer.domain.VerifiedSourceAlias(
+            config.source(),
+            config.object(),
+            new io.vibeminer.domain.SourceVerificationEvidence(
+                config.evidence().verifierSemantics(),
+                "https://example.invalid/bad\ud800",
+                config.evidence().verifiedAt()));
+    var lossyAssociation =
+        new io.vibeminer.domain.selectedfile.SelectedFileAssociation(
+            association.descriptor(),
+            lossyConfig,
+            association.root(),
+            association.proof(),
+            association.representation());
     var lossy =
         new io.vibeminer.domain.item.ItemProjectionEvidence(
-            e.association(),
-            new io.vibeminer.domain.item.ItemProjectionEvidence.LocalVerification(
-                e.localVerification().object(), e.localVerification().verifiedAt(), "bad\ud800"),
-            e.chunks(),
-            e.windows(),
-            e.fullDecoded());
+            lossyAssociation, e.localVerification(), e.chunks(), e.windows(), e.fullDecoded());
     assertEquals(
         ItemNamesException.Code.CORRUPT,
         assertThrows(ItemNamesException.class, () -> SparseNameRecords.evidence(lossy)).code());

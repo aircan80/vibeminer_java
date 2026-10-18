@@ -1,14 +1,19 @@
 package io.vibeminer.domain.item;
 
+import java.nio.charset.StandardCharsets;
+
 final class ItemValues {
   private ItemValues() {}
 
+  /** Exact interpretation/provenance metadata must survive UTF-8 hashing and persistence. */
   static String text(String value) {
     if (value == null
         || value.isBlank()
         || value.length() > 4096
         || value.chars().anyMatch(Character::isISOControl))
       throw new IllegalArgumentException("Bounded interpretation fact required");
+    if (!StandardCharsets.UTF_8.newEncoder().canEncode(value))
+      throw new IllegalArgumentException("Interpretation fact must contain well-formed UTF-16");
     return value;
   }
 
