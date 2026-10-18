@@ -70,13 +70,8 @@ public final class SqliteCanonicalContentRepository implements CanonicalContentR
         () -> {
           try (var connection = catalog.connect()) {
             connection.setAutoCommit(false);
-            try (var update =
-                connection.prepareStatement(
-                    "UPDATE canonical_content_slots SET"
-                        + " owner_session=?,worker_nonce=NULL,status=CASE WHEN status='RETAINED'"
-                        + " THEN 'RETAINED' ELSE 'RECOVERY' END")) {
-              update.setString(1, capability.epoch().toString());
-              update.executeUpdate();
+            try {
+              recoverInStartupTransaction(connection, capability);
               connection.commit();
             } catch (SQLException | RuntimeException failure) {
               try {
@@ -91,6 +86,21 @@ public final class SqliteCanonicalContentRepository implements CanonicalContentR
                 STORAGE_UNAVAILABLE, "Cannot recover canonical content startup", failure);
           }
         });
+  }
+
+  /** SQL extraction for the common unused-session startup fence; never commits. */
+  static void recoverInStartupTransaction(
+      Connection connection, FileObjectStore.StoreSession capability) throws SQLException {
+    capability.requireRecoveryInProgress();
+    if (connection.getAutoCommit())
+      throw new IllegalArgumentException("Caller recovery transaction required");
+    try (var update =
+        connection.prepareStatement(
+            "UPDATE canonical_content_slots SET owner_session=?,worker_nonce=NULL,status=CASE WHEN"
+                + " status='RETAINED' THEN 'RETAINED' ELSE 'RECOVERY' END")) {
+      update.setString(1, capability.epoch().toString());
+      update.executeUpdate();
+    }
   }
 
   @Override
