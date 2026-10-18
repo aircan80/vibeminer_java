@@ -144,7 +144,11 @@ public final class DefaultRetentionService implements RetentionService {
         count = Math.addExact(count, scope.requirements().size());
         if (count > limits.maximumRequirements())
           throw capacity("Too many requirements to measure");
-        for (var requirement : scope.requirements()) recordFacts(scope, requirement);
+        for (var requirement : scope.requirements())
+          recordFacts(
+              scope,
+              requirement,
+              !scope.scopeId().equals(view.selected().scopeId()) || view.pinned());
       }
       for (var scope : scopes) {
         boolean isSelected = scope.scopeId().equals(view.selected().scopeId());
@@ -204,9 +208,10 @@ public final class DefaultRetentionService implements RetentionService {
           corrupt);
     }
 
-    private void recordFacts(RetentionScope scope, ScopeRequirement requirement) {
+    private void recordFacts(
+        RetentionScope scope, ScopeRequirement requirement, boolean activePin) {
       var key = new RoleKey(scope.snapshotId(), requirement.role());
-      var old = roleFacts.get(key);
+      var old = activePin ? roleFacts.get(key) : null;
       var merged = requirement;
       if (old != null) {
         if (old.source().isPresent()
@@ -220,7 +225,7 @@ public final class DefaultRetentionService implements RetentionService {
                 mergeSize(old.encodedBytes(), requirement.encodedBytes()),
                 mergeSize(old.logicalDecodedBytes(), requirement.logicalDecodedBytes()));
       }
-      roleFacts.put(key, merged);
+      if (activePin) roleFacts.put(key, merged);
       if (merged.source().isPresent()) {
         var source = merged.source().get();
         if (merged.encodedBytes().isPresent())
@@ -254,7 +259,9 @@ public final class DefaultRetentionService implements RetentionService {
       if (refs.size() > limits.maximumRequirements())
         throw capacity("Too many exact-build memberships");
       var reference = refs.get(requirement.role());
-      if (reference != null) {
+      if (reference != null
+          && (requirement.source().isEmpty()
+              || requirement.source().get().equals(reference.source()))) {
         validateRequirement(requirement, reference);
         recordObject(reference.source(), reference.object());
         var observation = observe(reference.object());

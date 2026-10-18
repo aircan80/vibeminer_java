@@ -328,4 +328,205 @@ class SqliteRetentionRepositoryTest {
       }
     }
   }
+
+  static RetentionScope rootScope(BuildSnapshot build, String candidate, long bytes) {
+    return new RetentionScope(
+        build.snapshotId(),
+        ScopeKind.ROOT_METADATA,
+        List.of(
+            requirement("BUILD_CONFIG", "config", 4, 4),
+            requirement("ROOT_MANIFEST", candidate, bytes, 100)));
+  }
+
+  @Test
+  void explicitRootCandidateCanReplaceFailedIntentWithoutRewritingHistory() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      new SqliteBuildObjectCatalog(factory, store).registerSnapshot(build);
+    }
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 10);
+    var second = rootScope(build, "B", 20);
+    repository.replaceUnfulfilledRoot(first, NONE);
+    repository.replaceUnfulfilledRoot(second, NONE);
+    assertFalse(repository.readView(first.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+    assertTrue(repository.readView(second.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+    assertEquals(
+        first, repository.readView(first.scopeId(), RetentionLimits.defaults(), NONE).selected());
+    assertEquals(
+        List.of(second),
+        repository.readView(first.scopeId(), RetentionLimits.defaults(), NONE).otherPinned());
+    repository.replaceUnfulfilledRoot(second, NONE);
+    assertEquals(
+        RetentionException.Code.INTEGRITY_FAILURE,
+        assertThrows(
+                RetentionException.class,
+                () -> repository.replaceUnfulfilledRoot(rootScope(build, "A", 11), NONE))
+            .code());
+    assertTrue(repository.readView(second.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+  }
+
+  @Test
+  void releasedDifferentCandidateHistoryDoesNotPoisonGenericNewPin() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      new SqliteBuildObjectCatalog(factory, store).registerSnapshot(build);
+    }
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 10);
+    var second = rootScope(build, "B", 20);
+    repository.pin(first, NONE);
+    repository.release(first.scopeId(), NONE);
+    repository.pin(second, NONE);
+    assertTrue(repository.readView(second.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+  }
+
+  @Test
+  void replacementIsRootOnlyAndAttachedMembershipRemainsImmutable() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 1);
+    var second = rootScope(build, "B", 20);
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      var catalog = new SqliteBuildObjectCatalog(factory, store);
+      catalog.registerSnapshot(build);
+      repository.replaceUnfulfilledRoot(first, NONE);
+      var object = publish(store, "a");
+      catalog.attachVerifiedObject(
+          build.snapshotId(),
+          "ROOT_MANIFEST",
+          source("A"),
+          object,
+          new SourceVerificationEvidence(
+              source("A").verificationSemantics(), "https://example.invalid/rootA", Instant.EPOCH),
+          NONE);
+      assertEquals(
+          RetentionException.Code.INTEGRITY_FAILURE,
+          assertThrows(
+                  RetentionException.class, () -> repository.replaceUnfulfilledRoot(second, NONE))
+              .code());
+      assertTrue(repository.readView(first.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+      assertEquals(
+          RetentionException.Code.NOT_FOUND,
+          assertThrows(
+                  RetentionException.class,
+                  () -> repository.readView(second.scopeId(), RetentionLimits.defaults(), NONE))
+              .code());
+      assertThrows(
+          IllegalArgumentException.class,
+          () -> repository.replaceUnfulfilledRoot(scope(build, requirement("x", "x", 1, 1)), NONE));
+    }
+  }
+
+  @Test
+  void cancellationRollsBackReplacementIncludingPriorPinRelease() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      new SqliteBuildObjectCatalog(factory, store).registerSnapshot(build);
+    }
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 10);
+    var second = rootScope(build, "B", 20);
+    repository.replaceUnfulfilledRoot(first, NONE);
+    var checks = new java.util.concurrent.atomic.AtomicInteger();
+    assertThrows(
+        CancellationException.class,
+        () -> repository.replaceUnfulfilledRoot(second, () -> checks.incrementAndGet() >= 4));
+    assertTrue(repository.readView(first.scopeId(), RetentionLimits.defaults(), NONE).pinned());
+    assertEquals(
+        RetentionException.Code.NOT_FOUND,
+        assertThrows(
+                RetentionException.class,
+                () -> repository.readView(second.scopeId(), RetentionLimits.defaults(), NONE))
+            .code());
+  }
+
+  @Test
+  void historicalRootIntentMeasuresUnsatisfiedAfterAnotherCandidateAttaches() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 10);
+    var second = rootScope(build, "B", 1);
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      var catalog = new SqliteBuildObjectCatalog(factory, store);
+      catalog.registerSnapshot(build);
+      repository.replaceUnfulfilledRoot(first, NONE);
+      repository.replaceUnfulfilledRoot(second, NONE);
+      var object = publish(store, "b");
+      catalog.attachVerifiedObject(
+          build.snapshotId(),
+          "ROOT_MANIFEST",
+          source("B"),
+          object,
+          new SourceVerificationEvidence(
+              source("B").verificationSemantics(), "https://example.invalid/rootB", Instant.EPOCH),
+          NONE);
+      try (var service = new DefaultRetentionService(repository, catalog, store, Runnable::run)) {
+        var history =
+            service
+                .measure(first.scopeId(), RetentionLimits.defaults())
+                .toCompletableFuture()
+                .join();
+        assertEquals(0, history.losesProtectionBytes());
+        assertEquals(0, history.presentUniqueBytes());
+        assertEquals(new ByteEstimate(14, 0), history.additionalEncodedBytes());
+        assertEquals(2, history.missingRequirements());
+        assertEquals(
+            1,
+            service
+                .measure(second.scopeId(), RetentionLimits.defaults())
+                .toCompletableFuture()
+                .join()
+                .presentUniqueBytes());
+      }
+    }
+  }
+
+  @Test
+  void historicalCandidateBytesDoNotSatisfyAnotherAttachedRepresentation() throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var build = build("one");
+    var other = build("other");
+    var repository = new SqliteRetentionRepository(factory);
+    var first = rootScope(build, "A", 10);
+    var second = rootScope(build, "B", 1);
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      var catalog = new SqliteBuildObjectCatalog(factory, store);
+      catalog.registerSnapshot(build);
+      catalog.registerSnapshot(other);
+      repository.replaceUnfulfilledRoot(first, NONE);
+      repository.replaceUnfulfilledRoot(second, NONE);
+      var a = publish(store, "AAAAAAAAAA");
+      var b = publish(store, "b");
+      for (var binding : List.of(Map.entry("A", a), Map.entry("B", b))) {
+        catalog.attachVerifiedObject(
+            binding.getKey().equals("A") ? other.snapshotId() : build.snapshotId(),
+            "ROOT_MANIFEST",
+            source(binding.getKey()),
+            binding.getValue(),
+            new SourceVerificationEvidence(
+                source(binding.getKey()).verificationSemantics(),
+                "https://example.invalid/" + binding.getKey(),
+                Instant.EPOCH),
+            NONE);
+      }
+      try (var service = new DefaultRetentionService(repository, catalog, store, Runnable::run)) {
+        var history =
+            service
+                .measure(first.scopeId(), RetentionLimits.defaults())
+                .toCompletableFuture()
+                .join();
+        assertEquals(10, history.presentUniqueBytes());
+        assertEquals(1, history.unresolvedRequirements());
+        assertEquals(1, history.missingRequirements());
+        assertEquals(new ByteEstimate(4, 0), history.additionalEncodedBytes());
+        assertEquals(0, history.losesProtectionBytes());
+      }
+    }
+  }
 }

@@ -90,7 +90,7 @@ The first production root-retention design uses one complete encoded CAS object,
 
 ## Explicit metadata retention and accounting backend (#56)
 
-The backend adds immutable selected-scope definitions and reversible pins over the shared CAS. It does not delete bytes, enforce a quota or provide a storage-management screen. Existing install/root download entrypoints still require a separate integration step to record desired scope before acquisition; merely having this backend does not establish completed archive-management acceptance.
+The backend adds immutable selected-scope definitions and reversible pins over the shared CAS. It does not delete bytes, enforce a quota or provide a storage-management screen. Explicit install/root download entrypoints record desired scope synchronously after canonical plan validation and before content acquisition. Planning and offline reads do not create pins. This backend does not establish completed archive-management acceptance.
 
 `RetentionScope` binds one exact snapshot to `INSTALL_METADATA` (`BUILD_CONFIG` and `INSTALL_MANIFEST`), `ROOT_METADATA` (`BUILD_CONFIG` and `ROOT_MANIFEST`) or `LEGACY_RETAINED` requirements. A requirement records its role, optional exact `ResolvedSourceIdentity`, optional encoded transfer length and optional decoded logical length. Unknown values remain unknown, including the distinction between unknown and known zero. Scope identity hashes a canonical, role-sorted complete definition; pin state does not change that identity. Conflicting known source/size facts fail integrity checks rather than silently replacing an earlier definition.
 
@@ -100,7 +100,10 @@ The asynchronous `RetentionService` exposes three operations:
 
 - `pin(scope)` persists an immutable definition and activates its pin. Desired roles may still be missing; this is not a completeness claim.
 - `release(scopeId)` deactivates only that pin, leaving its definition, build history, memberships, aliases and physical bytes intact. Removing a workspace remains independent.
+- Root download uses the narrower blocking `replaceUnfulfilledRoot(scope, cancellation)` repository operation: in one transaction, it validates the actual exact-build root membership, pins the explicitly selected root intent and releases differing unfulfilled `ROOT_METADATA` candidate pins for that build. Previous definitions remain as unpinned history. This operation requires a known root source and never applies to arbitrary scope kinds. Generic `pin` does not silently choose another candidate.
 - `measure(scopeId, limits)` observes the selected scope and other active pins with bounded scope/requirement counts. Exceeding limits fails instead of reporting partial totals.
+
+A failed candidate is an unfulfilled intention, not immutable proof that the build must use that representation forever. Explicitly selecting another valid candidate can replace it before a root is attached. The root workflow rejects a different candidate while any retain worker for that exact build is still active, including after facade cancellation until the worker retires; same-candidate consumers can share work. Once `ROOT_MANIFEST` is attached, its source remains immutable. No automatic fallback occurs. Same-source size contradictions remain integrity failures across history, while a released intent for another encoding remains honestly unsatisfied rather than corrupt merely because the build later retains a different encoding.
 
 The service owns neither its executor nor catalog/store. Canceling/closing requests cooperative cancellation; callers stop workers before closing storage. SQLite operations observe cancellation at transaction boundaries, not through an immediate interruption guarantee.
 
@@ -116,4 +119,4 @@ Accounting uses these precise bases:
 
 Known sums use checked arithmetic; overflow fails instead of wrapping. Catalog-reachable payload totals exclude unregistered orphans, staging, SQLite files and filesystem allocation overhead, so they must not be labeled whole-store disk usage. Alias/history rows are evidence, not a future rule that protects every byte forever.
 
-Ordinary synthetic checks cover overlapping scopes, distinct aliases sharing physical bytes, unknown facts, corruption, conflicts, cancellation, limits, compatibility migration, concurrent migration, workspace independence and restart. Deletion, GC/tombstone recovery, quota reservations, derived artifacts and workflow/UI integration remain separate work. No reclaimable-byte or crash-safe cleanup claim follows from releasing a pin.
+Ordinary synthetic checks cover overlapping scopes, distinct aliases sharing physical bytes, unknown facts, corruption, conflicts, cancellation, limits, compatibility migration, concurrent migration, workspace independence and restart. Deletion, GC/tombstone recovery, quota reservations, derived artifacts and storage-management UI integration remain separate work. No reclaimable-byte or crash-safe cleanup claim follows from releasing a pin.

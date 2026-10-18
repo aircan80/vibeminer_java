@@ -17,6 +17,21 @@ public final class SqliteRetentionRepository implements RetentionRepository {
 
   @Override
   public RetentionScope pin(RetentionScope scope, CancellationToken cancellation) {
+    return writePin(scope, cancellation, false);
+  }
+
+  @Override
+  public RetentionScope replaceUnfulfilledRoot(
+      RetentionScope scope, CancellationToken cancellation) {
+    Objects.requireNonNull(scope);
+    if (scope.kind() != ScopeKind.ROOT_METADATA || rootRequirement(scope).source().isEmpty())
+      throw new IllegalArgumentException(
+          "Explicit replacement requires ROOT_METADATA with a known root source");
+    return writePin(scope, cancellation, true);
+  }
+
+  private RetentionScope writePin(
+      RetentionScope scope, CancellationToken cancellation, boolean replaceRoot) {
     Objects.requireNonNull(scope);
     Objects.requireNonNull(cancellation);
     cancellation.throwIfCancellationRequested();
@@ -27,6 +42,7 @@ public final class SqliteRetentionRepository implements RetentionRepository {
           throw new RetentionException(
               RetentionException.Code.NOT_FOUND,
               "Register the exact build before pinning its scope");
+        if (replaceRoot) supersedeUnfulfilled(connection, scope);
         for (var requirement : scope.requirements()) {
           cancellation.throwIfCancellationRequested();
           checkFacts(connection, scope, requirement);
@@ -126,12 +142,62 @@ public final class SqliteRetentionRepository implements RetentionRepository {
     }
   }
 
+  private static ScopeRequirement rootRequirement(RetentionScope scope) {
+    return scope.requirements().stream()
+        .filter(requirement -> requirement.role().equals("ROOT_MANIFEST"))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private void supersedeUnfulfilled(Connection connection, RetentionScope scope)
+      throws SQLException {
+    var selectedSource = rootRequirement(scope).source().orElseThrow();
+    try (var query =
+        connection.prepareStatement(
+            "SELECT namespace,source_key,verifier_semantics FROM build_object_memberships WHERE"
+                + " snapshot_id=? AND role='ROOT_MANIFEST'")) {
+      query.setString(1, scope.snapshotId());
+      try (var rows = query.executeQuery()) {
+        if (rows.next()) {
+          var attached =
+              new io.vibeminer.domain.ResolvedSourceIdentity(
+                  rows.getString(1), rows.getString(2), rows.getString(3));
+          if (!attached.equals(selectedSource))
+            throw RetentionSql.corrupt("Attached root membership cannot be replaced");
+          return;
+        }
+      }
+    }
+    var superseded = new ArrayList<String>();
+    try (var query =
+        connection.prepareStatement(
+            "SELECT id FROM retention_scopes WHERE snapshot_id=? AND kind='ROOT_METADATA' AND"
+                + " pinned=1 AND id<>?")) {
+      query.setString(1, scope.snapshotId());
+      query.setString(2, scope.scopeId());
+      try (var rows = query.executeQuery()) {
+        while (rows.next()) {
+          var previous = RetentionSql.read(connection, rows.getString(1));
+          if (!rootRequirement(previous).source().equals(Optional.of(selectedSource)))
+            superseded.add(previous.scopeId());
+        }
+      }
+    }
+    try (var update =
+        connection.prepareStatement("UPDATE retention_scopes SET pinned=0 WHERE id=?")) {
+      for (var id : superseded) {
+        update.setString(1, id);
+        update.executeUpdate();
+      }
+    }
+  }
+
   private void checkFacts(Connection connection, RetentionScope scope, ScopeRequirement requirement)
       throws SQLException {
     try (var query =
         connection.prepareStatement(
             "SELECT"
-                + " r.namespace,r.source_key,r.verifier_semantics,r.encoded_bytes,r.logical_decoded_bytes"
+                + " r.namespace,r.source_key,r.verifier_semantics,r.encoded_bytes,r.logical_decoded_bytes,s.snapshot_id,r.role,s.pinned"
                 + " FROM retention_scope_requirements r JOIN retention_scopes s ON s.id=r.scope_id"
                 + " WHERE (s.snapshot_id=? AND r.role=?) OR (r.namespace=? AND r.source_key=? AND"
                 + " r.verifier_semantics=?)")) {
@@ -149,15 +215,28 @@ public final class SqliteRetentionRepository implements RetentionRepository {
       }
       try (var rows = query.executeQuery()) {
         while (rows.next()) {
+          boolean sameSource = false;
           if (requirement.source().isPresent() && rows.getString(1) != null) {
             var source = requirement.source().get();
-            if (!source.namespace().equals(rows.getString(1))
-                || !source.immutableSourceKey().equals(rows.getString(2))
-                || !source.verificationSemantics().equals(rows.getString(3)))
-              throw RetentionSql.corrupt("Conflicting exact-role source fact");
+            sameSource =
+                source.namespace().equals(rows.getString(1))
+                    && source.immutableSourceKey().equals(rows.getString(2))
+                    && source.verificationSemantics().equals(rows.getString(3));
           }
-          sameSize(requirement.encodedBytes(), RetentionSql.size(rows, 4));
-          sameSize(requirement.logicalDecodedBytes(), RetentionSql.size(rows, 5));
+          boolean activeRole =
+              scope.snapshotId().equals(rows.getString(6))
+                  && requirement.role().equals(rows.getString(7))
+                  && rows.getInt(8) == 1;
+          if (activeRole
+              && requirement.source().isPresent()
+              && rows.getString(1) != null
+              && !sameSource)
+            throw RetentionSql.corrupt(
+                "Conflicting active role intent; explicit root replacement is required");
+          if (sameSource || activeRole) {
+            sameSize(requirement.encodedBytes(), RetentionSql.size(rows, 4));
+            sameSize(requirement.logicalDecodedBytes(), RetentionSql.size(rows, 5));
+          }
         }
       }
     }
