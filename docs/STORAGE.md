@@ -87,3 +87,33 @@ Bulk manifests/indexes can dominate initial disk/download cost; measure before U
 Caller ownership of streams, active leases, process exclusion, corruption handling and dedup remain in force. Failed verification, I/O, malformed length or cancellation leaves no new published object or ready membership. Catalog attachment remains a later transaction; this does not make filesystem and SQLite promotion one atomic resource.
 
 The first production root-retention design uses one complete encoded CAS object, without persistent chunks or a decoded root duplicate. Selected EN proof pages remain bounded session memory initially. After protocol verification and publication, an offline read lease can decode/parse requested IDs in a second bounded pass. Structural parser failure blocks lookup results without relabeling correctly protocol-verified raw bytes as corrupt. This is the storage contract for the upcoming lookup slice, not a delivered raw-file/archive workflow.
+
+## Explicit metadata retention and accounting backend (#56)
+
+The backend adds immutable selected-scope definitions and reversible pins over the shared CAS. It does not delete bytes, enforce a quota or provide a storage-management screen. Existing install/root download entrypoints still require a separate integration step to record desired scope before acquisition; merely having this backend does not establish completed archive-management acceptance.
+
+`RetentionScope` binds one exact snapshot to `INSTALL_METADATA` (`BUILD_CONFIG` and `INSTALL_MANIFEST`), `ROOT_METADATA` (`BUILD_CONFIG` and `ROOT_MANIFEST`) or `LEGACY_RETAINED` requirements. A requirement records its role, optional exact `ResolvedSourceIdentity`, optional encoded transfer length and optional decoded logical length. Unknown values remain unknown, including the distinction between unknown and known zero. Scope identity hashes a canonical, role-sorted complete definition; pin state does not change that identity. Conflicting known source/size facts fail integrity checks rather than silently replacing an earlier definition.
+
+Schema version 4 adds `retention_scopes` and `retention_scope_requirements` without rewriting snapshots, workspaces, source aliases, acquisition evidence or existing memberships. Migration creates a visible pinned compatibility scope for every preexisting build-role membership. These preserve existing retention intent; their encoded length is known from object metadata and decoded logical length remains unknown. Releasing one explicit scope does not release overlapping compatibility pins. Creating new scope definitions does not silently remove old pins.
+
+The asynchronous `RetentionService` exposes three operations:
+
+- `pin(scope)` persists an immutable definition and activates its pin. Desired roles may still be missing; this is not a completeness claim.
+- `release(scopeId)` deactivates only that pin, leaving its definition, build history, memberships, aliases and physical bytes intact. Removing a workspace remains independent.
+- `measure(scopeId, limits)` observes the selected scope and other active pins with bounded scope/requirement counts. Exceeding limits fails instead of reporting partial totals.
+
+The service owns neither its executor nor catalog/store. Canceling/closing requests cooperative cancellation; callers stop workers before closing storage. SQLite operations observe cancellation at transaction boundaries, not through an immediate interruption guarantee.
+
+Measurements identify an advisory `startedAt`/`completedAt` observation window. Definitions/pins come from one SQLite transaction; membership/alias observations and physical checks occur within the window rather than claiming an atomic disk snapshot. Physical presence is established through verified CAS read leases, with actual length checked and leases closed promptly. A missing physical object differs from corrupted bytes; corrupt metadata or contradictory sizes fail integrity checks.
+
+Accounting uses these precise bases:
+
+- Logical bytes are decoded metadata-object size facts per exact `(snapshot, role)`, with an unknown count. They are not the logical size of the game files listed by a root/install manifest. Repeated scopes do not create additional logical roles.
+- Additional encoded bytes count an already proven missing physical SHA-256 object once, even when multiple source aliases map to it: restoring those exact bytes satisfies the existing mappings. When no physical mapping is known, deduplicate by exact source identity; never infer byte equality from length or a key guess. Unknown source/length counts remain explicit. An unknown source can bind only through its exact build-role membership, never a same-named role from another build. Known decoded/encoded size facts are rechecked against that resolved source as well as explicitly declared identities.
+- A known source with an existing verified local alias can require zero transfer while its selected build-role attachment is still unresolved. Available bytes do not fabricate a ready membership.
+- Present unique bytes count distinct verified physical SHA-256 objects once across aliases, roles and builds. Shared present bytes intersect the selected physical set with the physical set requested by other active pins.
+- `losesProtectionBytes` counts selected present bytes not protected by another active pin; it is zero if the selected scope is already unpinned. This is a protection-change estimate, **not safely reclaimable space**. Active jobs, publication and deletion coordination are outside this backend.
+
+Known sums use checked arithmetic; overflow fails instead of wrapping. Catalog-reachable payload totals exclude unregistered orphans, staging, SQLite files and filesystem allocation overhead, so they must not be labeled whole-store disk usage. Alias/history rows are evidence, not a future rule that protects every byte forever.
+
+Ordinary synthetic checks cover overlapping scopes, distinct aliases sharing physical bytes, unknown facts, corruption, conflicts, cancellation, limits, compatibility migration, concurrent migration, workspace independence and restart. Deletion, GC/tombstone recovery, quota reservations, derived artifacts and workflow/UI integration remain separate work. No reclaimable-byte or crash-safe cleanup claim follows from releasing a pin.

@@ -14,7 +14,7 @@ import static io.vibeminer.application.catalog.CatalogException.Code.*;
 
 /** Single schema/migration owner and connection factory for app-owned metadata and object references. */
 public final class SqliteCatalog {
-    public static final int SCHEMA_VERSION = 3;
+    public static final int SCHEMA_VERSION = 4;
     private final Path database;
 
     public SqliteCatalog(Path database) { this.database = database.toAbsolutePath().normalize(); }
@@ -60,6 +60,7 @@ public final class SqliteCatalog {
                 statement.execute("CREATE TABLE IF NOT EXISTS catalog_objects(digest TEXT PRIMARY KEY,length INTEGER NOT NULL CHECK(typeof(length)='integer' AND length>=0))");
                 statement.execute("CREATE TABLE IF NOT EXISTS source_aliases(namespace TEXT NOT NULL,source_key TEXT NOT NULL,verifier_semantics TEXT NOT NULL,object_digest TEXT NOT NULL REFERENCES catalog_objects(digest),source_url TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(namespace,source_key,verifier_semantics))");
                 statement.execute("CREATE TABLE IF NOT EXISTS build_object_memberships(snapshot_id TEXT NOT NULL REFERENCES snapshots(id),role TEXT NOT NULL,namespace TEXT NOT NULL,source_key TEXT NOT NULL,verifier_semantics TEXT NOT NULL,source_url TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(snapshot_id,role),FOREIGN KEY(namespace,source_key,verifier_semantics) REFERENCES source_aliases(namespace,source_key,verifier_semantics))");
+                io.vibeminer.infrastructure.retention.RetentionSql.migrate(connection, version);
                 statement.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                 statement.execute("COMMIT");
             } catch (SQLException | RuntimeException failure) {

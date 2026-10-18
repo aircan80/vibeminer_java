@@ -152,7 +152,7 @@ class SqliteBuildObjectCatalogTest {
             assertEquals(object, objects.findVerifiedObject(build.snapshotId(), "encoding", NONE).orElseThrow().object());
             assertTrue(store.verify(object.digest(), NONE).isPresent());
             try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database); var query = connection.createStatement(); var rows = query.executeQuery("PRAGMA user_version")) {
-                assertEquals(3, rows.getInt(1));
+                assertEquals(SqliteCatalog.SCHEMA_VERSION, rows.getInt(1));
             }
         }
     }
