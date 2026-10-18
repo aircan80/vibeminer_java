@@ -357,6 +357,145 @@ public final class SqliteCanonicalContentRepository implements CanonicalContentR
   }
 
   @Override
+  public void authorizeInitialMissingContinuation(
+      ContentWorkerPermit permit,
+      io.vibeminer.application.content.MetadataContentRequest request,
+      MetadataContentProof original,
+      CancellationToken token) {
+    Objects.requireNonNull(permit);
+    Objects.requireNonNull(request);
+    Objects.requireNonNull(original);
+    token.throwIfCancellationRequested();
+    String namespace =
+        switch (request.kind()) {
+          case ENCODING -> "tact.encoding.v1";
+          case DOWNLOAD -> "tact.download.v1v2v3";
+          case DOWNLOAD_SIZE -> "tact.download-size.v1";
+          default -> throw failure(UNSUPPORTED_REUSE, "Only initial EN, DL and DS may continue");
+        };
+    if (!original.originalAlias().source().namespace().equals(namespace)
+        || !original.contentKey().equals(request.slot().contentKey())
+        || !original.actualEncodingKey().equals(request.requestedEncodingKey())
+        || original.object().length() != request.requestedEncodedBytes()
+        || original.decodedAttestation().isEmpty()
+        || original.structuralAttestation().isPresent()
+        || request.declaredDecodedBytes().isEmpty()
+        || !original.declaredDecodedBytes().equals(request.declaredDecodedBytes())
+        || original.decodedAttestation().orElseThrow().actualDecodedBytes()
+            != request.declaredDecodedBytes().orElseThrow()
+        || !original
+            .originalAlias()
+            .source()
+            .immutableSourceKey()
+            .equals(
+                request.slot().contentKey()
+                    + ";"
+                    + request.requestedEncodingKey()
+                    + ";"
+                    + request.declaredDecodedBytes().orElseThrow()
+                    + ";"
+                    + request.requestedEncodedBytes())
+        || !original
+            .originalAlias()
+            .source()
+            .verificationSemantics()
+            .equals("blte-complete-encoded-and-ckey-stream-v1")
+        || !original
+            .decodedAttestation()
+            .orElseThrow()
+            .verifierRevision()
+            .equals("blte-nz-full-ckey-stream-v1"))
+      throw failure(UNSUPPORTED_REUSE, "Not a supported initial decoded-only metadata proof");
+    tx(
+        token,
+        c -> {
+          CanonicalContentGuards.check(c, request.slot());
+          var row = readForMutation(c, permit.reservationToken(), permit);
+          if (!row.claim().slot().equals(request.slot())
+              || row.claim().status() != CanonicalReservation.Status.PUBLISHING
+              || !row.claim().proof().orElseThrow().equals(original))
+            throw failure(RECOVERY_REQUIRED, "Initial prospective canonical authority changed");
+          match(row.claim(), original);
+          // Corrupt/BUSY is never absence. Normal publication independently refuses a corrupt
+          // target.
+          if (store.verify(original.object().digest(), token).isPresent())
+            throw failure(INVALID_STATE, "Initial metadata object is already present");
+          // Every committed alias/membership/admission registers this primary-key object first.
+          // Even an orphan catalog object conservatively prevents initial-only continuation.
+          try (var q = c.prepareStatement("SELECT 1 FROM catalog_objects WHERE digest=?")) {
+            q.setString(1, original.object().digest().value());
+            try (var r = q.executeQuery()) {
+              if (r.next())
+                throw failure(RECOVERY_REQUIRED, "Physical object has committed history");
+            }
+          }
+          var remaining = new InitialReferenceWork(1024, 8L << 20);
+          remaining =
+              requireNoOtherPhysicalProof(
+                  c,
+                  "canonical_content_slots",
+                  "representation",
+                  permit.reservationToken().toString(),
+                  original,
+                  remaining,
+                  token);
+          requireNoOtherPhysicalProof(
+              c, "canonical_legacy_conflicts", "proof", null, original, remaining, token);
+          return null;
+        });
+  }
+
+  private record InitialReferenceWork(int rows, long bytes) {}
+
+  private static InitialReferenceWork requireNoOtherPhysicalProof(
+      Connection c,
+      String table,
+      String column,
+      String ownToken,
+      MetadataContentProof original,
+      InitialReferenceWork remaining,
+      CancellationToken token)
+      throws SQLException {
+    // Both identifiers are fixed private literals. Count null headers too: no unbounded WHERE scan.
+    String identity = ownToken == null ? "NULL" : "token";
+    try (var q =
+            c.prepareStatement(
+                "SELECT "
+                    + identity
+                    + ",length("
+                    + column
+                    + "),"
+                    + column
+                    + " FROM "
+                    + table
+                    + " LIMIT 1025");
+        var r = q.executeQuery()) {
+      while (r.next()) {
+        token.throwIfCancellationRequested();
+        if (remaining.rows() < 1)
+          throw failure(UNSUPPORTED_REUSE, "Initial reference scan row bound exceeded");
+        remaining = new InitialReferenceWork(remaining.rows() - 1, remaining.bytes());
+        long length = r.getLong(2);
+        if (r.wasNull()) continue;
+        if (length < 1 || length > CanonicalContentRecords.MAX_BYTES || length > remaining.bytes())
+          throw failure(UNSUPPORTED_REUSE, "Initial reference proof work bound exceeded");
+        remaining = new InitialReferenceWork(remaining.rows(), remaining.bytes() - length);
+        CanonicalContentProof proof;
+        try {
+          proof = CanonicalContentRecords.decode(r.getBytes(3));
+        } catch (IllegalArgumentException malformed) {
+          throw new ContentClaimException(
+              INTEGRITY_FAILURE, "Unknown or corrupt initial physical reference", malformed);
+        }
+        if (proof.object().digest().equals(original.object().digest())
+            && !(ownToken != null && ownToken.equals(r.getString(1)) && proof.equals(original)))
+          throw failure(RECOVERY_REQUIRED, "Physical object has another canonical reference");
+      }
+    }
+    return remaining;
+  }
+
+  @Override
   public ContentWorkerPermit claimWorker(UUID id, CancellationToken token) {
     return tx(
         token,

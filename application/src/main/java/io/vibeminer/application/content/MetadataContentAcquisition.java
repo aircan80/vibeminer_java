@@ -26,6 +26,15 @@ public final class MetadataContentAcquisition {
         CancellationToken cancellation);
   }
 
+  /** Explicit initial-only continuation; ordinary callers never enable missing-object transfer. */
+  @FunctionalInterface
+  public interface InitialMissingContinuation {
+    VerifiedSourceAlias acquire(
+        MetadataContentProof original,
+        MetadataPublicationObserver observer,
+        CancellationToken cancellation);
+  }
+
   private final CanonicalContentRepository repository;
 
   public MetadataContentAcquisition(CanonicalContentRepository repository) {
@@ -41,6 +50,18 @@ public final class MetadataContentAcquisition {
       Supplier<Optional<VerifiedSourceAlias>> retained,
       Transfer transfer,
       Replay replay,
+      CancellationToken cancellation) {
+    return acquire(request, source, retained, transfer, replay, null, cancellation);
+  }
+
+  /** The repository must authorize missing initial bytes under this same actual worker nonce. */
+  public VerifiedSourceAlias acquire(
+      MetadataContentRequest request,
+      ResolvedSourceIdentity source,
+      Supplier<Optional<VerifiedSourceAlias>> retained,
+      Transfer transfer,
+      Replay replay,
+      InitialMissingContinuation continuation,
       CancellationToken cancellation) {
     cancellation.throwIfCancellationRequested();
     checkSource(request, source);
@@ -83,7 +104,31 @@ public final class MetadataContentAcquisition {
         existingObject = true;
         state.replaying = true;
         result = local.get();
-        replay.inspect(result, state, cancellation);
+        try {
+          replay.inspect(result, state, cancellation);
+        } catch (RuntimeException missing) {
+          boolean absent =
+              missing instanceof io.vibeminer.application.ObjectStoreException storage
+                      && storage.code()
+                          == io.vibeminer.application.ObjectStoreException.Code.MISSING_OBJECT
+                  || missing instanceof ContentClaimException localMissing
+                      && localMissing.code() == MISSING_LOCAL;
+          if (!absent
+              || continuation == null
+              || claim.proof().isEmpty()
+              || state.prospective != null
+              || state.complete != null) throw missing;
+          var original = (MetadataContentProof) claim.proof().orElseThrow();
+          if (original.decodedAttestation().isEmpty()
+              || original.structuralAttestation().isPresent()
+              || request.kind() == MetadataStructureAttestation.Kind.ROOT
+              || request.kind() == MetadataStructureAttestation.Kind.INSTALL) throw missing;
+          repository.authorizeInitialMissingContinuation(permit, request, original, cancellation);
+          state.replaying = false;
+          state.initialContinuing = true;
+          enteredTransfer = true;
+          result = continuation.acquire(original, state, cancellation);
+        }
       } else {
         enteredTransfer = true;
         result = transfer.acquire(state, cancellation);
@@ -137,7 +182,7 @@ public final class MetadataContentAcquisition {
     final ContentWorkerPermit permit;
     MetadataContentProof prospective;
     MetadataContentProof complete;
-    boolean replaying;
+    boolean replaying, initialContinuing;
 
     Observer(
         MetadataContentRequest request,
@@ -157,6 +202,12 @@ public final class MetadataContentAcquisition {
       if (proof.decodedAttestation().isEmpty() || prospective != null)
         throw failure(
             INTEGRITY_FAILURE, "Missing decoded proof or repeated metadata promotion gate");
+      if (initialContinuing) {
+        if (!claim.proof().orElseThrow().equals(proof))
+          throw failure(
+              INTEGRITY_FAILURE, "Initial continuation changed original prospective proof");
+        repository.authorizeInitialMissingContinuation(permit, request, proof, cancellation);
+      }
       // Remember before calling persistence: a throwing transaction may have committed its proof.
       prospective = proof;
       repository.recordVerifiedCompletion(permit, proof, cancellation);

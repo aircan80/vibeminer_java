@@ -99,8 +99,11 @@ public final class OfficialBuildMetadataSourceWorker {
         request,
         source,
         () -> builds.findVerifiedSourceAlias(source, operation.token),
-        (observer, token) -> transfer(request, source, captured, budgets, operation, observer),
+        (observer, token) ->
+            transfer(request, source, captured, budgets, operation, observer, null),
         (alias, observer, token) -> replay(request, source, alias, budgets, operation, observer),
+        (original, observer, token) ->
+            transfer(request, source, captured, budgets, operation, observer, original),
         operation.token);
   }
 
@@ -160,11 +163,15 @@ public final class OfficialBuildMetadataSourceWorker {
       CdnRequest.Source captured,
       MetadataStreamBudgets budgets,
       Operation operation,
-      MetadataPublicationObserver observer) {
+      MetadataPublicationObserver observer,
+      MetadataContentProof original) {
     boolean[] gateEntered = {false};
     try {
       var resource =
           new CdnResource(captured, request.requestedEncodingKey(), CdnResource.Kind.DATA);
+      if (original != null
+          && !original.originalAlias().evidence().sourceUrl().equals(resource.uri().toString()))
+        throw failure(UNSUPPORTED_REUSE, "Initial continuation requires the original pinned route");
       var receipt = new AtomicReference<PinnedRangeInputStream.RangeObservation>();
       var prospective = new AtomicReference<MetadataContentProof>();
       try (var wire =
@@ -214,13 +221,27 @@ public final class OfficialBuildMetadataSourceWorker {
                       new StoredObject(
                           new ObjectDigest(complete.encodedProof().physicalSha256()),
                           complete.encodedProof().encodedBytes());
+                  if (original != null
+                      && (!original.object().equals(object)
+                          || !original
+                              .originalAlias()
+                              .evidence()
+                              .sourceUrl()
+                              .equals(observed.actualSourceUri().toString())))
+                    throw failure(
+                        INTEGRITY_FAILURE,
+                        "Initial continuation differs from original physical bytes or source");
                   var alias =
-                      new VerifiedSourceAlias(
-                          source,
-                          object,
-                          new SourceVerificationEvidence(
-                              SEMANTICS, observed.actualSourceUri().toString(), clock.instant()));
-                  var proof = proof(request, alias, false);
+                      original != null
+                          ? original.originalAlias()
+                          : new VerifiedSourceAlias(
+                              source,
+                              object,
+                              new SourceVerificationEvidence(
+                                  SEMANTICS,
+                                  observed.actualSourceUri().toString(),
+                                  clock.instant()));
+                  var proof = original != null ? original : proof(request, alias, false);
                   prospective.set(proof);
                   gateEntered[0] = true;
                   observer.beforePromotion(proof, operation.token);

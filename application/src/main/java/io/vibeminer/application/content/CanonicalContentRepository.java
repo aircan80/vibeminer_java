@@ -59,6 +59,20 @@ public interface CanonicalContentRepository {
 
   void markUncertain(UUID token, CancellationToken cancellation);
 
+  /**
+   * Authorizes only an unreferenced initial EN/DL/DS prospective object that is currently absent.
+   * The existing actual worker must own the nonce; no retained/corrupt object or proof is reset.
+   */
+  default void authorizeInitialMissingContinuation(
+      ContentWorkerPermit permit,
+      MetadataContentRequest request,
+      io.vibeminer.domain.content.MetadataContentProof original,
+      CancellationToken cancellation) {
+    throw new ContentClaimException(
+        ContentClaimException.Code.UNSUPPORTED_REUSE,
+        "Initial missing metadata continuation is unsupported");
+  }
+
   /** Exclusive actual-worker admission. A passive reservation never grants this authority. */
   default ContentWorkerPermit claimWorker(UUID token, CancellationToken cancellation) {
     throw workerUnsupported();
