@@ -158,6 +158,82 @@ class BuildAutomationTests(unittest.TestCase):
     def test_safe_relative_runtime_symlinks_are_allowed(self):
         ci.check_archive_name("../runtime/lib/example", "VibeMiner/lib")
 
+    def linked_archive(self, kind, entries):
+        source = self.root / "linked-archive"
+        source.mkdir(exist_ok=True)
+        if kind == "zip":
+            with zipfile.ZipFile(source / "app.zip", "w") as archive:
+                for name, target in entries:
+                    info = zipfile.ZipInfo(name)
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    archive.writestr(info, target)
+        else:
+            with tarfile.open(source / "app.tar.gz", "w:gz") as archive:
+                for name, target in entries:
+                    info = tarfile.TarInfo(name)
+                    info.type = tarfile.SYMTYPE
+                    info.linkname = target
+                    archive.addfile(info)
+        return source
+
+    def test_linked_ancestors_are_rejected_in_either_archive_order(self):
+        for kind in ["zip", "tar"]:
+            for reverse in [False, True]:
+                entries = [("app/link", ".."), ("app/link/escape", "../../outside")]
+                if reverse:
+                    entries.reverse()
+                with self.subTest(kind=kind, reverse=reverse):
+                    source = self.linked_archive(kind, entries)
+                    target = "windows-x64" if kind == "zip" else "linux-x64"
+                    with self.assertRaisesRegex(ValueError, "linked ancestor"):
+                        ci.collect(source, self.root / f"output-{kind}-{reverse}", target, "0.1.0", SHA)
+                    for path in source.iterdir():
+                        path.unlink()
+
+    def test_regular_file_under_case_aliased_linked_ancestor_is_rejected(self):
+        source = self.linked_archive("zip", [("app/link", "..")])
+        with zipfile.ZipFile(source / "app.zip", "a") as archive:
+            archive.writestr("app/LINK/payload.txt", "fixture")
+        with self.assertRaisesRegex(ValueError, "linked ancestor"):
+            ci.collect(source, self.root / "output", "windows-x64", "0.1.0", SHA)
+
+    def test_hardlink_cannot_be_parent_of_an_archive_entry(self):
+        source = self.root / "hardlinks"
+        source.mkdir()
+        with tarfile.open(source / "app.tar.gz", "w:gz") as archive:
+            entry = tarfile.TarInfo("app/link")
+            entry.type = tarfile.LNKTYPE
+            entry.linkname = "app/target"
+            archive.addfile(entry)
+            archive.addfile(tarfile.TarInfo("app/link/payload"))
+        with self.assertRaisesRegex(ValueError, "linked ancestor"):
+            ci.collect(source, self.root / "output", "linux-x64", "0.1.0", SHA)
+
+    def test_link_target_cannot_traverse_another_link_before_parent_segments(self):
+        # Lexically this target stays in the archive. Resolving app/base first
+        # changes the parent depth, so ../.. would escape during extraction.
+        for kind in ["zip", "tar"]:
+            with self.subTest(kind=kind):
+                source = self.linked_archive(kind, [
+                    ("app/base", ".."), ("app/escape", "base/../../outside")])
+                target = "windows-x64" if kind == "zip" else "linux-x64"
+                with self.assertRaisesRegex(ValueError, "linked ancestor"):
+                    ci.collect(source, self.root / ("output-" + kind), target, "0.1.0", SHA)
+                for path in source.iterdir():
+                    path.unlink()
+
+    def test_safe_runtime_leaf_link_chain_collects(self):
+        for kind in ["zip", "tar"]:
+            with self.subTest(kind=kind):
+                source = self.linked_archive(kind, [
+                    ("app/lib/example", "example.1"),
+                    ("app/lib/example.1", "../runtime/example.1")])
+                target = "windows-x64" if kind == "zip" else "linux-x64"
+                ci.collect(source, self.root / ("output-" + kind), target, "0.1.0", SHA)
+                for path in source.iterdir():
+                    path.unlink()
+
     def test_special_tar_files_are_rejected(self):
         source = self.root / "special"
         source.mkdir()

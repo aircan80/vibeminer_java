@@ -80,6 +80,33 @@ def check_archive_name(name, base=None):
         raise ValueError(f"Unsafe package entry: {name}")
 
 
+def check_archive_structure(names, links):
+    """Reject extraction through linked directories, independently of entry order.
+
+    Each link is (entry name, target, relative-to-parent). Runtime leaf links
+    remain valid, but no entry or link target may traverse a linked ancestor.
+    """
+    def parts(name):
+        return tuple(part.casefold() for part in PurePosixPath(name.replace("\\", "/")).parts)
+
+    linked_paths = {parts(name) for name, _, _ in links}
+    for name in names:
+        path = parts(name)
+        if any(path[:depth] in linked_paths for depth in range(1, len(path))):
+            raise ValueError(f"Unsafe linked ancestor in package entry: {name}")
+    for name, target, relative_to_parent in links:
+        resolved = list(parts(name)[:-1]) if relative_to_parent else []
+        # Check before resolving '..': lexical normalization must not hide a
+        # linked directory whose real parent depth differs during extraction.
+        for component in parts(target):
+            if tuple(resolved) in linked_paths:
+                raise ValueError(f"Unsafe linked ancestor in package link: {name}")
+            if component == "..":
+                resolved.pop()  # check_archive_name already proved bounds.
+            else:
+                resolved.append(component)
+
+
 def collect(source, output, target, version, sha):
     version_check(version)
     if target not in TARGETS or not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -95,24 +122,32 @@ def collect(source, output, target, version, sha):
         seen.add(extension)
         if extension == ".zip":
             with zipfile.ZipFile(path) as archive:
-                for info in archive.infolist():
+                links = []
+                entries = archive.infolist()
+                for info in entries:
                     check_archive_name(info.filename)
                     mode = info.external_attr >> 16
                     if stat.S_ISLNK(mode):
                         if info.file_size > 4096:
                             raise ValueError("Unsafe oversized symbolic link")
-                        check_archive_name(archive.read(info).decode("utf-8"),
-                                           PurePosixPath(info.filename).parent)
+                        target_name = archive.read(info).decode("utf-8")
+                        check_archive_name(target_name, PurePosixPath(info.filename.replace("\\", "/")).parent)
+                        links.append((info.filename, target_name, True))
                     elif stat.S_IFMT(mode) not in {0, stat.S_IFREG, stat.S_IFDIR}:
                         raise ValueError("Unsafe special file in ZIP package")
+                check_archive_structure([info.filename for info in entries], links)
         elif extension == ".tar.gz":
             with tarfile.open(path) as archive:
-                for member in archive:
+                links = []
+                entries = archive.getmembers()
+                for member in entries:
                     check_archive_name(member.name)
                     if member.issym() or member.islnk():
-                        check_archive_name(member.linkname, PurePosixPath(member.name).parent if member.issym() else ".")
+                        check_archive_name(member.linkname, PurePosixPath(member.name.replace("\\", "/")).parent if member.issym() else ".")
+                        links.append((member.name, member.linkname, member.issym()))
                     elif not member.isfile() and not member.isdir():
                         raise ValueError("Unsafe special file in tar package")
+                check_archive_structure([member.name for member in entries], links)
         packages.append((path, extension))
     required = ".tar.gz" if target == "linux-x64" else ".zip"
     if required not in seen:
