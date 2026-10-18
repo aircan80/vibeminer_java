@@ -1,2 +1,2 @@
 rootProject.name = 'vibeminer'
-include 'domain', 'application', 'infrastructure', 'desktop', 'bootstrap', 'protocol-tact', 'protocol-db2'
+include 'domain', 'application', 'infrastructure', 'desktop', 'bootstrap', 'protocol-tact', 'protocol-db2', 'format-wow'

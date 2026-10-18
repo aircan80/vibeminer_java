@@ -8,8 +8,8 @@ import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 class ArchitectureTest {
-    @Test void protocolHasNoTransportPersistenceOrApplicationDependencies() {
-        var classes = new ClassFileImporter().importPackages("io.vibeminer.protocol");
+    @Test void parsersHaveNoTransportPersistenceOrApplicationDependencies() {
+        var classes = new ClassFileImporter().importPackages("io.vibeminer.protocol", "io.vibeminer.format");
         noClasses().should().dependOnClassesThat().resideInAnyPackage("javafx..", "java.net..", "java.sql..",
             "java.nio.file..", "java.nio.channels..", "io.vibeminer.application..", "io.vibeminer.infrastructure..",
             "io.vibeminer.desktop..", "io.vibeminer.bootstrap..").check(classes);

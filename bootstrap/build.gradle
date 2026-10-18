@@ -8,6 +8,7 @@ dependencies {
     implementation "org.openjfx:javafx-base:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
     testImplementation project(':protocol-tact')
     testImplementation project(':protocol-db2')
+    testImplementation project(':format-wow')
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
 }
 application {
