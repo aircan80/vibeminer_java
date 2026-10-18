@@ -104,6 +104,56 @@ public final class OfficialBuildMetadataSourceWorker {
         operation.token);
   }
 
+  /**
+   * Strict readonly replay for an existing admission. Does not consult/recreate canonical claims,
+   * mark a producer, acquire network bytes or publish objects. SQL authority is deliberately the
+   * caller's separate recheck; this method proves only current complete bytes and supported
+   * grammar, preserving the exact historical receipt and current capability inventory.
+   */
+  public MetadataContentProof verifyRetained(
+      MetadataContentRequest request,
+      MetadataContentProof expected,
+      MetadataStreamBudgets budgets,
+      CancellationToken cancellation) {
+    Objects.requireNonNull(request);
+    Objects.requireNonNull(expected);
+    Objects.requireNonNull(budgets);
+    Objects.requireNonNull(cancellation);
+    var operation = new Operation(budgets, cancellation, nanoClock);
+    operation.token.throwIfCancellationRequested();
+    if (request.kind() == MetadataStructureAttestation.Kind.ROOT
+        || request.kind() == MetadataStructureAttestation.Kind.INSTALL)
+      throw failure(UNSUPPORTED_REUSE, "Readonly streaming replay admits only EN, DL and DS");
+    if (request.declaredDecodedBytes().isEmpty())
+      throw failure(INTEGRITY_FAILURE, "Exact decoded declaration required for readonly replay");
+    long decoded = request.declaredDecodedBytes().getAsLong();
+    preflight(request, decoded, budgets);
+    CapturedBuildSource.resolve(request.build());
+    authenticateConfiguration(request, budgets, operation.token);
+    var source =
+        new ResolvedSourceIdentity(
+            namespace(request.kind()),
+            request.slot().contentKey()
+                + ";"
+                + request.requestedEncodingKey()
+                + ";"
+                + decoded
+                + ";"
+                + request.requestedEncodedBytes(),
+            SEMANTICS);
+    var alias = expected.originalAlias();
+    if (!alias.source().equals(source)
+        || alias.object().length() != request.requestedEncodedBytes()
+        || !expected.equals(proof(request, alias, true)))
+      throw failure(
+          UNSUPPORTED_REUSE, "Readonly metadata differs from exact supported original proof");
+    CapturedBuildSource.validateDataProof(
+        alias.evidence().sourceUrl(), request.requestedEncodingKey());
+    validateLocal(request, alias, budgets, operation);
+    operation.token.throwIfCancellationRequested();
+    return expected;
+  }
+
   private VerifiedSourceAlias transfer(
       MetadataContentRequest request,
       ResolvedSourceIdentity source,

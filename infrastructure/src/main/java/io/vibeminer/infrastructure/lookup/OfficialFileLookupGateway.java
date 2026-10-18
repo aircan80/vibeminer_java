@@ -166,6 +166,215 @@ public final class OfficialFileLookupGateway implements FileLookupGateway, AutoC
     }
   }
 
+  /** Bounded selected facts from a complete local EN pass, never a complete EN inventory map. */
+  public record RetainedEncodingResolution(
+      RootPlan root,
+      Map<String, EncodingManifest.ContentEntry> contents,
+      Map<String, EncodingManifest.EncodedEntry> encodings) {
+    public RetainedEncodingResolution {
+      Objects.requireNonNull(root);
+      contents = Map.copyOf(contents);
+      encodings = Map.copyOf(encodings);
+    }
+  }
+
+  /**
+   * Issues a genuine session on this gateway from one complete retained EN scan. The caller may
+   * group a bounded set of other required metadata CKeys with ROOT. Missing CKeys and missing
+   * E-table facts remain different: the former is absent from contents, the latter from encodings.
+   * Candidate order and duplicate references are preserved. No HTTP, current-pointer read, durable
+   * derived index, or second gateway is used. All selected facts remain private until complete EN
+   * grammar, decoded CKey, encoded EKey/chunk hashes, physical SHA and source EOF succeed.
+   *
+   * <p>The caller budgets this additional local decode and the parser's two page grammar walks in
+   * its whole Open operation. The supplied BLTE and EN limits apply incrementally; existing root
+   * budgets govern the issued root plan and bound selected-key/candidate memory.
+   */
+  public RetainedEncodingResolution prepareRootFromRetainedEncoding(
+      BuildSnapshot build,
+      VerifiedSourceAlias configuration,
+      MetadataContentProof encodingProof,
+      Set<String> selectedContentKeys,
+      io.vibeminer.protocol.tact.blte.StreamingDecodedBlteInputStream.Limits blteLimits,
+      FullEncodingInventory.Limits encodingLimits,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
+    try {
+      ensureOpen();
+      Objects.requireNonNull(encodingProof);
+      Objects.requireNonNull(selectedContentKeys);
+      Objects.requireNonNull(blteLimits);
+      Objects.requireNonNull(encodingLimits);
+      Objects.requireNonNull(budgets);
+      var work = new LookupWork(budgets, cancellation, false);
+      work.check();
+      var config = configuration(build, configuration, budgets, work);
+      String rootKey = rootContentKey(config);
+      var declaration = config.encodingBootstrap();
+      var selected = new HashSet<String>();
+      int maximumSelectedKeys = Math.min(32, budgets.maximumSelectedIds());
+      if (selectedContentKeys.size() > maximumSelectedKeys)
+        throw LookupWork.fail(BUDGET_EXCEEDED, "Too many selected metadata CKeys");
+      for (String key : selectedContentKeys) {
+        work.check();
+        if (key == null || !key.matches("[0-9a-f]{32}"))
+          throw LookupWork.fail(
+              INVALID_REQUEST, "Complete lowercase selected metadata CKeys required");
+        selected.add(key);
+      }
+      selected.add(rootKey);
+      if (selected.size() > maximumSelectedKeys)
+        throw LookupWork.fail(BUDGET_EXCEEDED, "ROOT and selected metadata exceed CKey bound");
+      long maximumCandidates;
+      try {
+        maximumCandidates = Math.multiplyExact((long) selected.size(), budgets.maximumCandidates());
+      } catch (ArithmeticException overflow) {
+        throw LookupWork.fail(BUDGET_EXCEEDED, "Selected metadata candidate product overflows");
+      }
+      var alias = encodingProof.originalAlias();
+      var expectedSource =
+          new ResolvedSourceIdentity(
+              "tact.encoding.v1",
+              declaration.contentKey()
+                  + ";"
+                  + declaration.encodingKey()
+                  + ";"
+                  + declaration.decodedSize()
+                  + ";"
+                  + declaration.encodedSize(),
+              "blte-complete-encoded-and-ckey-stream-v1");
+      if (!alias.source().equals(expectedSource)
+          || alias.object().length() != declaration.encodedSize()
+          || !encodingProof.declaredContentKey().equals(declaration.contentKey())
+          || !encodingProof.actualEncodingKey().equals(declaration.encodingKey())
+          || encodingProof.decodedAttestation().isEmpty()
+          || !encodingProof
+              .decodedAttestation()
+              .get()
+              .verifierRevision()
+              .equals("blte-nz-full-ckey-stream-v1")
+          || encodingProof.structuralAttestation().isEmpty()
+          || encodingProof.structuralAttestation().get().kind()
+              != MetadataStructureAttestation.Kind.ENCODING
+          || !encodingProof
+              .structuralAttestation()
+              .get()
+              .parserRevision()
+              .equals("encoding-v1-full-r1"))
+        throw LookupWork.fail(
+            UNSUPPORTED, "Retained EN lacks the exact admitted source and full capabilities");
+      CapturedBuildSource.validateDataProof(
+          alias.evidence().sourceUrl(), declaration.encodingKey());
+      var contents = new LinkedHashMap<String, EncodingManifest.ContentEntry>();
+      var needed = new HashSet<String>();
+      var encodings = new LinkedHashMap<String, EncodingManifest.EncodedEntry>();
+      try (var lease = store.openRead(alias.object().digest(), work::cancelled)) {
+        if (!lease.object().equals(alias.object()))
+          throw LookupWork.fail(INTEGRITY_FAILURE, "Retained EN physical geometry changed");
+        try (var decoded =
+            new io.vibeminer.protocol.tact.blte.StreamingDecodedBlteInputStream(
+                lease.stream(),
+                declaration.encodingKey(),
+                declaration.contentKey(),
+                declaration.encodedSize(),
+                declaration.decodedSize(),
+                blteLimits,
+                work::cancelled)) {
+          new FullEncodingInventory()
+              .read(
+                  decoded,
+                  encodingLimits,
+                  new FullEncodingInventory.Consumer() {
+                    public void header(IndexedEncodingParser.Layout layout) {}
+
+                    public void specification(int index, String value) {}
+
+                    public void trailer(String value) {}
+
+                    public void content(
+                        int page, long ordinal, EncodingManifest.ContentEntry entry) {
+                      work.check();
+                      if (!selected.contains(entry.contentKey())) return;
+                      if (entry.encodingKeys().size() > budgets.maximumCandidates())
+                        throw LookupWork.fail(
+                            BUDGET_EXCEEDED, "Selected metadata candidate list exceeds bound");
+                      contents.put(entry.contentKey(), entry);
+                      needed.addAll(entry.encodingKeys());
+                      if (needed.size() > maximumCandidates)
+                        throw LookupWork.fail(
+                            BUDGET_EXCEEDED, "Selected metadata EKey product exceeds bound");
+                    }
+
+                    public void encoding(
+                        int page, long ordinal, EncodingManifest.EncodedEntry entry) {
+                      work.check();
+                      if (needed.contains(entry.encodingKey()))
+                        encodings.put(entry.encodingKey(), entry);
+                    }
+                  },
+                  work::cancelled);
+          var completed = decoded.completionProof();
+          if (!completed.encodedProof().physicalSha256().equals(alias.object().digest().value())
+              || completed.encodedProof().encodedBytes() != alias.object().length())
+            throw LookupWork.fail(INTEGRITY_FAILURE, "Retained EN physical proof changed");
+        }
+      }
+      work.check();
+      var root = contents.get(rootKey);
+      if (root == null)
+        throw LookupWork.fail(UNAVAILABLE, "ROOT CKey absent from complete retained EN");
+      var candidates = new ArrayList<RootCandidate>();
+      for (String key : root.encodingKeys()) {
+        var fact = encodings.get(key);
+        candidates.add(
+            fact == null
+                ? new RootCandidate(key, -1, -1)
+                : new RootCandidate(key, fact.encodedSize(), fact.specIndex()));
+      }
+      var plan =
+          new RootPlan(
+              UUID.randomUUID().toString(),
+              build,
+              configuration,
+              rootKey,
+              root.decodedSize(),
+              candidates,
+              budgets);
+      synchronized (sessions) {
+        ensureOpen();
+        work.check();
+        while (sessions.size() >= 16) sessions.remove(sessions.keySet().iterator().next());
+        sessions.put(plan.sessionId(), plan);
+      }
+      return new RetainedEncodingResolution(plan, contents, encodings);
+    } catch (FullEncodingInventoryException protocol) {
+      throw retainedEncodingFailure(protocol.reason().name(), protocol);
+    } catch (io.vibeminer.protocol.tact.blte.StreamingDecodedBlteException protocol) {
+      throw retainedEncodingFailure(protocol.reason().name(), protocol);
+    } catch (io.vibeminer.protocol.tact.blte.EncodedBlteException protocol) {
+      throw retainedEncodingFailure(protocol.reason().name(), protocol);
+    } catch (Exception failed) {
+      throw LookupWork.failure(failed);
+    }
+  }
+
+  private static RuntimeException retainedEncodingFailure(String reason, Exception cause) {
+    if (reason.equals("CANCELLED")) {
+      var stopped = new java.util.concurrent.CancellationException(cause.getMessage());
+      stopped.initCause(cause);
+      return stopped;
+    }
+    return new FileLookupException(
+        switch (reason) {
+          case "LIMIT" -> BUDGET_EXCEEDED;
+          case "UNSUPPORTED" -> UNSUPPORTED;
+          case "IO" -> STORAGE_FAILURE;
+          default -> INTEGRITY_FAILURE;
+        },
+        cause.getMessage(),
+        cause);
+  }
+
   @Override
   public void validateSelection(RootSelectionPlan selection, CancellationToken cancellation) {
     try {
