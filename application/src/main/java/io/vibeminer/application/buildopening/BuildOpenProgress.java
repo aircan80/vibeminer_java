@@ -5,12 +5,14 @@ import java.util.*;
 /**
  * One latest stage observation, not an event log. Wire counters cover encoded response body bytes
  * for this Open operation only, separately from decoded/index work and build-retention percentages.
- * Requirement counters cover only the required metadata closure. Verification may continue after
- * transfer reaches its known total; unknown totals do not imply zero or a percentage.
+ * Uninstrumented network work uses an empty transferred counter, never a fabricated zero; a known
+ * expected total requires a compatible measured counter. Requirement counters cover only the
+ * required metadata closure. Verification may continue after transfer reaches its known total;
+ * unknown totals do not imply zero or a percentage.
  */
 public record BuildOpenProgress(
     Stage stage,
-    long transferredWireBytes,
+    OptionalLong transferredWireBytes,
     OptionalLong expectedWireBytes,
     int verifiedRequirements,
     OptionalInt requiredRequirements) {
@@ -26,12 +28,15 @@ public record BuildOpenProgress(
 
   public BuildOpenProgress {
     Objects.requireNonNull(stage);
+    Objects.requireNonNull(transferredWireBytes);
     Objects.requireNonNull(expectedWireBytes);
     Objects.requireNonNull(requiredRequirements);
-    if (transferredWireBytes < 0
+    if (transferredWireBytes.isPresent() && transferredWireBytes.getAsLong() < 0
         || verifiedRequirements < 0
         || verifiedRequirements > BuildMetadataAdmission.MAXIMUM_REQUIREMENTS
-        || expectedWireBytes.isPresent() && expectedWireBytes.getAsLong() < transferredWireBytes
+        || expectedWireBytes.isPresent()
+            && (transferredWireBytes.isEmpty()
+                || expectedWireBytes.getAsLong() < transferredWireBytes.getAsLong())
         || requiredRequirements.isPresent()
             && (requiredRequirements.getAsInt() < verifiedRequirements
                 || requiredRequirements.getAsInt() > BuildMetadataAdmission.MAXIMUM_REQUIREMENTS))
@@ -46,6 +51,6 @@ public record BuildOpenProgress(
 
   public static BuildOpenProgress initial() {
     return new BuildOpenProgress(
-        Stage.VALIDATING_CONTEXT, 0, OptionalLong.empty(), 0, OptionalInt.empty());
+        Stage.VALIDATING_CONTEXT, OptionalLong.of(0), OptionalLong.empty(), 0, OptionalInt.empty());
   }
 }

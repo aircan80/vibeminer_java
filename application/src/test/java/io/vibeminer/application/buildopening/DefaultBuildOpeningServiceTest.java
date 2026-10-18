@@ -25,7 +25,7 @@ class DefaultBuildOpeningServiceTest {
             Runnable::run)) {
       var operation = service.open(request, "enUS");
       assertSame(admission, operation.completion().toCompletableFuture().join());
-      assertEquals(0, operation.progress().transferredWireBytes());
+      assertEquals(OptionalLong.of(0), operation.progress().transferredWireBytes());
       assertEquals(OptionalLong.of(0), operation.progress().expectedWireBytes());
       assertEquals(BuildOpenProgress.Stage.COMPLETE, operation.progress().stage());
     }
@@ -292,14 +292,14 @@ class DefaultBuildOpeningServiceTest {
               p.update(
                   new BuildOpenProgress(
                       BuildOpenProgress.Stage.ACQUIRING_METADATA,
-                      10,
+                      OptionalLong.of(10),
                       OptionalLong.empty(),
                       1,
                       OptionalInt.empty()));
               p.update(
                   new BuildOpenProgress(
                       BuildOpenProgress.Stage.VERIFYING_METADATA,
-                      9,
+                      OptionalLong.of(9),
                       OptionalLong.empty(),
                       1,
                       OptionalInt.empty()));
@@ -311,10 +311,10 @@ class DefaultBuildOpeningServiceTest {
       assertTrue(operation.progress().expectedWireBytes().isEmpty());
       queue.run();
       assertCode(BuildOpeningException.Code.CORRUPT_METADATA, operation.completion());
-      assertEquals(10, operation.progress().transferredWireBytes());
+      assertEquals(OptionalLong.of(10), operation.progress().transferredWireBytes());
       sink.get().update(complete(admission(reference)));
       assertEquals(
-          10,
+          OptionalLong.of(10),
           operation.progress().transferredWireBytes(),
           "Retired sources cannot replace final observed progress");
     } finally {
@@ -528,10 +528,74 @@ class DefaultBuildOpeningServiceTest {
         verified);
   }
 
+  @Test
+  void unknownTransferDoesNotInventZeroOrForgetEarlierMeasuredLowerBound() {
+    try (var service =
+        new DefaultBuildOpeningService(
+            (reference, locale, progress, token) -> {
+              progress.update(
+                  new BuildOpenProgress(
+                      BuildOpenProgress.Stage.ACQUIRING_METADATA,
+                      OptionalLong.of(10),
+                      OptionalLong.empty(),
+                      0,
+                      OptionalInt.empty()));
+              progress.update(
+                  new BuildOpenProgress(
+                      BuildOpenProgress.Stage.VERIFYING_METADATA,
+                      OptionalLong.empty(),
+                      OptionalLong.empty(),
+                      0,
+                      OptionalInt.empty()));
+              progress.update(
+                  new BuildOpenProgress(
+                      BuildOpenProgress.Stage.VERIFYING_METADATA,
+                      OptionalLong.of(9),
+                      OptionalLong.empty(),
+                      0,
+                      OptionalInt.empty()));
+              throw new AssertionError();
+            },
+            Runnable::run)) {
+      var operation = service.open(reference(), "enUS");
+      assertCode(BuildOpeningException.Code.CORRUPT_METADATA, operation.completion());
+      assertTrue(operation.progress().transferredWireBytes().isEmpty());
+    }
+  }
+
+  @Test
+  void stageOnlyOpeningCanCompleteWithUnknownTransferredBytes() {
+    var expected = admission(reference());
+    try (var service =
+        new DefaultBuildOpeningService(
+            (reference, locale, progress, token) -> {
+              progress.update(
+                  new BuildOpenProgress(
+                      BuildOpenProgress.Stage.ACQUIRING_METADATA,
+                      OptionalLong.empty(),
+                      OptionalLong.empty(),
+                      0,
+                      OptionalInt.empty()));
+              progress.update(
+                  new BuildOpenProgress(
+                      BuildOpenProgress.Stage.COMPLETE,
+                      OptionalLong.empty(),
+                      OptionalLong.empty(),
+                      expected.required().size(),
+                      OptionalInt.of(expected.required().size())));
+              return expected;
+            },
+            Runnable::run)) {
+      var operation = service.open(expected.reference(), "enUS");
+      assertSame(expected, operation.completion().toCompletableFuture().join());
+      assertTrue(operation.progress().transferredWireBytes().isEmpty());
+    }
+  }
+
   static BuildOpenProgress complete(BuildMetadataAdmission admission) {
     return new BuildOpenProgress(
         BuildOpenProgress.Stage.COMPLETE,
-        0,
+        OptionalLong.of(0),
         OptionalLong.of(0),
         admission.required().size(),
         OptionalInt.of(admission.required().size()));

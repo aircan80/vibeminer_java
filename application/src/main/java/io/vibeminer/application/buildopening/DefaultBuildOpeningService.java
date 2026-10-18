@@ -20,6 +20,7 @@ public final class DefaultBuildOpeningService implements BuildOpeningService {
     final AtomicBoolean cancellation = new AtomicBoolean();
     volatile BuildOpenProgress progress = BuildOpenProgress.initial();
     boolean started, acceptingProgress;
+    long highestMeasuredWireBytes;
   }
 
   public DefaultBuildOpeningService(BuildOpeningGateway gateway, Executor executor) {
@@ -101,11 +102,14 @@ public final class DefaultBuildOpeningService implements BuildOpeningService {
     if (progress == null) throw error(CORRUPT_METADATA, "Gateway omitted typed metadata progress");
     synchronized (this) {
       if (!job.acceptingProgress) return;
-      if (progress.transferredWireBytes() < job.progress.transferredWireBytes()
+      if (progress.transferredWireBytes().isPresent()
+              && progress.transferredWireBytes().getAsLong() < job.highestMeasuredWireBytes
           || progress.verifiedRequirements() < job.progress.verifiedRequirements()
           || job.progress.stage() == BuildOpenProgress.Stage.COMPLETE
               && !progress.equals(job.progress))
         throw error(CORRUPT_METADATA, "Metadata progress changed completed observations");
+      if (progress.transferredWireBytes().isPresent())
+        job.highestMeasuredWireBytes = progress.transferredWireBytes().getAsLong();
       job.progress = progress;
     }
   }
