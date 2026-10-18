@@ -178,7 +178,18 @@ public final class BuildOverview {
       OptionalLong queued,
       OptionalLong running,
       OptionalLong succeeded,
-      OptionalLong failed) {
+      OptionalLong failed,
+      boolean enumerationComplete) {
+    public Retention(
+        BuildRetention.Mode mode,
+        long generation,
+        OptionalLong queued,
+        OptionalLong running,
+        OptionalLong succeeded,
+        OptionalLong failed) {
+      this(mode, generation, queued, running, succeeded, failed, true);
+    }
+
     public Retention {
       Objects.requireNonNull(mode);
       if (generation < 1) throw new IllegalArgumentException("Positive intent generation required");
