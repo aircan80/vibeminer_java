@@ -2,7 +2,7 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) at `2382261` covers discovery, saved offline metadata, install-list inspection and exact-root FileDataID metadata lookup. Later source `b3a5e01` passed [four-platform CI](https://github.com/aircan80/vibeminer/actions/runs/39108817700). Subsequent backend/runtime source `7035fd3` passed 688 Java cases, Linux bundled-runtime checks, five native UI harnesses and eight offline protocol entrypoints; seven candidate image comparisons matched references exactly. Its newer four-platform validation is pending. Candidate inspection is runtime-enabled and selected encoded-payload retention has a backend API; final payload GUI (#77) and exact-variant offline API (#78) remain in progress. One bounded diagnostic joined two Item/ItemSparse records without full-table CKey verification. None of this establishes general item research, decoded-content verification or GC.
+Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) remains `2382261`. Later source `47b2b43` delivers explicit selected encoded-file retention controls and exact-variant offline reopening, with 722 passing Java cases, Linux bundled-runtime checks, six native UI harnesses and nine offline protocol entrypoints. Seventeen candidate/retention images matched references exactly. Its [four-platform run](https://github.com/aircan80/vibeminer/actions/runs/39111231067) has passed Windows/macOS ARM64; Intel/Linux completion is pending. [One bounded production-service receipt](evidence/selected-file-service-12.1.5.70448.json) proves encoded retention and fresh-instance offline reopen, without selected Item decoded-CKey verification. Root/install canonical integration (#80) and physical-row projection (#81) remain in progress; names, general search and GC remain unfinished.
 
 
 - [Implementation plan and milestones](PLAN.md)
@@ -15,6 +15,7 @@ Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/
 - [Approved selected encoded-file acquisition design](FILE-ACQUISITION.md)
 - [WoW formats, schemas and research search](FORMATS.md)
 - [Exact Item cohort, compatibility and proof coverage](ITEM-COHORT.md)
+- [Approved offline physical Item-row projection](ITEM-PROJECTION.md)
 - [Bounded offline Item physical-row projection](ITEM-PROJECTION.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
