@@ -760,4 +760,69 @@ class SqliteSelectedFileCatalogTest {
               .build());
     }
   }
+
+  @Test
+  void existingPendingPublishingAndRecoverySlotsAdoptLaterCanonicalOriginWithSameToken()
+      throws Exception {
+    var factory = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      var catalog = new SqliteSelectedFileCatalog(factory, store);
+      byte[] bytes = "fixture".getBytes();
+      var pending = catalog.reserve(slot(), A, bytes.length, NONE);
+      var publishingSlot = new ContentSlotKey("wow", "d".repeat(32));
+      var publishing = catalog.reserve(publishingSlot, A, bytes.length, NONE);
+      catalog.markPublishing(publishing.token(), NONE);
+      var earlierProof = prospective(publishingSlot, A, bytes, "us.cdn.blizzard.com");
+      catalog.recordVerifiedCompletion(publishing.token(), earlierProof, NONE);
+      var recoverySlot = new ContentSlotKey("wow", "e".repeat(32));
+      var recovery = catalog.reserve(recoverySlot, A, bytes.length, NONE);
+      catalog.markUncertain(recovery.token(), NONE);
+      var originSlot = new ContentSlotKey("wow", "f".repeat(32));
+      var origin = catalog.reserve(originSlot, A, bytes.length, NONE);
+      catalog.markPublishing(origin.token(), NONE);
+      var proof = prospective(originSlot, A, bytes, "us.cdn.blizzard.com");
+      catalog.recordVerifiedCompletion(origin.token(), proof, NONE);
+      publish(store, bytes);
+      catalog.completePublication(origin.token(), proof, NONE);
+      for (var reservation : List.of(pending, publishing, recovery)) {
+        var adopted = catalog.reserve(reservation.slot(), A, bytes.length, NONE);
+        assertEquals(reservation.token(), adopted.token());
+        assertEquals(CanonicalReservation.Status.RETAINED, adopted.status());
+        assertEquals(proof.encoded(), adopted.representation().orElseThrow().encoded());
+        assertEquals(proof.sourceReceipt(), adopted.representation().orElseThrow().sourceReceipt());
+        assertEquals(reservation.slot(), adopted.representation().orElseThrow().slot());
+      }
+    }
+  }
+
+  @Test
+  void lateOriginAdoptionRejectsConflictingProspectiveBytesWithoutChangingPendingProof()
+      throws Exception {
+    try (var store = new FileObjectStore(directory.resolve("store"))) {
+      var catalog =
+          new SqliteSelectedFileCatalog(
+              new SqliteCatalog(directory.resolve("catalog.sqlite")), store);
+      byte[] bytes = "fixture".getBytes();
+      var pending = catalog.reserve(slot(), A, bytes.length, NONE);
+      catalog.markPublishing(pending.token(), NONE);
+      var conflicting = prospective(slot(), A, "changed".getBytes(), "kr.cdn.blizzard.com");
+      catalog.recordVerifiedCompletion(pending.token(), conflicting, NONE);
+      var otherSlot = new ContentSlotKey("wow", "d".repeat(32));
+      var origin = catalog.reserve(otherSlot, A, bytes.length, NONE);
+      catalog.markPublishing(origin.token(), NONE);
+      var proof = prospective(otherSlot, A, bytes, "us.cdn.blizzard.com");
+      catalog.recordVerifiedCompletion(origin.token(), proof, NONE);
+      publish(store, bytes);
+      catalog.completePublication(origin.token(), proof, NONE);
+      assertEquals(
+          SelectedFileException.Code.INTEGRITY_FAILURE,
+          assertThrows(
+                  SelectedFileException.class, () -> catalog.reserve(slot(), A, bytes.length, NONE))
+              .code());
+      var unchanged = catalog.lookup(slot(), NONE).orElseThrow();
+      assertEquals(pending.token(), unchanged.token());
+      assertEquals(conflicting, unchanged.representation().orElseThrow());
+      assertEquals(CanonicalReservation.Status.PUBLISHING, unchanged.status());
+    }
+  }
 }

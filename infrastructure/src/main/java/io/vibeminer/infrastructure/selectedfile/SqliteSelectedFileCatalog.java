@@ -82,6 +82,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
                 query.setString(2, reservation.token().toString());
                 query.executeUpdate();
               }
+            adoptAvailableOrigin(c, reservation);
             return readToken(c, reservation.token()).reservation();
           }
           var id = UUID.randomUUID();
@@ -97,20 +98,7 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
             query.setString(7, session.toString());
             query.executeUpdate();
           }
-          var origin = readOrigin(c, key);
-          if (origin.isPresent()) {
-            var adopted = rebind(origin.get(), slot);
-            if (adopted.encoded().object().length() != encodedBytes)
-              throw failure(INTEGRITY_FAILURE, "Existing encoded origin length conflicts");
-            try (var query =
-                c.prepareStatement(
-                    "UPDATE canonical_content_slots SET status='RETAINED',representation=? WHERE"
-                        + " token=?")) {
-              query.setBytes(1, SelectedFileRecords.representation(adopted));
-              query.setString(2, id.toString());
-              query.executeUpdate();
-            }
-          }
+          adoptAvailableOrigin(c, readToken(c, id).reservation());
           return readToken(c, id).reservation();
         });
   }
@@ -446,6 +434,25 @@ public final class SqliteSelectedFileCatalog implements SelectedFileCatalog {
       throw failure(INTEGRITY_FAILURE, "Physical object length conflicts");
     }
     return lease;
+  }
+
+  private void adoptAvailableOrigin(Connection connection, CanonicalReservation reservation)
+      throws SQLException {
+    if (reservation.status() == CanonicalReservation.Status.RETAINED) return;
+    var origin = readOrigin(connection, reservation.actualEncodingKey());
+    if (origin.isEmpty()) return;
+    var adopted = rebind(origin.get(), reservation.slot());
+    match(reservation, adopted);
+    if (reservation.representation().isPresent())
+      equivalent(reservation.representation().get(), adopted);
+    try (var query =
+        connection.prepareStatement(
+            "UPDATE canonical_content_slots SET status='RETAINED',representation=? WHERE"
+                + " token=?")) {
+      query.setBytes(1, SelectedFileRecords.representation(adopted));
+      query.setString(2, reservation.token().toString());
+      query.executeUpdate();
+    }
   }
 
   private Optional<ContentRepresentation> readOrigin(Connection c, String ekey)
