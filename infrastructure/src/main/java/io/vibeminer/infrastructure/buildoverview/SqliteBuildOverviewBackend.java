@@ -195,7 +195,7 @@ public final class SqliteBuildOverviewBackend implements BuildOverviewBackend {
                         : ProblemCode.RETAINED_CORRUPT,
                     "Retained source failed current physical verification");
               }
-            } else
+            } else if (fact.problem() != null)
               add(
                   problems,
                   fact.problem(),
@@ -303,7 +303,18 @@ public final class SqliteBuildOverviewBackend implements BuildOverviewBackend {
         work.check();
         var hash = digest();
         CanonicalContentProof proof = null;
-        ProblemCode problem = ProblemCode.RETAINED_MISSING;
+        ProblemCode problem = null;
+        // Never requested or shared-but-unassociated content is ordinary Partial. A durable
+        // own-source association establishes that a missing source would be a regression.
+        try (var previous =
+            c.prepareStatement(
+                "SELECT 1 FROM build_retention_sources WHERE target_id=? AND member_id=?")) {
+          previous.setString(1, opened.seal().target().identity());
+          previous.setString(2, member.memberId());
+          try (var rows = previous.executeQuery()) {
+            if (rows.next()) problem = ProblemCode.RETAINED_MISSING;
+          }
+        }
         var slot = new ContentSlotKey("wow", member.contentKey());
         try {
           CanonicalContentGuards.check(c, slot);
@@ -320,7 +331,12 @@ public final class SqliteBuildOverviewBackend implements BuildOverviewBackend {
                 if (!member.encodingKey().equals(r.getString(1))
                     || nonnegative(r, 2) != member.encodedBytes())
                   problem = ProblemCode.CANONICAL_CONFLICT;
-                else if (r.getString(4).equals("RETAINED") && r.getString(5) == null) {
+                else if (!r.getString(4).equals("RETAINED") || r.getString(5) != null) {
+                  // An actual in-flight acquisition is not evidence that bytes were lost.
+                  if (r.getString(4).equals("PENDING")
+                      || r.getString(4).equals("PUBLISHING")
+                      || r.getString(5) != null) problem = null;
+                } else {
                   if (nonnegative(r, 6) > CanonicalContentRecords.MAX_BYTES)
                     throw new IllegalArgumentException("Oversized canonical proof");
                   byte[] raw = r.getBytes(7);
@@ -414,7 +430,8 @@ public final class SqliteBuildOverviewBackend implements BuildOverviewBackend {
           problem = ProblemCode.CANONICAL_CONFLICT;
         }
         framed(hash, member.memberId());
-        framed(hash, proof == null ? problem.name() : "VERIFIED");
+        framed(
+            hash, proof == null ? (problem == null ? "NOT_RETAINED" : problem.name()) : "VERIFIED");
         out.add(new Fact(proof, problem, hash.digest()));
       }
       c.rollback();

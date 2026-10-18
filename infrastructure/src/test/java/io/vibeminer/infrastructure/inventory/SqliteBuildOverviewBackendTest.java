@@ -189,12 +189,12 @@ class SqliteBuildOverviewBackendTest {
   }
 
   @Test
-  void missingCurrentMembershipCannotBeReplacedByRetainedCanonicalOrJobHistory() throws Exception {
+  void freshOnDemandSealedBuildHasNormalPartialWithoutAttentionProblems() throws Exception {
     var target = target();
     var result = backend.read(request(Optional.of(target)), p -> {}, NONE);
     assertEquals(Readiness.PARTIAL, result.readiness());
     assertEquals(OptionalLong.of(0), result.measurements().retainedUnits());
-    assertTrue(result.problems().stream().anyMatch(p -> p.blocksFull()));
+    assertTrue(result.problems().isEmpty());
   }
 
   @Test
@@ -258,6 +258,7 @@ class SqliteBuildOverviewBackendTest {
     var result = backend.read(request(Optional.of(target)), p -> {}, NONE);
     assertEquals(Readiness.PARTIAL, result.readiness());
     assertEquals(OptionalLong.of(0), result.measurements().retainedUnits());
+    assertTrue(result.problems().isEmpty());
   }
 
   @Test
@@ -550,6 +551,53 @@ class SqliteBuildOverviewBackendTest {
 
       public void close() {}
     };
+  }
+
+  @Test
+  void previouslyRetainedOwnedSourceMissingPhysicalBytesRemainsAttention() throws Exception {
+    var target = target();
+    var actual = retain(target);
+    try (var files = Files.walk(directory.resolve("objects"))) {
+      var path =
+          files
+              .filter(Files::isRegularFile)
+              .filter(
+                  p ->
+                      p.getFileName()
+                          .toString()
+                          .contains(actual.encoded().object().digest().value().substring(2)))
+              .findFirst()
+              .orElseThrow();
+      Files.delete(path);
+    }
+    var result = backend.read(request(Optional.of(target)), p -> {}, NONE);
+    assertEquals(Readiness.PARTIAL, result.readiness());
+    assertEquals(OptionalLong.of(0), result.measurements().retainedUnits());
+    assertTrue(result.problems().stream().anyMatch(p -> p.code() == ProblemCode.RETAINED_MISSING));
+  }
+
+  @Test
+  void activeCanonicalPublicationIsNormalPartialButConflictRemainsAttention() throws Exception {
+    var target = target();
+    var bytes = blte(new byte[100]);
+    var claim =
+        f.canonical.reserve(new ContentSlotKey("wow", f.payloadC), f.payloadE, bytes.length, NONE);
+    f.canonical.markPublishing(claim.token(), NONE);
+    var active = backend.read(request(Optional.of(target)), p -> {}, NONE);
+    assertEquals(Readiness.PARTIAL, active.readiness());
+    assertEquals(OptionalLong.of(0), active.measurements().retainedUnits());
+    assertTrue(active.problems().isEmpty());
+    try (var c = f.sql.connect();
+        var q =
+            c.prepareStatement(
+                "UPDATE canonical_content_slots SET encoding_key=? WHERE content_key=?")) {
+      q.setString(1, "a".repeat(32));
+      q.setString(2, f.payloadC);
+      q.executeUpdate();
+    }
+    var conflict = backend.read(request(Optional.of(target)), p -> {}, NONE);
+    assertTrue(
+        conflict.problems().stream().anyMatch(p -> p.code() == ProblemCode.CANONICAL_CONFLICT));
   }
 
   long count(String table) throws Exception {
