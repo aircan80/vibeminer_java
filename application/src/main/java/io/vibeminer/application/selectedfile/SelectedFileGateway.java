@@ -29,5 +29,7 @@ public interface SelectedFileGateway {
       LocatedFilePlan plan, EncodedPublicationObserver observer, CancellationToken cancellation);
 
   ContentRepresentation inspectRetained(
-      SelectedFileAssociation association, CancellationToken cancellation);
+      SelectedFileAssociation association,
+      SelectedFileBudgets budgets,
+      CancellationToken cancellation);
 }

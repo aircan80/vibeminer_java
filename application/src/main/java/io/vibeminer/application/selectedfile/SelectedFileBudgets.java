@@ -26,6 +26,11 @@ public record SelectedFileBudgets(
       throw new IllegalArgumentException("Invalid selected-file budgets");
   }
 
+  /** Fixed bounded root/EN metadata-stage ceiling, disclosed before explicit consent. */
+  public Duration maximumMetadataDuration() {
+    return Duration.ofMinutes(10);
+  }
+
   public static SelectedFileBudgets defaults() {
     return new SelectedFileBudgets(
         LookupBudgets.defaults(), 128L << 20, 1 << 20, 512, 256L << 20, Duration.ofMinutes(5));
