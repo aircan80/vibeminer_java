@@ -2,6 +2,8 @@ package io.vibeminer.infrastructure.discovery;
 
 import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.domain.BuildSnapshot;
+import io.vibeminer.domain.BuildEvidence;
+import io.vibeminer.domain.SourceDocument;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Clock;
@@ -67,10 +69,11 @@ public final class OfficialDiscoveryService implements DiscoveryService {
                 versionDocument.requireColumns("Region", "BuildConfig", "CDNConfig", "VersionsName");
                 cdnDocument.requireColumns("Name", "Path", "Hosts");
                 var matchingCdn = cdnDocument.rows().stream().filter(row -> region.equals(row.get("Name"))).toList();
-                if (matchingCdn.isEmpty() || matchingCdn.stream().anyMatch(row -> row.get("Path").isBlank() || row.get("Hosts").isBlank())) {
+                if (matchingCdn.size() != 1 || matchingCdn.stream().anyMatch(row -> row.get("Path").isBlank() || row.get("Hosts").isBlank())) {
                     throw new MetadataFormatException("No usable CDN metadata for the requested region");
                 }
                 var now = clock.instant();
+                var sourceDocuments = List.of(sourceDocument(versionBytes), sourceDocument(cdnBytes));
                 var builds = versionDocument.rows().stream().filter(row -> region.equals(row.get("Region")))
                         .map(row -> {
                             var optionalProductConfig = row.getOrDefault("ProductConfig", "");
@@ -83,7 +86,8 @@ public final class OfficialDiscoveryService implements DiscoveryService {
                             }
                             try {
                                 return new BuildSnapshot(productId, productId + " (edition unverified)", "Published",
-                                        region, row.get("VersionsName"), row.get("BuildConfig"), row.get("CDNConfig"), now, false);
+                                        region, row.get("VersionsName"), row.get("BuildConfig"), row.get("CDNConfig"), now, false,
+                                        new BuildEvidence(buildId, optionalProductConfig, sourceDocuments));
                             } catch (IllegalArgumentException malformed) {
                                 throw new MetadataFormatException("Invalid published build identity", malformed);
                             }
@@ -105,6 +109,10 @@ public final class OfficialDiscoveryService implements DiscoveryService {
             refreshes.release();
             return CompletableFuture.failedFuture(failedToStart);
         }
+    }
+
+    private static SourceDocument sourceDocument(CapturedMetadata metadata) {
+        return new SourceDocument(metadata.source().toString(), metadata.observedAt(), metadata.sha256(), metadata.bytes());
     }
 
     public Optional<DiscoveryObservation> lastObservation() { return Optional.ofNullable(observation.get()); }

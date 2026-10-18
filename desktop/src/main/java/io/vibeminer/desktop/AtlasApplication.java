@@ -1,6 +1,8 @@
 package io.vibeminer.desktop;
 
 import io.vibeminer.application.DiscoveryService;
+import io.vibeminer.application.WorkspaceService;
+import io.vibeminer.domain.Workspace;
 import io.vibeminer.domain.BuildSnapshot;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -28,10 +30,15 @@ import java.util.function.Function;
 public final class AtlasApplication extends Application {
     private static DiscoveryService configuredService;
     private static boolean initialFixtureMode;
+    private static WorkspaceService configuredWorkspaces;
     public static synchronized void configure(DiscoveryService service, boolean fixtureMode) {
+        configure(service,null,fixtureMode);
+    }
+    public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, boolean fixtureMode) {
         if (configuredService != null) throw new IllegalStateException("Desktop has already been configured");
         configuredService = Objects.requireNonNull(service);
         initialFixtureMode = fixtureMode;
+        configuredWorkspaces = workspaces;
     }
 
     private Stage stage;
@@ -43,6 +50,15 @@ public final class AtlasApplication extends Application {
     private StackPane content;
     private DiscoveryPresentationModel model;
     private DiscoveryPresentationModel.State state;
+    private WorkspacePresentationModel workspaceModel;
+    private WorkspacePresentationModel.State workspaceState;
+    private Workspace activeWorkspace;
+    private String selectedSavedWorkspaceId;
+    private FlowPane savedWorkspaceBar;
+    private VBox workspaceFeedback;
+    private String currentLocale = "enUS";
+    private final java.util.Map<String,WorkspaceView> workspaceViews = new java.util.HashMap<>();
+    private record WorkspaceView(String destination,String topic,String query,String note) {}
     private String destination = "Research";
     private String researchTopic = "All research areas";
     private String searchText = "";
@@ -69,7 +85,10 @@ public final class AtlasApplication extends Application {
         chrome = new VBox();
         chrome.getChildren().addAll(header(), navigationBar());
         context = new FlowPane(16, 8); context.getStyleClass().add("context-strip");
-        chrome.getChildren().add(context); root.setTop(chrome);
+        chrome.getChildren().add(context);
+        savedWorkspaceBar=new FlowPane(10,8);savedWorkspaceBar.getStyleClass().add("saved-workspace-bar");
+        workspaceFeedback=new VBox();workspaceFeedback.setManaged(false);workspaceFeedback.setVisible(false);
+        if(configuredWorkspaces!=null)chrome.getChildren().addAll(savedWorkspaceBar,workspaceFeedback);root.setTop(chrome);
         status = new Label(); status.getStyleClass().add("status-text");
         HBox footer = new HBox(12, label("●", "connection-dot"), status, spacer(), label("CDN only  /  App-owned storage", "secondary"));
         footer.setAlignment(Pos.CENTER_LEFT); footer.getStyleClass().add("footer"); root.setBottom(footer);
@@ -82,10 +101,15 @@ public final class AtlasApplication extends Application {
         });
         stage.setTitle("VibeMiner · Atlas research workbench"); stage.setMinWidth(940); stage.setMinHeight(650);
         stage.setScene(scene);
+        if(configuredWorkspaces!=null){
+            workspaceModel=new WorkspacePresentationModel(configuredWorkspaces,Platform::runLater,this::onWorkspaceState);
+            workspaceState=workspaceModel.state();
+        }
         model = new DiscoveryPresentationModel(configuredService, Platform::runLater, this::onState, initialFixtureMode);
         state = model.state();
         if (initialFixtureMode) model.showFixtures(); else onState(state);
         stage.show();
+        if(workspaceModel!=null)workspaceModel.load();
         if (getParameters().getRaw().contains("--smoke-test")) {
             PauseTransition pause = new PauseTransition(Duration.millis(650));
             pause.setOnFinished(event -> { System.out.println("VibeMiner UI smoke OK"); Platform.exit(); });
@@ -122,11 +146,12 @@ public final class AtlasApplication extends Application {
                 contextItem("PRODUCT ID", b == null ? "Not selected" : b.productId()),
                 contextItem("CHANNEL / REGION", b == null ? "Not selected" : b.channel()+" / "+b.region()),
                 contextItem("EXACT BUILD", b == null ? "Not selected" : b.versionLabel()),
-                contextItem("LOCALE", b == null ? "Not selected" : "enUS · view preference"),
+                contextItem("LOCALE", b == null ? "Not selected" : currentLocale+" · view preference"),
                 contextItem("COVERAGE", b == null ? "No data loaded" : "Metadata only"),
                 contextItem("CONTENT", b == null ? "Not checked" : "Unverified"));
         Button change = button(b == null ? "Choose a build →" : "Change build", () -> navigate("Archive"), "context-action");
         context.getChildren().add(change);
+        updateSavedWorkspaceBar();
         status.setText(next.busy() ? "Discovery in progress · interface remains available" : next.message());
         render();
     }
@@ -163,11 +188,14 @@ public final class AtlasApplication extends Application {
         java.util.ArrayList<Button> topicButtons=new java.util.ArrayList<>();
         for (int i=0;i<topics.length;i++) {
             String[] t = topics[i];
-            Label number=label(t[0],"topic-number");
-            Label topicTitle=label(t[1],"topic-title");topicTitle.setWrapText(true);Label topicDescription=label(t[2],"secondary");topicDescription.setWrapText(true);
-            VBox words = new VBox(2,topicTitle,topicDescription);words.setMinWidth(0);HBox.setHgrow(words,Priority.ALWAYS);
-            HBox body=new HBox(12,number,words,spacer(),label("↗","topic-arrow"));body.setAlignment(Pos.CENTER_LEFT);
-            Button card=new Button();card.setGraphic(body);card.setMaxWidth(Double.MAX_VALUE);card.getStyleClass().add("topic-card");
+            Label topicTitle=label(t[0]+" / "+t[1],"topic-title");topicTitle.setWrapText(true);
+            Label topicDescription=label(t[2],"secondary");topicDescription.setWrapText(true);
+            VBox words=new VBox(4,topicTitle,topicDescription);words.setAlignment(Pos.CENTER_LEFT);
+            Button card=new Button();card.setGraphic(words);card.setMaxWidth(Double.MAX_VALUE);card.getStyleClass().add("topic-card");
+            words.prefWidthProperty().bind(card.widthProperty().subtract(28));
+            words.maxWidthProperty().bind(card.widthProperty().subtract(28));
+            double topicScale=Integer.parseInt(selectedScale.replace("%",""))/100.0;
+            card.setPrefHeight(68*topicScale);card.setMinHeight(Region.USE_PREF_SIZE);card.setMaxHeight(Region.USE_PREF_SIZE);
             card.setAccessibleText(t[1]+". "+t[2]+". "+t[3]);
             card.setOnAction(e->{researchTopic=t[1];searchText="";showSearch();});
             card.setMinWidth(0);topicButtons.add(card);cards.add(card,i%3,i/3);GridPane.setHgrow(card,Priority.ALWAYS);
@@ -201,13 +229,14 @@ public final class AtlasApplication extends Application {
     }
     private VBox archive() {
         VBox page=page("CDN SOURCES / BUILD ARCHIVE","Choose a build. Keep its identity.","Discovery lists published pointers. It does not guarantee that historical content remains available.");
-        ComboBox<String> product=new ComboBox<>(FXCollections.observableArrayList("wow","wowt")); product.setValue(selectedProduct); product.valueProperty().addListener((o,a,b)->selectedProduct=b); product.setAccessibleText("Official product identifier");
-        ComboBox<String> region=new ComboBox<>(FXCollections.observableArrayList("us","eu","kr","tw"));region.setValue(selectedRegion);region.valueProperty().addListener((o,a,b)->selectedRegion=b);region.setAccessibleText("Discovery region");
-        Button refresh=button("Check official metadata",()->model.refresh(product.getValue(),region.getValue()),"primary"); refresh.setDisable(state.busy());
-        Button fixtures=button("Open fictional fixtures",()->model.showFixtures(),"quiet-button");
+        ComboBox<String> product=new ComboBox<>(FXCollections.observableArrayList("wow","wowt")); product.setId("discovery-product");product.setValue(selectedProduct); product.valueProperty().addListener((o,a,b)->selectedProduct=b); product.setAccessibleText("Official product identifier");
+        ComboBox<String> region=new ComboBox<>(FXCollections.observableArrayList("us","eu","kr","tw"));region.setId("discovery-region");region.setValue(selectedRegion);region.valueProperty().addListener((o,a,b)->selectedRegion=b);region.setAccessibleText("Discovery region");
+        Button refresh=button("Check official metadata",()->{leaveSavedWorkspace();model.refresh(product.getValue(),region.getValue());},"primary"); refresh.setDisable(state.busy());
+        Button fixtures=button("Open fictional fixtures",()->{leaveSavedWorkspace();model.showFixtures();},"quiet-button");
         HBox actions=new HBox(10,field("PRODUCT ID",product),field("REGION",region),refresh,fixtures);actions.setAlignment(Pos.BOTTOM_LEFT);
         VBox sources=panel(label("DEFAULT SOURCE · BLIZZARD CDN","eyebrow"),actions,
                 wrap("Official refresh is an explicit network action. Only version/configuration metadata is requested. No installation scanning, game-cache import or game content download occurs."));
+        if(workspaceModel!=null)page.getChildren().add(savedWorkspacesPanel());
         page.getChildren().add(sources);
         if(state.busy())page.getChildren().add(busyPanel("Checking published metadata…","You can navigate while this request runs. Stopping observation prevents late results from entering your workspace.",()->model.stopWaiting()));
         if(!state.error().isBlank())page.getChildren().add(notice("Discovery unavailable",state.error()));
@@ -230,14 +259,112 @@ public final class AtlasApplication extends Application {
         page.getChildren().add(panel(label("PUBLISHED / FIXTURE BUILDS","eyebrow"),table,new HBox(10,open,inspect)));
         page.getChildren().add(note("ARCHIVE ACQUISITION · NOT IMPLEMENTED YET","This slice discovers metadata. Downloading historical content, pinning selected scopes and reference-safe cleanup will follow. Identical objects will be shared by build manifests; no duplicate per-build cache is planned. Storage byte totals are unknown until acquisition is implemented."));return page;
     }
+    private void onWorkspaceState(WorkspacePresentationModel.State next){
+        workspaceState=next;
+        if(activeWorkspace!=null){String id=activeWorkspace.id();activeWorkspace=next.workspaces().stream().filter(w->w.id().equals(id)).findFirst().orElse(null);}
+        updateSavedWorkspaceBar();
+        boolean showFeedback=!next.error().isBlank()||next.message().startsWith("Saved metadata workspace")||next.message().startsWith("Workspace label updated")||next.message().startsWith("Saved workspace membership removed");
+        workspaceFeedback.getChildren().clear();workspaceFeedback.setManaged(showFeedback);workspaceFeedback.setVisible(showFeedback);
+        if(showFeedback){Label message=wrap(next.error().isBlank()?next.message():next.error());HBox.setHgrow(message,Priority.ALWAYS);Button dismiss=button("Dismiss",()->{workspaceFeedback.setVisible(false);workspaceFeedback.setManaged(false);},"quiet-button");HBox row=new HBox(12,message,dismiss);row.setAlignment(Pos.CENTER_LEFT);workspaceFeedback.getChildren().add(row);workspaceFeedback.getStyleClass().setAll("workspace-feedback");}
+        status.setText(next.error().isBlank()?next.message():next.error());
+        if(destination.equals("Archive")){
+            Node focused=stage.getScene().getFocusOwner();String focusId=focused==null?null:focused.getId();
+            render();if(focusId!=null)Platform.runLater(()->{Node restored=root.lookup("#"+focusId);if(restored!=null)restored.requestFocus();});
+        }
+    }
+    private void updateSavedWorkspaceBar(){
+        if(workspaceModel==null||workspaceState==null)return;
+        ComboBox<Workspace> picker=new ComboBox<>(FXCollections.observableArrayList(workspaceState.workspaces()));
+        picker.setId("saved-workspace-picker");picker.setPromptText("Open saved metadata workspace…");picker.setPrefWidth(360);
+        picker.setAccessibleText("Saved metadata workspaces. Reopen exact build offline without refreshing discovery.");
+        picker.setConverter(new javafx.util.StringConverter<>(){
+            public String toString(Workspace w){return w==null?"":w.name()+" · "+w.build().productId()+" / "+w.build().channel()+" / "+w.build().region()+" · "+w.build().versionLabel()+" / "+w.locale();}
+            public Workspace fromString(String text){return null;}
+        });
+        picker.setValue(activeWorkspace);
+        picker.setOnAction(e->{if(picker.getValue()!=null&&(activeWorkspace==null||!activeWorkspace.id().equals(picker.getValue().id())))openWorkspace(picker.getValue());});
+        Button save=button("Save metadata…",this::saveWorkspaceDialog,"quiet-button");save.setAccessibleText("Save current exact-build metadata with a local label and locale");save.setId("save-workspace");save.setDisable(state==null||state.selected()==null||workspaceState.busy());
+        Button reload=button("Refresh saved list",()->workspaceModel.load(),"quiet-button");reload.setDisable(workspaceState.busy());
+        Label operation=label(workspaceState.busy()?workspaceState.message():workspaceState.error().isBlank()?"Offline metadata · "+workspaceState.workspaces().size()+" saved":workspaceState.error(),"secondary");operation.setWrapText(false);operation.setMaxWidth(380);
+        savedWorkspaceBar.getChildren().setAll(picker,save,reload,operation);
+    }
+    private VBox savedWorkspacesPanel(){
+        VBox p=panel(label("SAVED METADATA WORKSPACES","eyebrow"),label("Reopen the source. Stay offline.","section-heading"));
+        if(!workspaceState.error().isBlank())p.getChildren().add(notice("Saved workspaces unavailable",workspaceState.error()));
+        if(workspaceState.workspaces().isEmpty()){
+            p.getChildren().add(wrap(workspaceState.busy()?"Loading app-owned metadata…":"No saved workspaces. Select a build below, then save its exact identity with a label and locale. Saving metadata does not retain game content."));return p;
+        }
+        TableView<Workspace> table=new TableView<>(FXCollections.observableArrayList(workspaceState.workspaces()));table.setId("saved-workspace-table");table.setAccessibleText("Saved exact-build metadata workspaces");
+        table.getColumns().add(workspaceColumn("Workspace",Workspace::name,200));
+        table.getColumns().add(workspaceColumn("Product / exact build",w->w.build().productId()+" / "+w.build().channel()+" / "+w.build().region()+" / "+w.build().versionLabel(),290));
+        table.getColumns().add(workspaceColumn("Locale",Workspace::locale,85));
+        table.getColumns().add(workspaceColumn("Source / coverage",w->(w.build().fixture()?"Fictional fixture":"Captured official metadata")+" · metadata only",260));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);table.setPrefHeight(170);
+        String selectedId=selectedSavedWorkspaceId!=null?selectedSavedWorkspaceId:activeWorkspace==null?null:activeWorkspace.id();
+        if(selectedId!=null)workspaceState.workspaces().stream().filter(w->w.id().equals(selectedId)).findFirst().ifPresent(w->table.getSelectionModel().select(w));
+        table.getSelectionModel().selectedItemProperty().addListener((o,old,w)->{if(w!=null)selectedSavedWorkspaceId=w.id();});
+        Runnable open=()->{Workspace w=table.getSelectionModel().getSelectedItem();if(w!=null)openWorkspace(w);};
+        table.setOnKeyPressed(e->{if(e.getCode()==KeyCode.ENTER){open.run();e.consume();}});
+        table.setRowFactory(tv->{TableRow<Workspace> row=new TableRow<>();row.setOnMouseClicked(e->{if(e.getClickCount()==2&&!row.isEmpty())openWorkspace(row.getItem());});return row;});
+        Button openButton=button("Reopen offline →",open,"primary");openButton.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
+        Button inspect=button("Inspect source",()->{Workspace w=table.getSelectionModel().getSelectedItem();if(w!=null)buildDetails(w.build(),w.locale());},"quiet-button");inspect.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
+        Button rename=button("Rename…",()->{Workspace w=table.getSelectionModel().getSelectedItem();if(w!=null)renameWorkspaceDialog(w);},"quiet-button");rename.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(workspaceState.busy())));
+        Button remove=button("Remove saved metadata…",()->{Workspace w=table.getSelectionModel().getSelectedItem();if(w!=null)removeWorkspaceDialog(w);},"quiet-button");remove.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(workspaceState.busy())));
+        FlowPane actions=new FlowPane(8,8,openButton,inspect,rename,remove);
+        p.getChildren().addAll(table,actions,wrap("Each entry pins its original build/configuration identity and locale. Reopening does not contact the CDN or substitute a newer build. Game files and decoded records are not retained by this metadata save."));return p;
+    }
+    private void rememberWorkspaceView(){if(activeWorkspace!=null)workspaceViews.put(activeWorkspace.id(),new WorkspaceView(destination,researchTopic,searchText,privateNote));}
+    private void leaveSavedWorkspace(){rememberWorkspaceView();activeWorkspace=null;currentLocale="enUS";researchTopic="All research areas";searchText="";privateNote="";}
+    private void openWorkspace(Workspace w){
+        rememberWorkspaceView();activeWorkspace=w;currentLocale=w.locale();
+        WorkspaceView view=workspaceViews.get(w.id());
+        destination=view==null?"Research":view.destination();researchTopic=view==null?"All research areas":view.topic();searchText=view==null?"":view.query();privateNote=view==null?"":view.note();
+        navigation.getToggles().forEach(t->t.setSelected(destination.equals(t.getUserData())));
+        model.restore(w.build());
+        Platform.runLater(()->{Node picker=root.lookup("#saved-workspace-picker");if(picker!=null)picker.requestFocus();});
+    }
+    private void saveWorkspaceDialog(){
+        if(state.selected()==null||workspaceModel==null||workspaceState.busy())return;
+        BuildSnapshot captured=state.selected();
+        TextField name=new TextField(activeWorkspace==null?captured.versionLabel()+" research":activeWorkspace.name());name.setId("workspace-name");name.setAccessibleText("Workspace label, 1 to 120 printable characters");
+        TextField locale=new TextField(currentLocale);locale.setId("workspace-locale");locale.setAccessibleText("Workspace locale, such as enUS or deDE");
+        Label validation=wrap("");validation.getStyleClass().add("validation-error");validation.setVisible(false);validation.setManaged(false);
+        VBox body=new VBox(12,wrap("Save this exact source identity in app-owned storage. No game content is downloaded and no latest pointer is resolved when reopening."),identity("PINNED SOURCE",captured.productId()+" / "+captured.region()+" / "+captured.versionLabel()),field("LOCAL LABEL",name),field("LOCALE VIEW",locale),validation);
+        Dialog<Void> dialog=editorDialog("Save metadata workspace",body);ButtonType save=new ButtonType("Save metadata",ButtonBar.ButtonData.OK_DONE);dialog.getDialogPane().getButtonTypes().setAll(save,ButtonType.CANCEL);
+        dialog.getDialogPane().lookupButton(save).addEventFilter(javafx.event.ActionEvent.ACTION,e->{
+            try{String label=Workspace.validateName(name.getText());String selectedLocale=locale.getText().strip();if(!selectedLocale.matches("[a-z]{2}[A-Z]{2}"))throw new IllegalArgumentException("Choose a locale such as enUS, enGB or deDE.");workspaceModel.save(captured,selectedLocale,label);}
+            catch(IllegalArgumentException invalid){e.consume();validation.setText(invalid.getMessage());validation.setVisible(true);validation.setManaged(true);if(!locale.getText().strip().matches("[a-z]{2}[A-Z]{2}"))locale.requestFocus();else name.requestFocus();}
+        });dialog.setOnShown(e->name.requestFocus());dialog.showAndWait();
+    }
+    private void renameWorkspaceDialog(Workspace w){
+        TextInputDialog dialog=new TextInputDialog(w.name());dialog.initOwner(stage);dialog.setTitle("Rename saved workspace");dialog.setHeaderText("Change the label, preserve the source.");dialog.setContentText("Local label:");
+        dialog.getDialogPane().setStyle(root.getStyle());dialog.getDialogPane().getStylesheets().add(getClass().getResource("atlas.css").toExternalForm());
+        Label validation=wrap("");dialog.getDialogPane().setExpandableContent(validation);
+        dialog.getDialogPane().lookupButton(ButtonType.OK).addEventFilter(javafx.event.ActionEvent.ACTION,e->{try{workspaceModel.rename(w.id(),Workspace.validateName(dialog.getEditor().getText()));}catch(IllegalArgumentException failure){e.consume();validation.setText(failure.getMessage());dialog.getDialogPane().setExpanded(true);}});dialog.showAndWait();
+    }
+    private void removeWorkspaceDialog(Workspace w){
+        Alert confirm=new Alert(Alert.AlertType.CONFIRMATION);confirm.initOwner(stage);confirm.setTitle("Remove saved metadata workspace?");confirm.setHeaderText("Remove “"+w.name()+"” from saved workspaces?");
+        confirm.setContentText(w.build().productId()+" / "+w.build().versionLabel()+" / "+w.locale()+"\n\nOnly this saved metadata membership is removed. No game payload is deleted; other exact-build and locale views remain. The current source can remain open as an unsaved view.");
+        confirm.getDialogPane().setStyle(root.getStyle());confirm.getDialogPane().getStylesheets().add(getClass().getResource("atlas.css").toExternalForm());
+        confirm.showAndWait().filter(b->b==ButtonType.OK).ifPresent(b->workspaceModel.remove(w.id()));
+    }
+    private Dialog<Void> editorDialog(String title,Node body){Dialog<Void> dialog=new Dialog<>();dialog.initOwner(stage);dialog.setTitle(title);dialog.getDialogPane().setHeaderText(title);ScrollPane scroll=new ScrollPane(body);scroll.setFitToWidth(true);scroll.setPrefViewportHeight(410);dialog.getDialogPane().setContent(scroll);dialog.getDialogPane().setStyle(root.getStyle());dialog.getDialogPane().getStylesheets().add(getClass().getResource("atlas.css").toExternalForm());dialog.getDialogPane().setPrefWidth(620);dialog.setResizable(true);return dialog;}
+    private static TableColumn<Workspace,String> workspaceColumn(String title,Function<Workspace,String> value,double width){TableColumn<Workspace,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
     private void openSelection(TableView<BuildSnapshot> table){BuildSnapshot b=table.getSelectionModel().getSelectedItem();if(b!=null)openBuild(b);}
-    private void openBuild(BuildSnapshot b){model.select(b);buildDetails(b);Platform.runLater(()->{Node table=root.lookup("#build-table");if(table!=null)table.requestFocus();});}
-    private void buildDetails(BuildSnapshot b){
+    private void openBuild(BuildSnapshot b){leaveSavedWorkspace();model.select(b);buildDetails(b);Platform.runLater(()->{Node table=root.lookup("#build-table");if(table!=null)table.requestFocus();});}
+    private void buildDetails(BuildSnapshot b){buildDetails(b,state.selected()!=null&&state.selected().snapshotId().equals(b.snapshotId())?currentLocale:null);}
+    private void buildDetails(BuildSnapshot b,String locale){
         VBox info=new VBox(12,notice(b.fixture()?"Fictional source identity":"Official metadata identity",b.fixture()?"Test fixture only; not a live Blizzard build.":"Captured published metadata. Content availability remains unchecked."),
                 identity("EDITION / PRODUCT",b.editionLabel()+" / "+b.productId()),identity("EXACT BUILD",b.versionLabel()),identity("CHANNEL / REGION",b.channel()+" / "+b.region()),
                 identity("BUILD CONFIGURATION",b.buildConfig()),identity("CDN CONFIGURATION",b.cdnConfig()),identity("SNAPSHOT ID",b.snapshotId()),
                 identity("OBSERVED",DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss z").withZone(ZoneId.systemDefault()).format(b.observedAt())),
                 wrap("Coverage: metadata only. Files, decoded records, previews and complete offline archive availability are not established by this source."));
+        if(locale!=null)info.getChildren().add(1,identity("LOCALE VIEW",locale));
+        info.getChildren().add(label("CAPTURED SOURCE EVIDENCE","eyebrow"));
+        if(b.evidence().documents().isEmpty())info.getChildren().add(wrap("No source documents recorded for this fixture or legacy metadata. Configuration identity is retained; no document provenance is invented."));
+        else for(var document:b.evidence().documents())info.getChildren().add(new VBox(6,identity("SOURCE URL",document.sourceUrl()),identity("SHA-256 / CAPTURED",document.sha256()+" / "+document.capturedAt())));
+        if(!b.evidence().upstreamBuildId().isBlank())info.getChildren().add(identity("UPSTREAM BUILD ID",b.evidence().upstreamBuildId()));
+        if(!b.evidence().productConfig().isBlank())info.getChildren().add(identity("PRODUCT CONFIGURATION",b.evidence().productConfig()));
         dialog("Build source · "+b.versionLabel(),info);
     }
     private VBox comparison(){return unavailable("COMPARE BUILDS","Put changes in context.","A comparison needs two exact builds from the same edition, compatible schemas and verified input coverage.","Comparison engine not implemented","No added, changed or removed records can be asserted yet. Missing or encrypted inputs will be shown as not compared, rather than removed.","Choose build metadata",()->navigate("Archive"));}
@@ -283,7 +410,7 @@ public final class AtlasApplication extends Application {
     private void boundaries(){dialog("Available capabilities",new VBox(14,wrap("Available: Atlas navigation, explicit fixture metadata, official asynchronous discovery and exact source inspection."),wrap("Not implemented: persistent archives, downloads, DB2 decoding, indexed research, comparison, evidence persistence or previews. Disabled or explanatory states do not represent completed mining capabilities."),wrap("No local game installation or cache import is used.")));}
     private void dialog(String title,Node node){
         Dialog<Void> dialog=new Dialog<>();dialog.initOwner(stage);dialog.setTitle(title);dialog.getDialogPane().setHeaderText(title);ScrollPane scroll=new ScrollPane(node);scroll.setFitToWidth(true);scroll.setPrefViewportHeight(510);scroll.setStyle("-fx-background-color: transparent;");dialog.getDialogPane().setContent(scroll);dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
-        dialog.getDialogPane().getStylesheets().add(Objects.requireNonNull(getClass().getResource("atlas.css")).toExternalForm());dialog.getDialogPane().setPrefWidth(690);dialog.setResizable(true);dialog.showAndWait();
+        dialog.getDialogPane().setStyle(root.getStyle());dialog.getDialogPane().getStylesheets().add(Objects.requireNonNull(getClass().getResource("atlas.css")).toExternalForm());dialog.getDialogPane().setPrefWidth(690);dialog.setResizable(true);dialog.showAndWait();
     }
     private VBox page(String eyebrow,String title,String subtitle){VBox page=new VBox(18);page.getStyleClass().add("workspace");Label sub=wrap(subtitle);sub.getStyleClass().add("subtitle");page.getChildren().addAll(new VBox(8,label(eyebrow,"eyebrow"),label(title,"page-heading"),sub));return page;}
     private VBox panel(Node... nodes){VBox p=new VBox(14,nodes);p.getStyleClass().add("panel");return p;}
@@ -298,5 +425,5 @@ public final class AtlasApplication extends Application {
     private static Region spacer(){Region r=new Region();HBox.setHgrow(r,Priority.ALWAYS);return r;}
     private static Button button(String title,Runnable action,String style){Button b=new Button(title);b.getStyleClass().add(style);b.setOnAction(e->action.run());return b;}
     private static TableColumn<BuildSnapshot,String> column(String title,Function<BuildSnapshot,String> value,double width){TableColumn<BuildSnapshot,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
-    @Override public void stop(){if(model!=null)model.close();}
+    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();}
 }

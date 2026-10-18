@@ -47,3 +47,11 @@ Parser implementer chooses exact valid fixture grammar from verified header/sche
 ## Remaining evidence gates
 
 The official Forever-to-product-code binding, historical acquisition paths, resolver/BLTE modes and item-table schema cohort remain separately reviewed capabilities. A raw code such as `wowf` may be queried without inventing its marketing-name mapping. CI uses synthetic fixtures rather than current upstream values. Actual test/runner results are recorded in GitHub Issues, especially #14 and #27.
+
+## First verified configuration and BLTE object — 2026-10-18
+
+A separate bounded live probe fetched the exact US `wow` build configuration `88d5e8ef05ec5a8446cdec93d142d7c6` (87,836 bytes) and CDN configuration `f065eade5276a5ac05606e60a4c5a1f7` (59,333 bytes). Both full-byte MD5 values matched their pinned keys. The advertised HTTPS host served the reference route `https://us.cdn.blizzard.com/tpr/wow/config/aa/bb/<key>`; this validates that route for these objects, without resolving the distinct advertised ConfigPath convention generally.
+
+The verified build config declared a small install manifest: decoded CKey `bfed494c95462d5e9455b75253946bd9`, EKey `d10563defeec2e7649ecaa7ae2d59a6a`, decoded size 24,078 and encoded size 23,106 bytes. The exact loose object at `https://us.cdn.blizzard.com/tpr/wow/data/d1/05/d10563defeec2e7649ecaa7ae2d59a6a` returned 23,106 bytes under a 64 KiB cap. The Java BLTE decoder verified its expected EKey, chunk hashes, exact decoded length and full decoded CKey; decoded prefix `494e0110` identifies the install-manifest family. Encoded local SHA-256: `08f7490350e63e80345b12d19b3db72d77169b4382b1a119f11562d734d8b268`.
+
+The same config's encoding manifest was 188,062,372 encoded bytes, so it was not downloaded in this probe. No game payload bytes are versioned. This is evidence for one exact object and decoder path; it does not establish full root/FileDataID resolution, install-manifest record parsing, DB2 support, archive retention or a completed user-facing download workflow. Ordinary tests remain synthetic and offline.

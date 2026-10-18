@@ -29,6 +29,9 @@ class OfficialDiscoveryServiceTest {
         assertEquals(B, builds.getFirst().cdnConfig());
         assertEquals("demo.100", builds.getFirst().versionLabel());
         assertFalse(builds.getFirst().fixture());
+        assertEquals("100", builds.getFirst().evidence().upstreamBuildId());
+        assertEquals(2, builds.getFirst().evidence().documents().size());
+        assertEquals("https://us.version.battle.net/v2/products/wowf/versions", builds.getFirst().evidence().documents().getFirst().sourceUrl());
         assertFalse(builds.getFirst().editionLabel().contains("Forever"));
         assertEquals(List.of(URI.create("https://us.version.battle.net/v2/products/wowf/versions"),
                 URI.create("https://us.version.battle.net/v2/products/wowf/cdns")), requested);
@@ -52,6 +55,13 @@ class OfficialDiscoveryServiceTest {
         assertThrows(CompletionException.class, () -> service.refresh("wow", "us").toCompletableFuture().join());
         var noCdn = service(HEADER + "us|" + A + "|" + B + "||100|same|\n", CDNS.replace("us|", "eu|"), new ArrayList<>());
         assertThrows(CompletionException.class, () -> noCdn.refresh("wow", "us").toCompletableFuture().join());
+    }
+
+    @Test void conflictingOrDuplicateCdnRegionRowsAreRejectedInsteadOfSelectingArbitrarily() {
+        for (var extra : List.of("us|another/path|other.example.invalid\n", "us|tpr/wow|cdn.example.invalid\n")) {
+            var service = service(HEADER + "us|" + A + "|" + B + "||100|same|\n", CDNS + extra, new ArrayList<>());
+            assertThrows(CompletionException.class, () -> service.refresh("wow", "us").toCompletableFuture().join());
+        }
     }
 
     @Test void validatesInputBeforeMakingAnyRequest() {

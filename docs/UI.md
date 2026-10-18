@@ -68,3 +68,9 @@ The initial shell was captured on isolated Linux/Xvfb with a full JDK25 developm
 - [Research at200%textscale/1280×800](design/javafx-research-200pct-1280x800.png)
 
 Compared against Atlas: ivory/teal palette, serif headings, paper panels and research hierarchy are retained. The application deliberately adds persistent exact-build context and explicit fixture/capability disclosure. Scaling review found and fixed overlapping/truncated context fields by separating intrinsic product and coverage items. Real-FX harness assertions exercise source dialog/focus return, search retention, scale retention and asynchronous source-selection state. These checks are initial-shell evidence, not complete accessibility certification, all-platform visual acceptance or mining workflow validation.
+
+### Saved metadata workspace increment (#15)
+
+The actual JavaFX [saved-workspace catalog at 1280×800](design/javafx-saved-workspaces-1280x800.png) and [offline reopened locale at 200%](design/javafx-saved-workspace-200pct-1280x800.png) were reviewed against Atlas. A versioned two-process `CaptureWorkspaces` harness exercises actual SQLite save/restart with synthetic sources and rejects any discovery call. It also verifies saved/raw-source context isolation, locale-specific inspection, invalid/valid rename, cancelled/confirmed removal and preservation of the other saved workspace.
+
+The tested slice passed visual/usability review. It preserves exact context and clearly identifies metadata-only coverage. At 200%, long picker labels can ellipsize and fixed context chrome leaves a smaller scrollable research area; the full selected source and locale remain visible. Compact research cards and a shorter save action corrected layout issues found in matching-size captures. This is not full-platform accessibility or complete research-workflow certification.

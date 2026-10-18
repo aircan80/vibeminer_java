@@ -2,9 +2,15 @@
 
 Formalized architecture for issue #12. These contracts are implementation requirements; capabilities are accepted only after their tests and evidence pass.
 
-## Implementation status
+## Current implementation — workspace, object-store and decoder slices
 
-The first shell uses a narrow `DiscoveryService` with fixture builds and asynchronous `refresh`, plus immutable initial build identities. Full job handles, persistent workspace restoration, paging and the complete archive model remain later slices. Discovery observations retain captured metadata evidence separately from the initial UI snapshot. The contracts below are intended requirements, not claims that every API is already implemented.
+Source status for issues #15, #17 and #31; review and completion evidence remain in their issues. The discovery shell uses asynchronous `DiscoveryService` calls and immutable build snapshots. `DefaultWorkspaceService` delegates blocking persistence to an injected executor through `WorkspaceRepository`; `SqliteWorkspaceRepository` stores pinned metadata and locale workspaces. `WorkspacePresentationModel` keeps presentation state separate from persistence and rejects stale completions using a generation counter. Bootstrap wires the catalog under the app-owned data directory.
+
+`ObjectStore` is an application port implemented by `FileObjectStore`; it verifies bounded supplied streams and publishes immutable SHA-256-addressed bytes, independently of the GUI and network. This foundation has read leases and exclusive store ownership, but does not yet implement build membership, retained scopes, download coalescing or cleanup policies. The desktop bootstrap currently wires the workspace catalog, not a complete acquisition/archive pipeline.
+
+The extracted `protocol-tact` module now contains a pure bounded `BlteDecoder` for N/raw and Z/zlib, exercised by synthetic fixtures. It receives byte arrays, limits, expected decoded size, optional protocol hashes and cancellation; it neither acquires nor persists content. No DB2/search or real-payload compatibility claim follows from this decoder slice.
+
+Raw metadata provenance includes captured document bytes, HTTPS source URL, timestamp and verified SHA-256. Workspace storage failures distinguish unavailable storage, corrupt metadata, missing workspace and limits. Object integrity/missing/limit/I/O/ownership failures and decoder malformed/integrity/unsupported/limit/cancelled outcomes stay separate. These implemented subsets do not imply the complete job, capability, paging or archive contracts below already exist.
 
 ## Architectural position
 

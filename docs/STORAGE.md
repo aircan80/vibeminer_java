@@ -2,6 +2,20 @@
 
 Formalized specification. Implementation and validation status are tracked in GitHub Issues.
 
+## Current implementation — metadata persistence (#15)
+
+`SqliteWorkspaceRepository` persists immutable build snapshots, captured source documents and named locale views in `catalog.sqlite`. Source-document bytes are shared in `source_blobs` by SHA-256; per-snapshot source rows preserve URL, capture time and ordering. Restoring a workspace reconstructs domain values and checks their identities and source digests. Renaming affects the workspace label; removing a workspace leaves snapshot/source history intact. This is offline metadata persistence, not retained game content or an implemented archive-cleanup policy.
+
+The portable application-data decision is implemented by `AppDataDirectory`: Windows uses `%LOCALAPPDATA%/VibeMiner` (with a home-based fallback); macOS uses `~/Library/Application Support/VibeMiner`; Linux uses absolute `$XDG_DATA_HOME/vibeminer` or `~/.local/share/vibeminer`. Set `-Dvibeminer.dataDir=/absolute/app-owned/path` to choose another root. Relative overrides are rejected. This chooses a location; it does not migrate existing data or provide a portable installer mode. No game-directory discovery occurs.
+
+## Current implementation — byte-store foundation (#17)
+
+`FileObjectStore` accepts a caller-owned stream, expected whole-stream checksum (MD5 or SHA-256), exact length, byte limit and cancellation. It stages bytes under its own `work` directory, computes local SHA-256, verifies before atomic publication, and converges identical concurrent publications onto one physical object under `objects`. Existing conflicting/corrupt bytes are rejected and preserved rather than silently overwritten. Supplied whole-stream MD5 verification is not automatically BLTE EKey verification: the latter can cover only a header.
+
+A process lock excludes a second store owner; coordinated publication and read leases protect ownership while operations/readers are active. Stored reads rehash before exposure. Absent objects, corrupt bytes, limits, I/O failure, closed/busy state and store-in-use have distinct outcomes. Startup removes abandoned regular staging files. File contents are forced before atomic move; this does not establish complete filesystem/SQLite crash recovery or power-loss durability.
+
+The metadata source-blob table and filesystem store are currently separate foundations; no cross-store alias/membership catalog is implemented. No network fetching, transfer coalescing, build-scope retention, quotas, eviction, GC, derived-artifact sharing or full archive workflow is delivered by #17 alone. The specification below describes those later invariants. Synthetic tests exist for workspace restart/integrity and byte-store publication, cancellation, corruption, concurrency and read ownership; real game payload/complete retention support is not established by them.
+
 ## Invariants
 
 One app-owned immutable object store owns retained bytes. Cache and archive are retention policies and references, never separate directories holding the same payload. Do not inspect game installations. Content equality and game identity are separate: physical bytes may be shared while build membership, edition semantics, provenance and search scopes remain distinct.

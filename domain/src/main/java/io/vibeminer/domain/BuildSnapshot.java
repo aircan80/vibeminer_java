@@ -10,7 +10,11 @@ import java.util.Objects;
 /** Immutable selected source identity; a version label alone never identifies a build. */
 public record BuildSnapshot(String productId, String editionLabel, String channel,
         String region, String versionLabel, String buildConfig, String cdnConfig,
-        Instant observedAt, boolean fixture) {
+        Instant observedAt, boolean fixture, BuildEvidence evidence) {
+    public BuildSnapshot(String productId, String editionLabel, String channel, String region, String versionLabel,
+            String buildConfig, String cdnConfig, Instant observedAt, boolean fixture) {
+        this(productId, editionLabel, channel, region, versionLabel, buildConfig, cdnConfig, observedAt, fixture, BuildEvidence.unrecorded());
+    }
     public BuildSnapshot {
         productId = required(productId, "productId");
         editionLabel = required(editionLabel, "editionLabel");
@@ -20,12 +24,13 @@ public record BuildSnapshot(String productId, String editionLabel, String channe
         buildConfig = identity(buildConfig, "buildConfig");
         cdnConfig = identity(cdnConfig, "cdnConfig");
         Objects.requireNonNull(observedAt, "observedAt");
+        Objects.requireNonNull(evidence, "evidence");
     }
 
     public String snapshotId() {
         try {
             var value = String.join("\n", productId, channel, region, versionLabel, buildConfig, cdnConfig,
-                    Boolean.toString(fixture));
+                    Boolean.toString(fixture), evidence.upstreamBuildId(), evidence.productConfig());
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException impossible) {

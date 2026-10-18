@@ -1,1 +1,1 @@
-dependencies { implementation project(':application'); implementation project(':domain') }
+dependencies { implementation project(':application'); implementation project(':domain'); implementation 'org.xerial:sqlite-jdbc:3.53.4.0' }

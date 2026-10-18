@@ -80,6 +80,14 @@ public final class DiscoveryPresentationModel implements AutoCloseable {
                 "Metadata workspace opened. Files, tables and archive acquisition are not implemented yet.", "",
                 build.fixture()));
     }
+    /** Reopens a captured source without consulting discovery or replacing it with the latest pointer. */
+    public void restore(BuildSnapshot saved) {
+        if(closed)return;
+        Objects.requireNonNull(saved);
+        generation++;
+        publish(new State(List.of(saved),saved,false,
+                "Saved source reopened offline. Metadata only; no game content has been retained.","",saved.fixture()));
+    }
     private void publish(State next) { state = next; observer.accept(next); }
     @Override public void close() { closed = true; generation++; }
 }

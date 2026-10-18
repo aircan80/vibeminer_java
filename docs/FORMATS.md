@@ -2,6 +2,16 @@
 
 Formalized specification. Implementation and validation status are tracked in GitHub Issues.
 
+## Current implementation — bounded synthetic BLTE subset (#31)
+
+`protocol-tact` contains `BlteDecoder` with synthetic tests for zero-header single-block and 0x0f chunk-table forms, N/raw and Z/zlib, including mixed chunks. Callers supply exact expected decoded size and encoded/decoded/chunk-count bounds. Table arithmetic and declared sizes are checked before output allocation; inflation enforces exact size and rejects trailing, truncated or dictionary-dependent streams. Cancellation is checked during copying, hashing and inflation. A failed decode returns no partial byte array.
+
+Chunk MD5 checks cover the encoded chunk including its mode byte. Optional expected EKey checks cover the complete BLTE header when present, or the whole encoded object in zero-header form; optional CKey checks cover complete decoded bytes. These MD5 protocol identities are separate from local SHA-256 object identity. Because expected hashes are optional at this parser boundary, a successful call alone is not a claim that upstream source identity was verified; acquisition must provide the required verified expectations.
+
+`BlteException.Reason` distinguishes `MALFORMED`, `INTEGRITY`, `UNSUPPORTED`, `LIMIT` and `CANCELLED`; bad caller arguments remain argument errors. Encryption and other modes are unsupported; there is no key lookup or decryption. The implementation is an in-memory pure parser, with no CDN resolution, storage publication or UI integration. Ordinary tests are synthetic. A separate [bounded live check](PROTOCOL-EVIDENCE.md#first-verified-configuration-and-blte-object--2026-10-18) verified one exact install-manifest BLTE object; broader payload compatibility, DB2 decoding, schema resolution, item search and semantic comparison remain unproven.
+
+Primary contract references reviewed on 2026-10-18: [TACTSharp BLTE](https://github.com/wowdev/TACTSharp/blob/67fd53ac852ca297e9bf95bb41d1a97da202eba4/TACTSharp/BLTE.cs) and [TACT.Net encoded-key writer](https://github.com/wowdev/TACT.Net/blob/57618c47dc0cfef1bfc0e7585bf335ced7218389/TACT.Net/BlockTable/BlockTableStreamWriter.cs). These inform an original narrow implementation; no external parser dependency is bundled.
+
 ## Decoder spike and supported subset
 
 1. Agree immutable input/output contracts with protocol/storage. Pure format code takes bounded readable input, expected content identities, exact BuildRef and cancellation. The application/storage adapter owns leases and handle lifecycle; the format parser does not open arbitrary paths or discover game installs. TACT owns configs, encoding/root/index resolution and BLTE; DB2 adapter owns record interpretation. Both use the same bounded binary primitives. Query adapter owns page cursors; parsers expose records only.
@@ -60,4 +70,4 @@ Tests are synthetic and deterministic; no live CDN CI. A later explicitly author
 
 ## Blockers and handoff
 
-No parser code exists and no current payload headers have been inspected; exact useful WDC feature set is unproven. Resolve through the later bounded protocol/format spike before committing item-decoder acceptance. Pin actual upstream commits/licenses before reuse/distribution. Mining expert must validate item name/base-record dependencies and joins for the chosen build. Architect/storage must settle artifact versus membership keys, index publication and reader leases. These block semantic implementation promises, not initial discovery/raw metadata work.
+The synthetic BLTE subset above exists; DB2 parser support and the exact useful WDC feature set remain unproven. One exact live BLTE object has passed verification; this does not establish general payload or DB2 compatibility. Resolve through the later bounded protocol/format spike before committing item-decoder acceptance. Pin actual upstream commits/licenses before reuse/distribution. Mining expert must validate item name/base-record dependencies and joins for the chosen build. Architect/storage must settle artifact versus membership keys, index publication and reader leases. These block semantic implementation promises, not initial discovery/raw metadata work.

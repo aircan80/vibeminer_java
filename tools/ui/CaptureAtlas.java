@@ -106,7 +106,7 @@ public final class CaptureAtlas {
     @SuppressWarnings("unchecked")
     static void setCombo(Node node,String value){((ComboBox<String>)node).setValue(value);}
     static Node accessible(Stage stage,String name){stage.getScene().getRoot().applyCss();stage.getScene().getRoot().layout();return stage.getScene().getRoot().lookupAll("*").stream().filter(n->name.equals(n.getAccessibleText())).findFirst().orElseThrow(()->new IllegalStateException("Missing control: "+name));}
-    static Button button(Stage stage,String name){return stage.getScene().getRoot().lookupAll(".button").stream().filter(n->n instanceof Button b && name.equals(b.getText())).map(n->(Button)n).findFirst().orElseThrow(()->new IllegalStateException("Missing button: "+name));}
+    static Button button(Stage stage,String name){stage.getScene().getRoot().applyCss();stage.getScene().getRoot().layout();return stage.getScene().getRoot().lookupAll(".button").stream().filter(n->n instanceof Button b && name.equals(b.getText())).map(n->(Button)n).findFirst().orElseThrow(()->new IllegalStateException("Missing button: "+name));}
     static void navigate(Stage stage,String name){
         stage.getScene().getRoot().lookupAll(".nav-button").stream().filter(n->n instanceof ToggleButton t && name.equals(t.getUserData())).map(n->(ToggleButton)n).findFirst().orElseThrow().fire();
     }

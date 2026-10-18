@@ -22,3 +22,21 @@ DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
 Choose an unused display number and update both places if `:191` is occupied. `-ac` is appropriate only for a temporary isolated local review server; TCP listening is disabled. The JDK must include `java.desktop` for PNG encoding. The harness uses application fixture controls and waits for JavaFX layout pulses before capture; a changed navigation contract or wrong image dimensions fails visibly. The rendering sequence has an overall process deadline; do not treat missing PNGs or an abnormal exit as a pass.
 
 Current platform target for this helper is Linux/X11. Cross-platform application packaging is checked separately by the Gradle distribution tasks and native CI. The helper uses the installed development distribution, not the trimmed packaged runtime.
+
+## Persisted workspace review
+
+`CaptureWorkspaces.java` tests metadata persistence through **two separate application JVM launches** using the real embedded SQLite adapter. It creates a temporary database, saves two synthetic locale workspaces through the interface, exits, then starts a second application against that database. It deletes the temporary database after the run and never opens the normal user catalog.
+
+It asserts workspace and raw-source query/draft isolation, restoration when switching back, offline metadata reopen with zero discovery calls, inspected locale independence from the active locale, invalid/valid rename behavior, cancellation of removal, and removal of only the selected metadata membership. Session queries/drafts are checked across switches; they are not claimed to persist across process restarts. Screenshots include the save dialog, saved catalog, reopened workspace and 200% scaling. Programmatic controls and key events do not replace assistive-technology or physical keyboard review.
+
+After building the installed development distribution and starting an isolated display as above:
+
+```bash
+set -e
+javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/*.java
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureWorkspaces --isolated-display :191 --output build/ui-review/workspaces
+```
+
+Each child has a 45-second failure deadline; the supervisor also enforces a 60-second process limit. A successful run prints `SQLite UI restart contracts OK`; missing screenshots or a nonzero exit fail the review. The final removal is confined to the disposable test database. Finish all application/build changes and run `:bootstrap:installDist` before capturing; do not rebuild distribution jars while the review tool is compiling or running.

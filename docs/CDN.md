@@ -2,6 +2,14 @@
 
 Formalized specification. Implementation and validation status are tracked in GitHub Issues.
 
+## Current implementation — provenance and acquisition boundaries
+
+The discovery/workspace slice preserves exact captured metadata as `SourceDocument`: original bytes (bounded to 1 MiB each), HTTPS provenance URL, capture timestamp and SHA-256 verified against those bytes. SQLite stores shared source bytes plus per-snapshot observations so an existing workspace can reopen metadata without following current publication pointers. A provenance URL stored here is evidence, not an instruction to fetch arbitrary locations. Storage integrity failures remain distinct from upstream missing content or unsupported resolution.
+
+The #17 object-store foundation verifies supplied whole-stream checksum/length and stores local SHA-256-addressed bytes; it does not perform CDN requests or resolve source objects. The #31 synthetic BLTE decoder checks chunk hashes and optional expected EKey/CKey using their appropriate scopes; whole-stream MD5 and BLTE header EKey must not be interchanged. Neither foundation proves that a real payload can currently be located, downloaded, decoded and retained end to end.
+
+Full configuration/encoding/root/index resolution, source-alias mappings, shared network transfer cancellation and older-build selected-content acquisition remain the progression below. Metadata-only offline restoration must not be presented as an archived game build. Known historical metadata does not guarantee that Blizzard still serves its required objects. This documentation update records inspected implementation boundaries, not fresh live-endpoint or real-payload verification.
+
 ## Responsibility and boundaries
 
 Discovery obtains official publication metadata. Product adapters interpret protocol structures and capability support. Transport handles bounded HTTP and range semantics. Acquisition resolves source objects, checks verified local mappings, coalesces requests, verifies payloads and publishes through ObjectRepository. Storage owns filesystem/database durability, retention and physical identity. UI receives immutable progress/results and typed failures, never HTTP response streams.

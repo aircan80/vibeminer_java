@@ -21,6 +21,12 @@ class DiscoveryPresentationModelTest {
         @Override public List<BuildSnapshot> fixtureBuilds(){return List.of(build("wow","DEMO-105",true));}
         @Override public CompletableFuture<List<BuildSnapshot>> refresh(String p,String r){var future=new CompletableFuture<List<BuildSnapshot>>();requests.add(future);return future;}
     }
+    @Test void restorePinsSavedBuildWithoutDiscoveryAndRetiresPendingRefresh(){
+        var service=new Service();var m=new DiscoveryPresentationModel(service,Runnable::run,s->{},false);
+        m.refresh("wow","us");var pending=service.requests.remove();var old=build("wow_forever","OLD",true);
+        m.restore(old);pending.complete(List.of(build("wow","NEW",false)));
+        assertEquals(old,m.state().selected());assertEquals(List.of(old),m.state().builds());assertTrue(m.state().fixtureMode());assertTrue(service.requests.isEmpty());
+    }
     @Test void firstLaunchHasNoInventedSelectedSource(){
         var m=new DiscoveryPresentationModel(new Service(),Runnable::run,s->{},true);
         assertNull(m.state().selected());assertTrue(m.state().builds().isEmpty());
