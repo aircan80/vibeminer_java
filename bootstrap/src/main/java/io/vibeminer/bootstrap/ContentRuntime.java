@@ -10,6 +10,7 @@ import io.vibeminer.application.content.DefaultMetadataReuseService;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseGateway;
 import io.vibeminer.application.content.MetadataReuseService;
+import io.vibeminer.application.encodedsource.EncodedSourceAcquisition;
 import io.vibeminer.application.item.DefaultItemProjectionService;
 import io.vibeminer.application.item.ItemProjectionBackend;
 import io.vibeminer.application.item.ItemProjectionService;
@@ -63,6 +64,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final ExecutorService orchestration;
   private final ExecutorService acquisition;
   private final PrioritySourceScheduler sourceScheduler;
+  private final EncodedSourceAcquisition encodedSources;
   private final ExecutorService itemWorkers;
   private final ItemProjectionService itemProjection;
   private final ExecutorService metadataWorkers;
@@ -90,6 +92,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       ExecutorService orchestration,
       ExecutorService acquisition,
       PrioritySourceScheduler sourceScheduler,
+      EncodedSourceAcquisition encodedSources,
       BootstrapService service,
       FileLookupService lookup,
       OfficialFileLookupGateway lookupGateway,
@@ -123,6 +126,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     this.orchestration = orchestration;
     this.acquisition = acquisition;
     this.sourceScheduler = sourceScheduler;
+    this.encodedSources = encodedSources;
     this.service = service;
     this.lookup = lookup;
     this.lookupGateway = lookupGateway;
@@ -207,6 +211,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     OfficialMetadataLocalVerificationGateway repairLocal = null;
     OfficialBuildOpeningGateway openingGateway = null;
     BuildOpeningService buildOpening = null;
+    EncodedSourceAcquisition encodedSources = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     var sourceScheduler = new PrioritySourceScheduler(acquisition);
@@ -291,6 +296,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               contentClaims,
               sourceScheduler);
       var selectedCatalog = new SqliteSelectedFileCatalog(sharedCatalog, store, storeSession);
+      encodedSources = new EncodedSourceAcquisition(selectedCatalog, acquisition, sourceScheduler);
       var metadataTransport =
           new CdnMetadataTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       repairIssuer =
@@ -326,7 +332,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               retention,
               orchestration,
               acquisition,
-              sourceScheduler);
+              sourceScheduler,
+              encodedSources);
       var itemReader =
           new RetainedItemProjectionSourceReader(
               store, selectedCatalog, selectedGateway, Clock.systemUTC());
@@ -359,6 +366,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           orchestration,
           acquisition,
           sourceScheduler,
+          encodedSources,
           service,
           lookup,
           lookupGateway,
@@ -380,6 +388,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           openingGateway);
     } catch (RuntimeException | Error failure) {
       if (buildOpening != null) buildOpening.close();
+      if (encodedSources != null) encodedSources.close();
       if (openingGateway != null) openingGateway.close();
       orchestration.shutdown();
       sourceScheduler.close();
@@ -459,6 +468,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     service.close();
     lookup.close();
     selectedFiles.close();
+    encodedSources.close();
     // Run accepted wrappers so each can observe cancellation and complete its public result.
     orchestration.shutdown();
     sourceScheduler.close();

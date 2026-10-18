@@ -3,17 +3,18 @@ package io.vibeminer.infrastructure.lookup;
 import static io.vibeminer.application.selectedfile.SelectedFileException.Code.*;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.encodedsource.*;
 import io.vibeminer.application.lookup.FileLookupException;
 import io.vibeminer.application.selectedfile.*;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.selectedfile.*;
 import io.vibeminer.infrastructure.acquisition.*;
 import io.vibeminer.infrastructure.acquisition.CapturedBuildSource;
+import io.vibeminer.infrastructure.encodedsource.OfficialEncodedSourcePublisher;
 import io.vibeminer.protocol.tact.archive.*;
 import io.vibeminer.protocol.tact.blte.*;
 import io.vibeminer.protocol.tact.config.*;
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.time.*;
 import java.util.*;
@@ -31,6 +32,7 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
   private final CdnMetadataTransport metadata;
   private final Clock clock;
   private final LongSupplier nanoClock;
+  private final OfficialEncodedSourcePublisher publisher;
   private final OfficialFileLookupGateway roots;
   private final SelectedFileCandidates candidates;
   private final Map<String, Session<CandidatePlan>> plans = new LinkedHashMap<>();
@@ -60,6 +62,7 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
     this.ranges = Objects.requireNonNull(ranges);
     this.metadata = Objects.requireNonNull(metadata);
     this.clock = Objects.requireNonNull(clock);
+    this.publisher = new OfficialEncodedSourcePublisher(store, ranges, nanoClock);
     roots = new OfficialFileLookupGateway(store, configurations, ranges, clock);
     candidates =
         new SelectedFileCandidates(
@@ -346,88 +349,18 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
   @Override
   public ContentRepresentation acquireEncoded(
       LocatedFilePlan plan, EncodedPublicationObserver observer, CancellationToken cancellation) {
-    var promotionPossible = new AtomicBoolean();
     try {
-      store.publisherStarted();
-      var budget = plan.choice().plan().budgets();
-      var token = stage(budget.maximumPayloadDuration(), cancellation).token();
-      validateLocatedPlan(plan, token);
-      Objects.requireNonNull(observer);
-      var locator = plan.locator();
-      var resource = resource(plan.choice(), locator.resourceKey());
-      if (!resource.uri().toString().equals(locator.resourceUrl()))
-        throw fail(INTEGRITY_FAILURE, "Canonical payload route changed");
-      var observations = new Observations();
-      var prospective = new AtomicReference<ContentRepresentation>();
-      try (var source =
-              new PinnedRangeInputStream(
-                  ranges,
-                  resource,
-                  locator.resourceBytes(),
-                  locator.childOffset(),
-                  locator.childLength(),
-                  budget.maximumPayloadRangeBytes(),
-                  new PinnedRangeInputStream.Limits(
-                      budget.maximumPayloadWireBytes(),
-                      budget.maximumPayloadRequests(),
-                      budget.maximumPayloadDuration()),
-                  token::isCancellationRequested,
-                  observations::accept);
-          var encoded =
-              new EncodedBlteInputStream(
-                  source,
-                  plan.choice().candidate().encodingKey(),
-                  plan.encodedBytes(),
-                  encodedLimits(budget),
-                  token::isCancellationRequested)) {
-        var stored =
-            store.publishVerified(
-                encoded,
-                plan.encodedBytes(),
-                budget.maximumEncodedFileBytes(),
-                completionToken -> {
-                  completionToken.throwIfCancellationRequested();
-                  try {
-                    var proof = encoded.completionProof();
-                    var object =
-                        new StoredObject(
-                            new ObjectDigest(proof.physicalSha256()), proof.encodedBytes());
-                    var receipt = observations.receipt(locator);
-                    var alias =
-                        new VerifiedSourceAlias(
-                            ContentRepresentation.sourceIdentity(proof.encodingKey()),
-                            object,
-                            new SourceVerificationEvidence(
-                                ContentRepresentation.VERIFIER_SEMANTICS,
-                                receipt.actualResourceUrl(),
-                                receipt.observedAt()));
-                    var complete =
-                        new ContentRepresentation(
-                            plan.choice().plan().variant().slot(),
-                            alias,
-                            EncodedScope.valueOf(proof.scope().name()),
-                            receipt);
-                    prospective.set(complete);
-                    promotionPossible.set(true);
-                    observer.verifiedBeforePromotion(complete);
-                  } catch (IOException error) {
-                    throw fail(INTEGRITY_FAILURE, "Encoded completion proof failed", error);
-                  }
-                },
-                token);
-        var complete = prospective.get();
-        if (complete == null || !complete.encoded().object().equals(stored))
-          throw fail(
-              INTEGRITY_FAILURE,
-              "Physical publication differs from complete encoded verifier proof");
-        return complete;
-      }
-    } catch (Exception error) {
+      var token =
+          stage(plan.choice().plan().budgets().maximumPayloadDuration(), cancellation).token();
+      var authorized = authorizeEncodedSource(plan, token);
+      return publisher.acquire(authorized.plan(), observer::verifiedBeforePromotion, token);
+    } catch (EncodedSourceGateway.AcquisitionFailure failure) {
       throw new EncodedAcquisitionFailure(
-          promotionPossible.get()
-              ? EncodedAcquisitionFailure.Publication.UNCERTAIN
-              : EncodedAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED,
-          classify(error));
+          EncodedAcquisitionFailure.Publication.valueOf(failure.publication().name()),
+          classify(failure.failure()));
+    } catch (Exception refused) {
+      throw new EncodedAcquisitionFailure(
+          EncodedAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED, classify(refused));
     }
   }
 
@@ -486,35 +419,22 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
         throw fail(
             INTEGRITY_FAILURE,
             "Retained actual encoded length conflicts with original EN declaration");
-      try (var lease = store.openRead(retained.encoded().object().digest(), token);
-          var encoded =
-              new EncodedBlteInputStream(
-                  lease.stream(),
-                  association.descriptor().actualEncodingKey(),
-                  retained.encoded().object().length(),
-                  encodedLimits(budgets),
-                  token::isCancellationRequested)) {
-        if (!lease.object().equals(retained.encoded().object()))
-          throw fail(INTEGRITY_FAILURE, "Retained encoded physical metadata changed");
-        byte[] buffer = new byte[8192];
-        while (encoded.read(buffer) != -1) token.throwIfCancellationRequested();
-        var completion = encoded.completionProof();
-        if (!completion.physicalSha256().equals(retained.encoded().object().digest().value())
-            || !completion.scope().name().equals(retained.scope().name()))
-          throw fail(INTEGRITY_FAILURE, "Retained encoded verification scope changed");
-      }
+      publisher.inspect(retained, sourceLimits(budgets), token);
       return retained;
     } catch (Exception failure) {
       throw classify(failure);
     }
   }
 
-  private static EncodedBlteInputStream.Limits encodedLimits(SelectedFileBudgets budget) {
-    return new EncodedBlteInputStream.Limits(
+  private static EncodedSourcePlan.Limits sourceLimits(SelectedFileBudgets budget) {
+    return new EncodedSourcePlan.Limits(
         budget.lookup().maximumHeaderBytes(),
         budget.lookup().maximumChunks(),
         budget.maximumEncodedFileBytes(),
-        budget.maximumEncodedFileBytes());
+        budget.maximumPayloadRangeBytes(),
+        budget.maximumPayloadRequests(),
+        budget.maximumPayloadWireBytes(),
+        budget.maximumPayloadDuration());
   }
 
   private CdnResource resource(CandidateChoice choice, String key) {
@@ -571,6 +491,9 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
   private static SelectedFileException classify(Throwable original) {
     var error = unwrap(original);
     if (error instanceof SelectedFileException typed) return typed;
+    if (error instanceof EncodedSourceException source)
+      return fail(
+          SelectedFileException.Code.valueOf(source.code().name()), source.getMessage(), source);
     if (error instanceof CancellationException || error instanceof InterruptedIOException)
       return fail(CANCELLED, "Selected-file operation cancelled", error);
     if (error instanceof AcquisitionException acquisition)
@@ -715,59 +638,6 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
         future.cancel(true);
         throw failure;
       }
-    }
-  }
-
-  private static final class Observations {
-    final MessageDigest digest;
-    long count, bytes;
-    Instant latest;
-
-    Observations() {
-      try {
-        digest = MessageDigest.getInstance("SHA-256");
-      } catch (NoSuchAlgorithmException impossible) {
-        throw new AssertionError(impossible);
-      }
-    }
-
-    void accept(PinnedRangeInputStream.RangeObservation observation) {
-      String canonical =
-          observation.request().uri()
-              + "\n"
-              + observation.request().wholeEncodedLength()
-              + "\n"
-              + observation.request().start()
-              + "\n"
-              + observation.responseBytes()
-              + "\n"
-              + observation.actualSourceUri()
-              + "\n"
-              + observation.receivedAt()
-              + "\n"
-              + observation.rangeSha256()
-              + "\n";
-      digest.update(canonical.getBytes(StandardCharsets.UTF_8));
-      count++;
-      bytes = Math.addExact(bytes, observation.responseBytes());
-      latest = observation.receivedAt();
-    }
-
-    EncodedSourceReceipt receipt(FileLocator locator) {
-      if (count < 1 || bytes != locator.childLength())
-        throw fail(INTEGRITY_FAILURE, "Complete child lacks exact transport observation coverage");
-      return new EncodedSourceReceipt(
-          EncodedSourceReceipt.Kind.valueOf(locator.kind().name()),
-          locator.resourceUrl(),
-          locator.resourceKey(),
-          locator.resourceBytes(),
-          locator.childOffset(),
-          locator.childLength(),
-          latest,
-          count,
-          bytes,
-          HexFormat.of().formatHex(digest.digest()),
-          locator.archiveProof());
     }
   }
 }

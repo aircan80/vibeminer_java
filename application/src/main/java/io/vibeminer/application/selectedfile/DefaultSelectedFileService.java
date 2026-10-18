@@ -4,6 +4,7 @@ import static io.vibeminer.application.selectedfile.SelectedFileException.Code.*
 
 import io.vibeminer.application.*;
 import io.vibeminer.application.catalog.*;
+import io.vibeminer.application.encodedsource.*;
 import io.vibeminer.application.retention.*;
 import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.*;
@@ -21,54 +22,13 @@ public final class DefaultSelectedFileService implements SelectedFileService {
   private final BuildObjectCatalog builds;
   private final SelectedFileCatalog files;
   private final RetentionRepository retention;
-  private final Executor jobs, acquisitions;
+  private final Executor jobs;
+  private final EncodedSourceAcquisition sourceAcquisition;
+  private final boolean ownsSourceAcquisition;
   private final PrioritySourceScheduler scheduler;
   private final Semaphore capacity = new Semaphore(4);
   private final Set<CompletableFuture<?>> active = ConcurrentHashMap.newKeySet();
   private final AtomicBoolean closed = new AtomicBoolean();
-  private final Object coordinator = new Object();
-  private final Map<ContentSlotKey, Slot> slots = new HashMap<>();
-  private final Map<ResolvedSourceIdentity, Flight> flights = new HashMap<>();
-
-  private static final class Slot {
-    final ContentSlotKey key;
-    final String encodingKey;
-    int consumers, workers;
-    boolean cleanup;
-    CanonicalReservation cleanupReservation;
-    RuntimeException cleanupFailure;
-
-    Slot(ContentSlotKey key, String encodingKey) {
-      this.key = key;
-      this.encodingKey = encodingKey;
-    }
-  }
-
-  private static final class Flight {
-    final LocatedFilePlan firstPlan;
-    final CanonicalReservation firstReservation;
-    final CompletableFuture<ContentRepresentation> result = new CompletableFuture<>();
-    final Map<ContentSlotKey, CanonicalReservation> reservations = new LinkedHashMap<>();
-    final Set<Slot> heldSlots = new HashSet<>();
-    final Map<ContentSlotKey, ContentWorkerPermit> permits = new LinkedHashMap<>();
-    int consumers;
-    volatile boolean cancelled;
-    boolean accepting = true;
-    boolean publicationClosing;
-    Thread worker;
-    final SourceDemandRegistration scheduling;
-    volatile CancellationToken schedulerCancellation = CancellationToken.none();
-
-    Flight(
-        LocatedFilePlan plan,
-        CanonicalReservation reservation,
-        PrioritySourceScheduler scheduler,
-        ResolvedSourceIdentity source) {
-      scheduling = scheduler == null ? null : new SourceDemandRegistration(scheduler, source);
-      firstPlan = plan;
-      firstReservation = reservation;
-    }
-  }
 
   public DefaultSelectedFileService(
       SelectedFileGateway gateway,
@@ -88,13 +48,31 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       Executor jobs,
       Executor acquisitions,
       PrioritySourceScheduler scheduler) {
+    this(gateway, builds, files, retention, jobs, acquisitions, scheduler, null);
+  }
+
+  /** The shared encoded core is borrowed; only the runtime may close it. */
+  public DefaultSelectedFileService(
+      SelectedFileGateway gateway,
+      BuildObjectCatalog builds,
+      SelectedFileCatalog files,
+      RetentionRepository retention,
+      Executor jobs,
+      Executor acquisitions,
+      PrioritySourceScheduler scheduler,
+      EncodedSourceAcquisition sharedCore) {
     this.scheduler = scheduler;
+    this.ownsSourceAcquisition = sharedCore == null;
+    this.sourceAcquisition =
+        sharedCore == null
+            ? new EncodedSourceAcquisition(files, acquisitions, scheduler)
+            : sharedCore;
     this.gateway = Objects.requireNonNull(gateway);
     this.builds = Objects.requireNonNull(builds);
     this.files = Objects.requireNonNull(files);
     this.retention = Objects.requireNonNull(retention);
     this.jobs = Objects.requireNonNull(jobs);
-    this.acquisitions = Objects.requireNonNull(acquisitions);
+    Objects.requireNonNull(acquisitions);
   }
 
   @Override
@@ -225,12 +203,13 @@ public final class DefaultSelectedFileService implements SelectedFileService {
           if (plan.reuse().isPresent()
               && (current.isEmpty() || !current.get().equals(plan.reuse().get())))
             throw error(INVALID_PLAN, "Retained representation changed; plan again");
-          var slot = enterSlot(choice);
-          try {
+          try (var consumer =
+              sourceAcquisition.enter(
+                  choice.plan().variant().slot(), choice.candidate().encodingKey())) {
             var scope = scope(choice, length);
             builds.registerSnapshot(choice.plan().variant().build());
             retention.pin(scope, token);
-            var representation = retainBytes(plan, current, slot, length, demand, token);
+            var representation = retainBytes(plan, current, consumer, demand, token);
             token.throwIfCancellationRequested();
             var expected = association(choice, representation);
             var attached = files.attachAssociation(expected, scope, token);
@@ -244,8 +223,6 @@ public final class DefaultSelectedFileService implements SelectedFileService {
               throw error(
                   INTEGRITY_FAILURE, "Association commit changed exact consumer provenance");
             return attached;
-          } finally {
-            leaveSlot(slot);
           }
         });
   }
@@ -253,13 +230,11 @@ public final class DefaultSelectedFileService implements SelectedFileService {
   private ContentRepresentation retainBytes(
       SelectedFilePlan plan,
       Optional<ContentRepresentation> current,
-      Slot slot,
-      long length,
+      EncodedSourceAcquisition.ConsumerLease consumer,
       PrioritySourceScheduler.Demand demand,
       CancellationToken token) {
-    var choice = plan.choice();
     if (current.isPresent()) {
-      var local = inspectAvailable(choice, current.get(), token);
+      var local = inspectAvailable(plan.choice(), current.get(), token);
       if (local.isPresent()) return local.get();
     }
     var located =
@@ -270,66 +245,9 @@ public final class DefaultSelectedFileService implements SelectedFileService {
                         MISSING_LOCAL,
                         "Previously verified bytes are missing; approve a new exact-source payload"
                             + " plan"));
-    var reservation = files.reserve(slot.key, slot.encodingKey, length, token);
-    checkReservation(reservation, slot.key, slot.encodingKey, length);
-    if (reservation.status() == CanonicalReservation.Status.RETAINED
-        && reservation.representation().isPresent()) {
-      var local = inspectAvailable(choice, reservation.representation().get(), token);
-      if (local.isPresent()) return local.get();
-    }
-    FlightJoin joined;
-    try {
-      joined = join(slot, reservation, located, demand);
-    } catch (RuntimeException rejected) {
-      scheduleUnownedReservationCleanup(slot, reservation, rejected);
-      throw rejected;
-    }
-    try {
-      await(joined.result(), token);
-    } catch (RuntimeException failure) {
-      if (!joined.enrolled()) scheduleUnownedReservationCleanup(slot, reservation, failure);
-      throw failure;
-    } finally {
-      if (joined.scheduling() != null) joined.scheduling().close();
-      if (joined.enrolled()) detach(joined.flight());
-    }
-    if (!joined.enrolled()) {
-      // Publication froze its fanout before this consumer arrived. Its result is
-      // completed only after worker retirement; adopt the durable original receipt
-      // without starting another source worker or mutating the frozen fanout.
-      try {
-        var adopted = files.reserve(slot.key, slot.encodingKey, length, token);
-        checkReservation(adopted, slot.key, slot.encodingKey, length);
-        if (!adopted.token().equals(reservation.token()))
-          throw error(INTEGRITY_FAILURE, "Retirement handoff changed reservation token");
-        if (adopted.status() != CanonicalReservation.Status.RETAINED)
-          throw error(RECOVERY_REQUIRED, "Retired publication has no canonical receipt");
-        return inspect(choice, adopted.representation().orElseThrow(), token);
-      } catch (RuntimeException failure) {
-        scheduleUnownedReservationCleanup(slot, reservation, failure);
-        throw failure;
-      }
-    }
-    var completed =
-        files
-            .lookup(slot.key, token)
-            .orElseThrow(() -> error(RECOVERY_REQUIRED, "Canonical publication missing"));
-    checkReservation(completed, slot.key, slot.encodingKey, length);
-    if (completed.status() != CanonicalReservation.Status.RETAINED)
-      throw error(RECOVERY_REQUIRED, "Publication has not been reconciled");
-    return completed.representation().orElseThrow();
-  }
-
-  private void scheduleUnownedReservationCleanup(
-      Slot slot, CanonicalReservation reservation, RuntimeException failure) {
-    synchronized (coordinator) {
-      // Defer cleanup until the final orchestration consumer retires. Several
-      // canceled waiters can all reach here before any one leaves its slot.
-      if (slot.workers == 0) {
-        slot.cleanupReservation = reservation;
-        slot.cleanupFailure = failure;
-      }
-    }
+    var authorized = gateway.authorizeEncodedSource(located, token);
+    return sourceAcquisition.acquire(
+        consumer, authorized.plan(), authorized.gateway(), demand, token);
   }
 
   private Optional<ContentRepresentation> inspectAvailable(
@@ -548,386 +466,6 @@ public final class DefaultSelectedFileService implements SelectedFileService {
                 OptionalLong.empty())));
   }
 
-  private static void checkReservation(
-      CanonicalReservation reservation, ContentSlotKey slot, String key, long length) {
-    if (!reservation.slot().equals(slot)
-        || !reservation.actualEncodingKey().equals(key)
-        || reservation.encodedBytes() != length)
-      throw error(INTEGRITY_FAILURE, "Reservation changed content slot, actual encoding or size");
-  }
-
-  private Slot enterSlot(CandidateChoice choice) {
-    synchronized (coordinator) {
-      var key = choice.plan().variant().slot();
-      var slot = slots.get(key);
-      if (slot != null && slot.cleanup)
-        throw error(BUSY, "Unpublished reservation cleanup is still active");
-      if (slot != null && !slot.encodingKey.equals(choice.candidate().encodingKey()))
-        throw error(BUSY, "Another candidate worker has not retired");
-      if (slot == null) {
-        slot = new Slot(key, choice.candidate().encodingKey());
-        slots.put(key, slot);
-      }
-      slot.consumers++;
-      return slot;
-    }
-  }
-
-  private void leaveSlot(Slot slot) {
-    CanonicalReservation cleanupReservation;
-    RuntimeException cleanupFailure;
-    synchronized (coordinator) {
-      slot.consumers--;
-      if (slot.consumers != 0 || slot.workers != 0 || slot.cleanupReservation == null) {
-        removeSlot(slot);
-        return;
-      }
-      slot.cleanup = true;
-      cleanupReservation = slot.cleanupReservation;
-      cleanupFailure = slot.cleanupFailure;
-    }
-    try {
-      // The repository refuses prospective, retained or recovery proof. Actual
-      // source workers are independently protected by their slot worker holds.
-      var permit = files.claimWorker(cleanupReservation.token(), CancellationToken.none());
-      files.finishWorker(
-          permit, ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED, CancellationToken.none());
-    } catch (RuntimeException failure) {
-      cleanupFailure.addSuppressed(failure);
-    } finally {
-      synchronized (coordinator) {
-        slot.cleanup = false;
-        removeSlot(slot);
-      }
-    }
-  }
-
-  private void removeSlot(Slot slot) {
-    if (slot.consumers == 0 && slot.workers == 0) slots.remove(slot.key, slot);
-  }
-
-  private record FlightJoin(
-      Flight flight,
-      boolean enrolled,
-      SourceDemandRegistration.Subscription scheduling,
-      CompletableFuture<ContentRepresentation> result) {}
-
-  private FlightJoin join(
-      Slot slot,
-      CanonicalReservation reservation,
-      LocatedFilePlan plan,
-      PrioritySourceScheduler.Demand demand) {
-    Flight flight;
-    boolean start = false;
-    var source = ContentRepresentation.encodedIdentity(slot.encodingKey);
-    synchronized (coordinator) {
-      if (closed.get()) throw error(CLOSED, "Selected-file service closed");
-      flight = flights.get(source);
-      if (flight != null && flight.cancelled)
-        throw error(BUSY, "Previous source worker has not retired");
-      if (flight != null && !flight.accepting) {
-        if (!flight.publicationClosing) throw error(BUSY, "Previous source worker has not retired");
-        if (flight.firstPlan.encodedBytes() != plan.encodedBytes())
-          throw error(INTEGRITY_FAILURE, "Shared EKey length conflict");
-        // The bounded orchestration jobs already account for these waiters. They
-        // own no source subscription and cannot cancel or extend frozen publication.
-        return new FlightJoin(flight, false, null, flight.result);
-      }
-      if (flight == null) {
-        if (flights.size() >= (scheduler == null ? 4 : 68))
-          throw error(CAPACITY_EXCEEDED, "Source worker capacity exceeded");
-        flight = new Flight(plan, reservation, scheduler, source);
-        flights.put(source, flight);
-        start = true;
-      } else if (flight.firstPlan.encodedBytes() != plan.encodedBytes())
-        throw error(INTEGRITY_FAILURE, "Shared EKey length conflict");
-      var existingReservation = flight.reservations.get(slot.key);
-      if (existingReservation != null && !existingReservation.token().equals(reservation.token()))
-        throw error(INTEGRITY_FAILURE, "Shared content slot changed its reservation token");
-      if (!flight.reservations.containsKey(slot.key) && flight.reservations.size() >= 32)
-        throw error(CAPACITY_EXCEEDED, "Shared source has reached its bounded content-slot fanout");
-      if (!start && existingReservation == null) {
-        var permit = files.claimWorker(reservation.token(), CancellationToken.none());
-        flight.permits.put(slot.key, permit);
-      }
-      flight.consumers++;
-      flight.reservations.putIfAbsent(slot.key, reservation);
-      if (flight.heldSlots.add(slot)) slot.workers++;
-    }
-    var shared = flight;
-    var consumerResult = new CompletableFuture<ContentRepresentation>();
-    shared.result.whenComplete(
-        (value, failure) -> {
-          if (failure == null) consumerResult.complete(value);
-          else consumerResult.completeExceptionally(failure);
-        });
-    SourceDemandRegistration.Subscription subscription =
-        shared.scheduling == null
-            ? null
-            : shared.scheduling.register(demand, consumerResult::completeExceptionally);
-    if (start && shared.scheduling != null) {
-      shared.scheduling.start(
-          cancellation -> {
-            shared.schedulerCancellation = cancellation;
-            runSource(source, shared);
-          },
-          rejected -> retireUnstarted(source, shared, rejected));
-    } else if (start) {
-      try {
-        acquisitions.execute(() -> runSource(source, shared));
-      } catch (RuntimeException rejected) {
-        RuntimeException failure =
-            new SelectedFileException(
-                CAPACITY_EXCEEDED, "Encoded source executor rejected work", rejected);
-        try {
-          claimFirst(shared);
-        } catch (RuntimeException denied) {
-          failure.addSuppressed(denied);
-        }
-        finish(source, shared, null, failure, true);
-      }
-    }
-    return new FlightJoin(shared, true, subscription, consumerResult);
-  }
-
-  private void retireUnstarted(ResolvedSourceIdentity source, Flight shared, Throwable rejected) {
-    RuntimeException failure = classify(rejected);
-    try {
-      claimFirst(shared);
-    } catch (RuntimeException denied) {
-      failure.addSuppressed(denied);
-    }
-    finish(source, shared, null, failure, true);
-  }
-
-  private void detach(Flight flight) {
-    synchronized (coordinator) {
-      if (--flight.consumers == 0 && !flight.result.isDone()) {
-        flight.cancelled = true;
-        if (flight.worker != null) flight.worker.interrupt();
-      }
-    }
-  }
-
-  private ContentWorkerPermit claimFirst(Flight flight) {
-    synchronized (coordinator) {
-      var slot = flight.firstReservation.slot();
-      if (!flight.permits.containsKey(slot))
-        flight.permits.put(
-            slot, files.claimWorker(flight.firstReservation.token(), CancellationToken.none()));
-      return flight.permits.get(slot);
-    }
-  }
-
-  private void freezeAndRecord(
-      Flight flight, ContentRepresentation prospective, CancellationToken token) {
-    List<Map.Entry<ContentSlotKey, ContentWorkerPermit>> owned;
-    synchronized (coordinator) {
-      flight.accepting = false;
-      flight.publicationClosing = true;
-      owned = List.copyOf(flight.permits.entrySet());
-    }
-    for (var entry : owned) {
-      var rebound =
-          new ContentRepresentation(
-              entry.getKey(),
-              prospective.encoded(),
-              prospective.scope(),
-              prospective.sourceReceipt());
-      files.markPublishing(entry.getValue(), token);
-      files.recordVerifiedCompletion(entry.getValue(), rebound, token);
-    }
-  }
-
-  private void runSource(ResolvedSourceIdentity source, Flight flight) {
-    synchronized (coordinator) {
-      flight.worker = Thread.currentThread();
-    }
-    CancellationToken token =
-        () ->
-            flight.cancelled
-                || closed.get()
-                || Thread.currentThread().isInterrupted()
-                || flight.schedulerCancellation.isCancellationRequested();
-    ContentRepresentation ready = null;
-    Throwable failure = null;
-    boolean enteredGateway = false;
-    var proof = new AtomicReference<ContentRepresentation>();
-    try {
-      var firstPermit = claimFirst(flight);
-      token.throwIfCancellationRequested();
-      // A consumer may have reserved while an older flight was publishing, then joined
-      // only after that flight retired. Re-read the durable actual EKey under this new
-      // source-worker ownership before deciding that any payload is still missing.
-      var refreshed =
-          files.reserve(
-              flight.firstReservation.slot(),
-              flight.firstReservation.actualEncodingKey(),
-              flight.firstReservation.encodedBytes(),
-              token);
-      checkReservation(
-          refreshed,
-          flight.firstReservation.slot(),
-          flight.firstReservation.actualEncodingKey(),
-          flight.firstReservation.encodedBytes());
-      if (!refreshed.token().equals(flight.firstReservation.token()))
-        throw error(INTEGRITY_FAILURE, "Source worker reservation token changed");
-      files.markPublishing(firstPermit, token);
-      Optional<ContentRepresentation> local = Optional.empty();
-      if (refreshed.representation().isPresent())
-        local =
-            inspectAvailable(flight.firstPlan.choice(), refreshed.representation().get(), token);
-      ContentRepresentation acquired;
-      if (local.isPresent()) acquired = local.get();
-      else {
-        enteredGateway = true;
-        acquired =
-            gateway.acquireEncoded(
-                flight.firstPlan,
-                prospective -> {
-                  checkRepresentation(flight.firstPlan, prospective);
-                  if (!proof.compareAndSet(null, prospective))
-                    throw error(INTEGRITY_FAILURE, "Completion gate invoked twice");
-                  freezeAndRecord(flight, prospective, token);
-                },
-                token);
-        checkRepresentation(flight.firstPlan, acquired);
-        if (proof.get() == null || !proof.get().equals(acquired))
-          throw error(INTEGRITY_FAILURE, "Publication lacks its exact verified completion receipt");
-      }
-      if (local.isPresent()) freezeAndRecord(flight, acquired, token);
-      List<CanonicalReservation> reservations;
-      synchronized (coordinator) {
-        reservations = List.copyOf(flight.reservations.values());
-      }
-      ready = files.completePublication(firstPermit, acquired, CancellationToken.none());
-      checkSameEncoded(acquired, ready);
-      if (!ready.slot().equals(flight.firstReservation.slot()))
-        throw error(INTEGRITY_FAILURE, "Canonical completion changed the content slot");
-      for (var reservation : reservations) {
-        if (reservation.token().equals(flight.firstReservation.token())) continue;
-        var rebound =
-            new ContentRepresentation(
-                reservation.slot(), ready.encoded(), ready.scope(), ready.sourceReceipt());
-        var committed =
-            files.completePublication(
-                flight.permits.get(reservation.slot()), rebound, CancellationToken.none());
-        checkSameEncoded(ready, committed);
-        if (!committed.slot().equals(reservation.slot()))
-          throw error(INTEGRITY_FAILURE, "Shared completion changed its rebound content slot");
-      }
-    } catch (Throwable problem) {
-      failure = problem;
-    } finally {
-      boolean unpublished =
-          !enteredGateway
-              || failure instanceof EncodedAcquisitionFailure scoped
-                  && scoped.publication()
-                      == EncodedAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED
-                  && proof.get() == null;
-      finish(source, flight, ready, failure, unpublished);
-    }
-  }
-
-  private void finish(
-      ResolvedSourceIdentity source,
-      Flight flight,
-      ContentRepresentation ready,
-      Throwable failure,
-      boolean unpublished) {
-    List<CanonicalReservation> reservations;
-    synchronized (coordinator) {
-      flight.accepting = false;
-      flight.publicationClosing = failure == null && flight.publicationClosing;
-      reservations = List.copyOf(flight.reservations.values());
-    }
-    var outcome =
-        failure == null
-            ? ContentWorkerFinishOutcome.RETAINED
-            : unpublished
-                ? ContentWorkerFinishOutcome.CONCLUSIVELY_UNPUBLISHED
-                : ContentWorkerFinishOutcome.UNCERTAIN;
-    for (var permit : List.copyOf(flight.permits.values())) {
-      try {
-        files.finishWorker(permit, outcome, CancellationToken.none());
-      } catch (RuntimeException cleanup) {
-        if (failure == null) failure = cleanup;
-        else failure.addSuppressed(cleanup);
-      }
-    }
-    var finalFailure = failure;
-    Runnable complete =
-        () -> {
-          synchronized (coordinator) {
-            flights.remove(source, flight);
-            flight.worker = null;
-            for (var slot : flight.heldSlots) {
-              slot.workers--;
-              removeSlot(slot);
-            }
-          }
-          if (flight.scheduling != null) flight.scheduling.close();
-          if (finalFailure == null) flight.result.complete(ready);
-          else flight.result.completeExceptionally(classify(finalFailure));
-        };
-    if (flight.scheduling == null) complete.run();
-    else flight.scheduling.retirement().whenComplete((ignored, retiredFailure) -> complete.run());
-  }
-
-  private static void checkRepresentation(LocatedFilePlan plan, ContentRepresentation value) {
-    if (value == null)
-      throw error(INTEGRITY_FAILURE, "Source verifier returned no complete representation");
-    if (!value.slot().equals(plan.choice().plan().variant().slot())
-        || !value
-            .encoded()
-            .source()
-            .equals(ContentRepresentation.encodedIdentity(plan.choice().candidate().encodingKey()))
-        || value.encoded().object().length() != plan.encodedBytes())
-      throw error(INTEGRITY_FAILURE, "Verified representation changed selected source or size");
-    var observed = value.sourceReceipt();
-    var locator = plan.locator();
-    if (!observed.actualResourceUrl().equals(locator.resourceUrl())
-        || !observed.resourceKey().equals(locator.resourceKey())
-        || observed.parentWholeBytes() != locator.resourceBytes()
-        || observed.childOffset() != locator.childOffset()
-        || observed.childEncodedBytes() != locator.childLength()
-        || !observed.archiveMapping().equals(locator.archiveProof())
-        || (observed.kind() == EncodedSourceReceipt.Kind.LOOSE)
-            != (locator.kind() == FileLocator.Kind.LOOSE)
-        || observed.payloadRequestCount() > plan.choice().plan().budgets().maximumPayloadRequests()
-        || observed.payloadResponseBytes()
-            > plan.choice().plan().budgets().maximumPayloadWireBytes())
-      throw error(
-          INTEGRITY_FAILURE,
-          "Actual publication receipt disagrees with approved locator or budget");
-  }
-
-  private static void checkSameEncoded(
-      ContentRepresentation expected, ContentRepresentation actual) {
-    if (actual == null) throw error(INTEGRITY_FAILURE, "Canonical publication returned no receipt");
-    if (!expected.encoded().source().equals(actual.encoded().source())
-        || !expected.encoded().object().equals(actual.encoded().object())
-        || expected.scope() != actual.scope())
-      throw error(INTEGRITY_FAILURE, "Canonical publication changed encoded identity");
-  }
-
-  private static <T> T await(CompletableFuture<T> work, CancellationToken token) {
-    try {
-      while (true) {
-        token.throwIfCancellationRequested();
-        try {
-          return work.get(100, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException pending) {
-        }
-      }
-    } catch (InterruptedException cancelled) {
-      Thread.currentThread().interrupt();
-      throw new CancellationException("Selected-file consumer cancelled");
-    } catch (ExecutionException failure) {
-      throw classify(failure.getCause());
-    }
-  }
-
   private <T> CompletionStage<T> submit(Function<CancellationToken, T> action) {
     if (closed.get())
       return CompletableFuture.failedFuture(error(CLOSED, "Selected-file service closed"));
@@ -977,18 +515,18 @@ public final class DefaultSelectedFileService implements SelectedFileService {
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
     active.forEach(future -> future.cancel(true));
-    synchronized (coordinator) {
-      for (var flight : flights.values()) {
-        flight.cancelled = true;
-        if (flight.worker != null) flight.worker.interrupt();
-      }
-    }
+    if (ownsSourceAcquisition) sourceAcquisition.close();
   }
 
   private static RuntimeException classify(Throwable problem) {
     while ((problem instanceof ExecutionException || problem instanceof CompletionException)
         && problem.getCause() != null) problem = problem.getCause();
     if (problem instanceof SelectedFileException scoped) return scoped;
+    if (problem instanceof EncodedSourceException source)
+      return new SelectedFileException(
+          SelectedFileException.Code.valueOf(source.code().name()), source.getMessage(), source);
+    if (problem instanceof EncodedSourceGateway.AcquisitionFailure source)
+      return classify(source.failure());
     if (problem instanceof PrioritySourceException scheduling)
       return switch (scheduling.code()) {
         case BULK_DISABLED -> new CancellationException("Bulk generation disabled");

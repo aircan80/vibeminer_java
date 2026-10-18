@@ -3,8 +3,10 @@ package io.vibeminer.bootstrap;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.encodedsource.*;
 import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Path;
@@ -17,6 +19,25 @@ import org.junit.jupiter.api.io.TempDir;
 
 class PrioritySourceRuntimeLifecycleTest {
   @TempDir Path directory;
+
+  @Test
+  void selectedFacadeBorrowsTheRuntimeOwnedEncodedSourceCore() throws Exception {
+    var client = new MetadataRuntimeTest.Client();
+    var runtime = ContentRuntime.open(directory, () -> client);
+    var core = field(runtime, "encodedSources", EncodedSourceAcquisition.class);
+    var selected = runtime.selectedFiles();
+    assertSame(core, field(selected, "sourceAcquisition", EncodedSourceAcquisition.class));
+    selected.close();
+    // Closing one consumer facade cannot disable the core used by another source consumer.
+    try (var consumer = core.enter(new ContentSlotKey("wow", "1".repeat(32)), "2".repeat(32))) {
+      assertNotNull(consumer);
+    }
+    runtime.close();
+    assertThrows(
+        EncodedSourceException.class,
+        () -> core.enter(new ContentSlotKey("wow", "1".repeat(32)), "2".repeat(32)));
+    assertEquals(0, client.requests.get());
+  }
 
   @Test
   void closeKeepsActualLeaseAndDrainsAcceptedButNotStartedSourceWrappers() throws Exception {

@@ -11,35 +11,8 @@ import java.util.UUID;
 /**
  * Durable canonical representation policy. Metadata alone never proves current local availability.
  */
-public interface SelectedFileCatalog {
-  Optional<CanonicalReservation> lookup(ContentSlotKey slot, CancellationToken cancellation);
-
-  CanonicalReservation reserve(
-      ContentSlotKey slot, String encodingKey, long encodedBytes, CancellationToken cancellation);
-
-  /** Legacy operation: any active nonce must cause a fail-closed rejection. */
-  void markPublishing(UUID reservationToken, CancellationToken cancellation);
-
-  /**
-   * Called from the completing verifier gate BEFORE CAS promotion; persists prospective SHA/proof.
-   */
-  void recordVerifiedCompletion(
-      UUID reservationToken, ContentRepresentation representation, CancellationToken cancellation);
-
-  /**
-   * Revalidates physical bytes and atomically commits canonical publication and the encoded alias.
-   */
-  ContentRepresentation completePublication(
-      UUID reservationToken, ContentRepresentation representation, CancellationToken cancellation);
-
-  /**
-   * Only the retired source worker may release a conclusively unpublished attempt without proof.
-   */
-  void releaseUnpublished(UUID reservationToken, CancellationToken cancellation);
-
-  /** Keep the actual candidate exclusive whenever publication is uncertain. */
-  void markUncertain(UUID reservationToken, CancellationToken cancellation);
-
+public interface SelectedFileCatalog
+    extends io.vibeminer.application.encodedsource.EncodedSourceCatalog {
   /**
    * Per surviving consumer, atomically attach typed association, exact membership and dependency
    * pin.
