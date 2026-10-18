@@ -1,0 +1,36 @@
+# Java / Gradle build outputs
+.gradle/
+**/build/
+out/
+*.class
+hs_err_pid*
+replay_pid*
+
+# Local IDE and operating-system files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# App-owned downloaded data and development caches
+/cache/
+/archives/
+/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Local credentials and private configuration
+.env
+.env.*
+!.env.example
+.aws/
+
+# Crash dumps
+core
+core.*
