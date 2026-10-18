@@ -360,6 +360,17 @@ public final class SqliteBuildLibraryRepository
 
   private Optional<BuildLibraryRegistration> registration(
       Connection c, UUID id, CancellationToken token) throws SQLException {
+    return registration(c, id, token, false);
+  }
+
+  /** Body-free validation of a completed import marker; never authenticates source bytes. */
+  Optional<BuildLibraryRegistration> registrationMetadata(Connection c, UUID id)
+      throws SQLException {
+    return registration(c, id, CancellationToken.none(), true);
+  }
+
+  private Optional<BuildLibraryRegistration> registration(
+      Connection c, UUID id, CancellationToken token, boolean metadataOnly) throws SQLException {
     try (var q =
         c.prepareStatement(
             "SELECT kind,check_id,recorded_at,group_count,record_sha256 FROM"
@@ -377,17 +388,25 @@ public final class SqliteBuildLibraryRepository
             throw fail(CORRUPT_LIBRARY, "Registration check completion differs");
           ticket = Optional.of(check.ticket());
         }
-        var event =
-            history
-                .readEvent(c, id, token)
-                .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Registered observation is missing"));
+        List<BuildLibraryReference> references;
+        if (metadataOnly) {
+          var header =
+              history
+                  .header(c, id)
+                  .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Registered observation is missing"));
+          references =
+              DiscoveryHistoryRecords.libraryReferences(
+                  header.record(), header.summary().sequence());
+        } else {
+          var event =
+              history
+                  .readEvent(c, id, token)
+                  .orElseThrow(() -> fail(CORRUPT_LIBRARY, "Registered observation is missing"));
+          references = BuildLibraryReference.from(event, eventSequence(c, id));
+        }
         var value =
             new BuildLibraryRegistration(
-                id,
-                kind,
-                ticket,
-                Instant.parse(rows.getString(3)),
-                BuildLibraryReference.from(event, eventSequence(c, id)));
+                id, kind, ticket, Instant.parse(rows.getString(3)), references);
         var groups = uniqueGroups(value.references());
         if (groups.size() != rows.getInt(4)
             || !registrationHash(value, groups).equals(rows.getString(5)))
