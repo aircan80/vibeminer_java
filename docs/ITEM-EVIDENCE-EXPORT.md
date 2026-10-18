@@ -1,6 +1,9 @@
 # One selected Item evidence export
 
-**Status: approved contract tracked in [#91](https://github.com/aircan80/vibeminer/issues/91), child of #25/#9. Application-contract TDD has started after #83/#89 qualification and independently verified alpha.6 assets; export is not yet delivered.** This does not close broader export, relation or historical-build stories. The existing [physical Item](ITEM-PROJECTION.md), [paired-name](ITEM-NAMES.md) and [search](ITEM-NAME-SEARCH.md) contracts remain the capability boundaries.
+**Status: [#91](https://github.com/aircan80/vibeminer/issues/91) remains open; contracts, backend, encoder/writer, application service and isolated UI model are accepted source, while runtime wiring, native controls and workflow twelve are in progress.** Published alpha.6 (`ee6598f`) contains no export capability. The existing [physical Item](ITEM-PROJECTION.md), [paired-name](ITEM-NAMES.md) and [search](ITEM-NAME-SEARCH.md) contracts remain unchanged; broader export, relation and historical-build stories remain open.
+
+Accepted scope includes six contract cases, eight real SQLite/CAS snapshot cases, versioned encoder/public schema, independent schema/integer oracle, atomic writer and twelve new service-lifecycle cases. Immutable `f2ef8d2` passed 1,376 clean Java cases and distribution assembly; fresh independent oracle checks passed 269 document cases and 259 mutations. The later `2f5e270` presentation model separately passed 16 cases; do not add that to infer a new full-suite total. CI hook `5f1150f` starts a pending four-platform/eleven-workflow/oracle gate, not a completed export runtime/native acceptance. No export delivery or issue closure is claimed.
+
 
 Export exactly one inspected physical Item record, with optional explicitly selected already prepared name context. The user receives a portable, self-describing finding without hidden acquisition or expanded coverage. This is JSON reproducibility metadata and commitments; it cannot authenticate itself as Blizzard evidence without the underlying source/proof context.
 
