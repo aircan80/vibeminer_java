@@ -167,6 +167,13 @@ class LazySelectedFileServiceTest {
             List.of(firstJob, secondJob));
     var invoked = new CountDownLatch(2);
     var firstInvoked = new CountDownLatch(1);
+    var releaseInitialization = new CountDownLatch(1);
+    var releaseFirstReturn = new CountDownLatch(1);
+    var firstCancelled = new CountDownLatch(1);
+    firstJob.whenComplete(
+        (value, failure) -> {
+          if (firstJob.isCancelled()) firstCancelled.countDown();
+        });
     var closed = new AtomicInteger();
     var delegate =
         (SelectedFileService)
@@ -180,37 +187,49 @@ class LazySelectedFileServiceTest {
                   assertSame(budgets, args[1]);
                   var job = jobs.remove();
                   invoked.countDown();
-                  firstInvoked.countDown();
+                  if (job == firstJob) {
+                    firstInvoked.countDown();
+                    await(releaseFirstReturn);
+                  }
                   return job;
                 });
     var owner =
         new LazyBootstrapService(
-            () ->
-                new LazyBootstrapService.Resources() {
-                  public BootstrapService service() {
-                    throw new AssertionError("No install action");
-                  }
+            () -> {
+              await(releaseInitialization);
+              return new LazyBootstrapService.Resources() {
+                public BootstrapService service() {
+                  throw new AssertionError("No install action");
+                }
 
-                  public SelectedFileService selectedFiles() {
-                    return delegate;
-                  }
+                public SelectedFileService selectedFiles() {
+                  return delegate;
+                }
 
-                  public void close() {
-                    closed.incrementAndGet();
-                  }
-                });
+                public void close() {
+                  closed.incrementAndGet();
+                }
+              };
+            });
     var facade = new LazySelectedFileService(owner);
     try {
       var first = facade.inspectOffline(variant, budgets).toCompletableFuture();
+      releaseInitialization.countDown();
       assertTrue(firstInvoked.await(2, TimeUnit.SECONDS));
       var second = facade.inspectOffline(variant, budgets).toCompletableFuture();
       assertTrue(invoked.await(2, TimeUnit.SECONDS));
       assertTrue(first.cancel(true));
-      assertTrue(firstJob.isCancelled());
+      assertFalse(firstJob.isCancelled(), "Delegate is still held before returning its future");
+      assertFalse(secondJob.isCancelled());
+      releaseFirstReturn.countDown();
+      assertTrue(firstCancelled.await(2, TimeUnit.SECONDS));
+      assertTrue(firstJob.isCancelled(), "Cancellation must reach the subsequently bound delegate");
       assertFalse(secondJob.isCancelled());
       secondJob.complete(null);
       assertNull(second.get(2, TimeUnit.SECONDS));
     } finally {
+      releaseInitialization.countDown();
+      releaseFirstReturn.countDown();
       facade.close();
     }
     assertEquals(1, closed.get());
