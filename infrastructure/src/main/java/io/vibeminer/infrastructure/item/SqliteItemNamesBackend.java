@@ -458,6 +458,12 @@ public final class SqliteItemNamesBackend implements ItemNamesBackend {
     return joined;
   }
 
+  /** Caller must already hold source leases and the exact verified context transaction. */
+  Optional<NamedItemRow> exactJoined(Connection connection, PreparedItemNames pair, long recordId)
+      throws SQLException {
+    return joined(connection, pair, recordId, 1, true).stream().findFirst();
+  }
+
   private List<NamedItemRow> joined(
       Connection c, PreparedItemNames pair, long id, int limit, boolean exact) throws SQLException {
     var result = new ArrayList<NamedItemRow>();
