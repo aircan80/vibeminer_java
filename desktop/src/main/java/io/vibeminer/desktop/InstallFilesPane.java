@@ -27,8 +27,11 @@ final class InstallFilesPane extends VBox {
   private String selectedKey;
   private MetadataReusePane metadataReusePane;
   private MetadataRepairPane metadataRepairPane;
+  private MetadataRepairPresentationModel repairModel;
+  private Button ordinaryDownload;
 
   void refreshMetadataRepairState() {
+    refreshOrdinaryDownload();
     if (metadataRepairPane != null) metadataRepairPane.refreshState();
   }
 
@@ -67,6 +70,7 @@ final class InstallFilesPane extends VBox {
       MetadataReusePresentationModel reuseModel,
       MetadataRepairPresentationModel repairModel) {
     super(10);
+    this.repairModel = repairModel;
     this.model = model;
     this.state = model.state();
     this.selectedKey = selectedKey;
@@ -175,6 +179,13 @@ final class InstallFilesPane extends VBox {
     }
   }
 
+  private void refreshOrdinaryDownload() {
+    if (ordinaryDownload != null)
+      ordinaryDownload.setDisable(
+          FileLookupPane.ordinaryDownloadDisabled(
+              model.state().busy(), repairModel == null ? null : repairModel.state()));
+  }
+
   private String failureHeading() {
     if (state.claimCode() != null) return MetadataClaimMessages.heading(state.claimCode());
     if (state.stage() == InstallPresentationModel.Stage.CANCELLED) return "Request cancelled";
@@ -242,6 +253,8 @@ final class InstallFilesPane extends VBox {
                 : "Download list",
             model::download,
             "primary");
+    ordinaryDownload = download;
+    refreshOrdinaryDownload();
     download.setId("install-download");
     download.setAccessibleText(
         "Download the install-list object: "

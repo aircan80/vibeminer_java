@@ -28,6 +28,8 @@ final class FileLookupPane extends VBox {
   private final SelectedFileRetentionPresentationModel retentionModel;
   private MetadataReusePane metadataReusePane;
   private MetadataRepairPane metadataRepairPane;
+  private MetadataRepairPresentationModel repairModel;
+  private Runnable refreshOrdinaryDownload = () -> {};
 
   FileLookupPane(
       FileLookupPresentationModel model,
@@ -85,6 +87,7 @@ final class FileLookupPane extends VBox {
       MetadataReusePresentationModel metadataReuseModel,
       MetadataRepairPresentationModel metadataRepairModel) {
     super(10);
+    this.repairModel = metadataRepairModel;
     this.retentionModel = retentionModel;
     this.selectedModel = selectedModel;
 
@@ -155,7 +158,17 @@ final class FileLookupPane extends VBox {
   }
 
   void refreshMetadataRepairState() {
+    refreshOrdinaryDownload.run();
     if (metadataRepairPane != null) metadataRepairPane.refreshState();
+  }
+
+  static boolean ordinaryDownloadDisabled(
+      boolean otherwiseDisabled, MetadataRepairPresentationModel.State repair) {
+    return otherwiseDisabled
+        || repair != null
+            && repair.publication()
+                == io.vibeminer.application.content.MetadataAcquisitionFailure.Publication
+                    .UNCERTAIN;
   }
 
   void refreshMetadataReuseState() {
@@ -311,7 +324,8 @@ final class FileLookupPane extends VBox {
                   && candidate.encodedBytes() > 0
                   && candidate.encodedBytes() <= plan.budgets().maximumRootEncodedBytes()
                   && plan.decodedBytes() <= plan.budgets().maximumRootDecodedBytes();
-          download.setDisable(!allowed);
+          download.setDisable(
+              ordinaryDownloadDisabled(!allowed, repairModel == null ? null : repairModel.state()));
           cost.setText(
               candidate == null
                   ? "Select a candidate to review its transfer bound."
@@ -323,6 +337,7 @@ final class FileLookupPane extends VBox {
                           + bytes(plan.decodedBytes())
                           + (allowed ? "" : " · exceeds supported root limits"));
         };
+    refreshOrdinaryDownload = update;
     candidates
         .valueProperty()
         .addListener(
