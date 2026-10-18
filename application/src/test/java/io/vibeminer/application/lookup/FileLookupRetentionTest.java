@@ -363,34 +363,119 @@ class FileLookupRetentionTest {
     }
   }
 
+  static final class CountingStore implements ObjectStore {
+    final java.util.concurrent.atomic.AtomicInteger verifications =
+        new java.util.concurrent.atomic.AtomicInteger();
+
+    public StoredObject publish(
+        java.io.InputStream input,
+        ExpectedObjectChecksum expected,
+        long maximum,
+        CancellationToken token) {
+      return STORE.publish(input, expected, maximum, token);
+    }
+
+    public StoredObject publishVerified(
+        java.io.InputStream input,
+        long length,
+        long maximum,
+        CompletionVerification completion,
+        CancellationToken token) {
+      return STORE.publishVerified(input, length, maximum, completion, token);
+    }
+
+    public Optional<StoredObject> verify(ObjectDigest digest, CancellationToken token) {
+      verifications.incrementAndGet();
+      return STORE.verify(digest, token);
+    }
+
+    public ObjectReadLease openRead(ObjectDigest digest, CancellationToken token) {
+      return STORE.openRead(digest, token);
+    }
+
+    public void close() {
+      throw new AssertionError("Caller owns storage");
+    }
+  }
+
   @Test
-  void sameCandidateConsumersShareTransferWhileAlternativeIsBusy() throws Exception {
+  void earlySubmittedSameCandidateConsumersAcquireSourceOnceWhileAlternativeIsBusy()
+      throws Exception {
+    verifyCandidateScheduling(false);
+  }
+
+  @Test
+  void lateSameCandidateConsumerRunsVerifiedCacheWorkerWithoutAnotherSourceAcquisition()
+      throws Exception {
+    verifyCandidateScheduling(true);
+  }
+
+  private void verifyCandidateScheduling(boolean enrollSecondAfterFirstCompletes) throws Exception {
     var pins = new Pins();
     var catalog = new Catalog();
     var gateway = new Choices();
-    var transfers = new java.util.concurrent.LinkedBlockingQueue<Runnable>();
-    try (var jobs = Executors.newFixedThreadPool(3);
+    var store = new CountingStore();
+    var jobs = new LinkedBlockingQueue<Runnable>();
+    var events = new LinkedBlockingQueue<Runnable>();
+    var transferWorkers = new java.util.concurrent.atomic.AtomicInteger();
+    Executor acquisitions =
+        task -> {
+          transferWorkers.incrementAndGet();
+          events.add(task);
+        };
+    try (var workers = Executors.newFixedThreadPool(2);
         var service =
-            new DefaultFileLookupService(gateway, catalog, STORE, jobs, transfers::add, pins)) {
-      var plan =
-          service.planRoot(build("one"), BUDGETS).toCompletableFuture().get(3, TimeUnit.SECONDS);
+            new DefaultFileLookupService(gateway, catalog, store, jobs::add, acquisitions, pins)) {
+      var proposed = service.planRoot(build("one"), BUDGETS).toCompletableFuture();
+      jobs.remove().run();
+      var plan = proposed.get(3, TimeUnit.SECONDS);
       var a = new RootSelectionPlan(plan, plan.candidates().getFirst());
       var b = new RootSelectionPlan(plan, plan.candidates().getLast());
       var first = service.retainRoot(a).toCompletableFuture();
-      var transfer = transfers.poll(3, TimeUnit.SECONDS);
-      assertNotNull(transfer);
+      workers.execute(jobs.remove());
+      var firstTransfer = events.poll(3, TimeUnit.SECONDS);
+      assertNotNull(firstTransfer);
+
       var second = service.retainRoot(a).toCompletableFuture();
-      var busy =
-          assertThrows(
-              ExecutionException.class,
-              () -> service.retainRoot(b).toCompletableFuture().get(3, TimeUnit.SECONDS));
-      assertEquals(
-          FileLookupException.Code.CAPACITY_EXCEEDED,
-          assertInstanceOf(FileLookupException.class, busy.getCause()).code());
-      transfer.run();
+      var secondJob = jobs.remove();
+      if (!enrollSecondAfterFirstCompletes) workers.execute(secondJob);
+
+      // The first transfer is held, so its candidate guard must still exclude B.
+      var alternative = service.retainRoot(b).toCompletableFuture();
+      jobs.remove().run();
+      assertEquals(FileLookupException.Code.CAPACITY_EXCEEDED, failure(alternative).code());
+      assertEquals(0, gateway.acquisitions);
+
+      if (enrollSecondAfterFirstCompletes) {
+        firstTransfer.run();
+        first.get(3, TimeUnit.SECONDS);
+        assertFalse(second.isDone(), "The held second job has not enrolled yet");
+        assertEquals(1, transferWorkers.get());
+        assertEquals(1, store.verifications.get());
+        workers.execute(secondJob);
+        var cacheWorker = events.poll(3, TimeUnit.SECONDS);
+        assertNotNull(cacheWorker, "A later consumer still schedules CAS verification");
+        assertFalse(second.isDone(), "Queued cached work must be executed, not assumed complete");
+        cacheWorker.run();
+        assertEquals(2, transferWorkers.get());
+        assertEquals(2, store.verifications.get());
+      } else {
+        // Submission does not prove enrollment. Run every legitimate worker, including a
+        // later cached flight, and wake the driver when either application result completes.
+        first.whenComplete((value, failure) -> events.add(() -> {}));
+        second.whenComplete((value, failure) -> events.add(() -> {}));
+        firstTransfer.run();
+        while (!first.isDone() || !second.isDone()) {
+          var event = events.poll(3, TimeUnit.SECONDS);
+          assertNotNull(event, "No transfer or result completion made progress");
+          event.run();
+        }
+        assertTrue(transferWorkers.get() == 1 || transferWorkers.get() == 2);
+        assertEquals(transferWorkers.get(), store.verifications.get());
+      }
       assertEquals(first.get(3, TimeUnit.SECONDS), second.get(3, TimeUnit.SECONDS));
       assertEquals(1, gateway.acquisitions);
-      assertTrue(transfers.isEmpty());
+      assertTrue(jobs.isEmpty());
     }
   }
 }
