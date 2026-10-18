@@ -348,6 +348,7 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
       LocatedFilePlan plan, EncodedPublicationObserver observer, CancellationToken cancellation) {
     var promotionPossible = new AtomicBoolean();
     try {
+      store.publisherStarted();
       var budget = plan.choice().plan().budgets();
       var token = stage(budget.maximumPayloadDuration(), cancellation).token();
       validateLocatedPlan(plan, token);

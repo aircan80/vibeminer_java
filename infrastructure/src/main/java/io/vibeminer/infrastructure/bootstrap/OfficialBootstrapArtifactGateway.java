@@ -119,6 +119,7 @@ public final class OfficialBootstrapArtifactGateway implements BootstrapArtifact
       boolean guarded) {
     boolean[] gateReturned = {false};
     try {
+      store.publisherStarted();
       // Application has authorized either a fresh selected route or an exact canonical retained
       // receipt.
       if (!parsePlan(plan.build(), plan.configuration(), token).equals(plan))

@@ -226,6 +226,7 @@ public final class OfficialFileLookupGateway implements FileLookupGateway, AutoC
       boolean guarded) {
     boolean[] gateReturned = {false};
     try {
+      store.publisherStarted();
       validateSelection(selection, cancellation);
       var plan = selection.plan();
       var candidate = selection.candidate();
