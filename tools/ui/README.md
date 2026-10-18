@@ -79,3 +79,21 @@ The first process verifies visible FileDataID restoration across saved A42 → B
 After explicit retention, both synthetic root variants for ID42 remain visible, raw fields and unavailable filenames remain honest, Enter focuses full detail and Escape returns to the table. Source evidence shows the actual retained root separately from configuration proof. ID999 produces only scoped absence after complete verification. The second JVM reopens actual retained bytes with zero transport attempts, verifies exact-workspace membership isolation, then corrupts the physical root while a verified result exists and confirms that local verification failure removes ready coverage and variants without network repair.
 
 Fifteen scene-only PNGs include known/unknown cost, variants, raw detail, source proof, absence, and offline corruption. Screenshots deliberately scroll to the relevant inspected section. Each child has a 90-second application deadline and a 120-second supervisor deadline. Success prints `File lookup UI workflow OK; real services/CAS/SQLite; two JVMs; offline transport forbidden`. These checks use programmatic actions and key events; they do not certify physical keyboard, screen-reader, other-platform or live-CDN compatibility. Metadata lookup never acquires the selected game's file contents, filenames or item records.
+
+## Selected encoded-file presentation
+
+`CaptureSelectedFileRetention.java` runs two application JVMs and checks the Atlas staged-retention interface. It reuses the real synthetic root fixture, CAS and SQLite workspace storage. **The selected-file service is a fake:** candidate, location, search and receipt projections are deterministic fixtures. Small disposable sidecar files simulate its retained association and payload state across restart. Their hash checks exercise UI outcomes; they are not production BLTE verification or selected-file catalog persistence evidence. The separate backend journey in [the acquisition specification](../../docs/FILE-ACQUISITION.md) records those integration gates.
+
+After `:bootstrap:installDist`, compile the helpers as above and use an isolated display:
+
+```bash
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureSelectedFileRetention --isolated-display :191 --output build/ui-review/selected-retention
+```
+
+The first child checks explicit candidate selection and keyboard inspection, a separate locator action, a typed404 permit followed by separately approved archive search, incomplete-search wording, an initially unknown encoding size resolved to a known acquisition plan, cost/action geometry at 100% and 200%, direct and archive routes, explicit retention, zero-transfer reuse with unchanged original traffic evidence, blocked canonical conflict, cancellation and stale-ID suppression. It does not send HTTP or acquire real game content.
+
+The second child starts with only a retained root variant and no candidate session. Its explicit offline action must call the exact-variant service API without candidate, locator, search or retention calls. Simulated missing membership, missing bytes and corrupt bytes remain distinct; verification failure clears the ready header and preserves a usable keyboard retry action. The harness removes its temporary directory after both children finish. It never opens the normal user catalog.
+
+Screenshots deliberately scroll to the inspected scope, cost, action or evidence. The child deadline is 120 seconds and the supervisor allows 150 seconds per child. Success prints `Selected retention UI OK` and explicitly identifies the fake selected service. Programmatic keyboard/scene checks establish Linux fixture presentation behavior; they do not certify live sources, production selected-file integrity, other platforms, assistive technology, decoded content or filenames.
