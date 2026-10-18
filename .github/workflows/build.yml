@@ -107,6 +107,27 @@ jobs:
             "-PdistributionTarget=$DISTRIBUTION_TARGET")
           if [[ "$RUNNER_OS" == Linux ]]; then command=(xvfb-run -a "${command[@]}"); fi
           "${command[@]}"
+      - name: Collect native crash diagnostics
+        if: failure() && runner.os == 'macOS'
+        run: |
+          mkdir -p build/native-diagnostics
+          python3 - <<'PYDIAG'
+          import pathlib, shutil
+          output = pathlib.Path('build/native-diagnostics')
+          reports = pathlib.Path.home() / 'Library/Logs/DiagnosticReports'
+          candidates = list(reports.glob('VibeMiner*')) + list(pathlib.Path('.').glob('hs_err_pid*.log'))
+          for source in candidates:
+              if source.is_file() and source.stat().st_size <= 2_000_000:
+                  shutil.copyfile(source, output / source.name)
+                  print(f'Captured native report: {source.name}')
+          PYDIAG
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() && runner.os == 'macOS'
+        with:
+          name: native-diagnostics-${{ matrix.target }}-${{ github.sha }}
+          path: build/native-diagnostics/*
+          if-no-files-found: warn
+          retention-days: 14
       - name: Prepare verified artifacts
         env:
           PYTHON: ${{ matrix.python }}
@@ -117,9 +138,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p build/ui-tool build/ui-review
-          javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/CaptureAtlas.java
+          javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/CaptureAtlas.java tools/ui/CaptureWorkspaces.java
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureAtlas \
+            --isolated-display "$DISPLAY" --output build/ui-review'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureWorkspaces \
             --isolated-display "$DISPLAY" --output build/ui-review'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
