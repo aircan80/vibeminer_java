@@ -14,6 +14,63 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class ItemEvidenceExportPresentationModelTest {
+  @Test
+  void captureSourceFailuresRevokeOnlyActualSelectedScope() {
+    for (var code :
+        List.of(
+            ItemEvidenceException.Code.MISSING_LOCAL,
+            ItemEvidenceException.Code.CORRUPT,
+            ItemEvidenceException.Code.STALE_SELECTION)) {
+      for (boolean paired : List.of(false, true)) {
+        var f = new Fake();
+        var revoked = new ArrayList<ItemEvidenceSelection>();
+        var m =
+            new ItemEvidenceExportPresentationModel(f, Runnable::run, state -> {}, revoked::add);
+        m.open(PAIR.item(), 101, Optional.of(PAIR));
+        m.includeNames(paired);
+        m.verifyEvidence();
+        f.capturing.completeExceptionally(
+            new CompletionException(new ItemEvidenceException(code, "private diagnostic")));
+        assertEquals(List.of(f.requested), revoked);
+        assertEquals(paired, revoked.getFirst().names().isPresent());
+        assertNull(m.state().snapshot());
+      }
+    }
+  }
+
+  @Test
+  void destinationFailureNeverRevokesResearchEvidence() {
+    var f = new Fake();
+    var revoked = new ArrayList<ItemEvidenceSelection>();
+    var m = new ItemEvidenceExportPresentationModel(f, Runnable::run, state -> {}, revoked::add);
+    m.open(PAIR.item(), 101, Optional.empty());
+    saving(m, f);
+    f.operation.terminal.completeExceptionally(
+        new ItemEvidenceException(ItemEvidenceException.Code.DESTINATION_REFUSED, "private"));
+    assertTrue(revoked.isEmpty());
+    assertNotNull(m.state().snapshot());
+  }
+
+  @Test
+  void reentrantScopeRevocationCannotPublishOldFailureOverNewContext() {
+    var f = new Fake();
+    var ref = new AtomicReference<ItemEvidenceExportPresentationModel>();
+    var m =
+        new ItemEvidenceExportPresentationModel(
+            f,
+            Runnable::run,
+            state -> {},
+            selection -> ref.get().open(PAIR.item(), 102, Optional.empty()));
+    ref.set(m);
+    m.open(PAIR.item(), 101, Optional.empty());
+    m.verifyEvidence();
+    f.capturing.completeExceptionally(
+        new ItemEvidenceException(ItemEvidenceException.Code.CORRUPT, "private"));
+    assertEquals(102, m.state().selection().recordId());
+    assertEquals(ItemEvidenceExportPresentationModel.Stage.REVIEW, m.state().stage());
+    assertNull(m.state().code());
+  }
+
   static final String PATH =
       Path.of(System.getProperty("java.io.tmpdir"), "item-evidence.json")
           .toAbsolutePath()

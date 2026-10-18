@@ -47,6 +47,7 @@ public final class ItemEvidenceExportPresentationModel implements AutoCloseable 
   private final ItemEvidenceService service;
   private final Executor dispatch;
   private final Consumer<State> observer;
+  private final Consumer<ItemEvidenceSelection> invalidation;
   private ItemEvidenceSelection selection;
   private Optional<PreparedItemNames> availableNames = Optional.empty();
   private Stage stage = Stage.REVIEW;
@@ -62,6 +63,15 @@ public final class ItemEvidenceExportPresentationModel implements AutoCloseable 
 
   public ItemEvidenceExportPresentationModel(
       ItemEvidenceService service, Executor dispatch, Consumer<State> observer) {
+    this(service, dispatch, observer, selection -> {});
+  }
+
+  public ItemEvidenceExportPresentationModel(
+      ItemEvidenceService service,
+      Executor dispatch,
+      Consumer<State> observer,
+      Consumer<ItemEvidenceSelection> invalidation) {
+    this.invalidation = Objects.requireNonNull(invalidation);
     this.service = Objects.requireNonNull(service);
     this.dispatch = Objects.requireNonNull(dispatch);
     this.observer = Objects.requireNonNull(observer);
@@ -441,6 +451,14 @@ public final class ItemEvidenceExportPresentationModel implements AutoCloseable 
               "File publication could not be confirmed. Inspect the exact destination before"
                   + " retrying; the target is not claimed absent or rolled back.";
         };
+    if (!publication
+        && (code == ItemEvidenceException.Code.MISSING_LOCAL
+            || code == ItemEvidenceException.Code.CORRUPT
+            || code == ItemEvidenceException.Code.STALE_SELECTION)) {
+      long ticket = generation;
+      invalidation.accept(selection);
+      if (closed || !contextActive || ticket != generation) return;
+    }
     emit();
   }
 
