@@ -237,7 +237,7 @@ class SqliteMetadataAssociationRepositoryTest {
       try (var c = f.catalog.connect();
           var s = c.createStatement();
           var r = s.executeQuery("PRAGMA user_version")) {
-        assertEquals(10, r.getInt(1));
+        assertEquals(SqliteCatalog.SCHEMA_VERSION, r.getInt(1));
       }
       try (var c = f.catalog.connect();
           var s = c.createStatement()) {
