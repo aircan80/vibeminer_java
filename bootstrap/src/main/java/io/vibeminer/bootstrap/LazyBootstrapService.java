@@ -17,6 +17,12 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.selectedfile.SelectedFileService selectedFiles() {
+      throw new io.vibeminer.application.selectedfile.SelectedFileException(
+          io.vibeminer.application.selectedfile.SelectedFileException.Code.UNSUPPORTED,
+          "This content runtime does not provide selected-file acquisition");
+    }
+
     default io.vibeminer.application.lookup.FileLookupService lookup() {
       throw new io.vibeminer.application.lookup.FileLookupException(
           io.vibeminer.application.lookup.FileLookupException.Code.UNSUPPORTED,

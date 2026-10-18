@@ -4,13 +4,18 @@ import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.bootstrap.DefaultBootstrapService;
 import io.vibeminer.application.lookup.DefaultFileLookupService;
 import io.vibeminer.application.lookup.FileLookupService;
+import io.vibeminer.application.selectedfile.DefaultSelectedFileService;
+import io.vibeminer.application.selectedfile.SelectedFileService;
+import io.vibeminer.infrastructure.acquisition.CdnMetadataTransport;
 import io.vibeminer.infrastructure.acquisition.PinnedCdnRangeTransport;
 import io.vibeminer.infrastructure.acquisition.PinnedCdnTransport;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
+import io.vibeminer.infrastructure.lookup.OfficialSelectedFileGateway;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.retention.SqliteRetentionRepository;
+import io.vibeminer.infrastructure.selectedfile.SqliteSelectedFileCatalog;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
@@ -29,6 +34,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
+  private final SelectedFileService selectedFiles;
+  private final OfficialSelectedFileGateway selectedGateway;
   private final AtomicBoolean closed = new AtomicBoolean();
 
   private ContentRuntime(
@@ -38,7 +45,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       ExecutorService acquisition,
       BootstrapService service,
       FileLookupService lookup,
-      OfficialFileLookupGateway lookupGateway) {
+      OfficialFileLookupGateway lookupGateway,
+      SelectedFileService selectedFiles,
+      OfficialSelectedFileGateway selectedGateway) {
     this.store = store;
     this.client = client;
     this.orchestration = orchestration;
@@ -46,6 +55,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     this.service = service;
     this.lookup = lookup;
     this.lookupGateway = lookupGateway;
+    this.selectedFiles = selectedFiles;
+    this.selectedGateway = selectedGateway;
   }
 
   static ContentRuntime open(Path dataDirectory) {
@@ -81,8 +92,25 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       var lookup =
           new DefaultFileLookupService(
               lookupGateway, catalog, store, orchestration, acquisition, retention);
+      var selectedCatalog = new SqliteSelectedFileCatalog(sharedCatalog, store);
+      var metadataTransport =
+          new CdnMetadataTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
+      var selectedGateway =
+          new OfficialSelectedFileGateway(
+              store, transport, rangeTransport, metadataTransport, Clock.systemUTC());
+      var selectedFiles =
+          new DefaultSelectedFileService(
+              selectedGateway, catalog, selectedCatalog, retention, orchestration, acquisition);
       return new ContentRuntime(
-          store, client, orchestration, acquisition, service, lookup, lookupGateway);
+          store,
+          client,
+          orchestration,
+          acquisition,
+          service,
+          lookup,
+          lookupGateway,
+          selectedFiles,
+          selectedGateway);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
       acquisition.shutdownNow();
@@ -107,10 +135,16 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   @Override
+  public SelectedFileService selectedFiles() {
+    return selectedFiles;
+  }
+
+  @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
     service.close();
     lookup.close();
+    selectedFiles.close();
     orchestration.shutdownNow();
     acquisition.shutdownNow();
     client.shutdownNow();
@@ -123,6 +157,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
         throw new IllegalStateException(
             "Content workers have not stopped; active storage remains protected");
       lookupGateway.close();
+      selectedGateway.close();
       store.close();
     } finally {
       if (interrupted.get()) Thread.currentThread().interrupt();

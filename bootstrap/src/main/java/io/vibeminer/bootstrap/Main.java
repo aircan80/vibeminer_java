@@ -66,6 +66,7 @@ public final class Main {
           new OfficialProductDiscoveryService(),
           content,
           new LazyFileLookupService(content),
+          new LazySelectedFileService(content),
           List.of(args).contains("--fixtures"));
       javafx.application.Application.launch(AtlasApplication.class, args);
     } finally {
