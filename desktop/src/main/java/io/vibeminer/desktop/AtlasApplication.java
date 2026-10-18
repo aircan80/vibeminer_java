@@ -1814,7 +1814,11 @@ public final class AtlasApplication extends Application {
       else openingPoll.stop();
     }
     if (guidedPane != null) guidedPane.update(guidedModel.viewData());
-    if (revealProgress) Platform.runLater(this::revealOpeningProgress);
+    if (next.busy() && (revealProgress || openingCancel.isFocused()))
+      Platform.runLater(
+          () -> {
+            if (revealProgress || openingCancel.isFocused()) revealOpeningProgress();
+          });
     if (next.admission() != null) {
       var admission = next.admission();
       var view = admittedOverview(admission, java.time.Instant.now());
@@ -1852,18 +1856,28 @@ public final class AtlasApplication extends Application {
         || !openingModel.state().busy()
         || !destination.equals("Archive")
         || guidedScroll == null) return;
-    guidedPane.applyCss();
-    guidedPane.layout();
-    double viewport = guidedScroll.getViewportBounds().getHeight();
-    double extent = guidedPane.getBoundsInLocal().getHeight() - viewport;
-    if (extent > 0) {
-      double bottom =
-          guidedPane
-              .sceneToLocal(openingCancel.localToScene(openingCancel.getBoundsInLocal()))
-              .getMaxY();
-      guidedScroll.setVvalue(Math.max(0, Math.min(1, (bottom - viewport + 16) / extent)));
-    }
+    // Size from the root: a changed wrapped progress label also changes ScrollPane content extent.
+    root.applyCss();
+    root.layout();
     openingCancel.requestFocus();
+    for (int pass = 0; pass < 3; pass++) {
+      root.layout();
+      Node viewportNode = guidedScroll.lookup(".viewport");
+      if (viewportNode == null) return;
+      var viewportBounds = viewportNode.localToScene(viewportNode.getBoundsInLocal());
+      var cancelBounds = openingCancel.localToScene(openingCancel.getBoundsInLocal());
+      double delta = cancelBounds.getMaxY() - (viewportBounds.getMaxY() - 16);
+      if (delta <= 0) {
+        delta = cancelBounds.getMinY() - (viewportBounds.getMinY() + 16);
+        if (delta >= 0) return;
+      }
+      double extent = guidedPane.getLayoutBounds().getHeight() - viewportBounds.getHeight();
+      if (extent <= 0) return;
+      double range = guidedScroll.getVmax() - guidedScroll.getVmin();
+      double next = guidedScroll.getVvalue() + delta / extent * range;
+      guidedScroll.setVvalue(
+          Math.max(guidedScroll.getVmin(), Math.min(guidedScroll.getVmax(), next)));
+    }
   }
 
   /** Presentation projection of committed metadata admission, not a payload inventory. */
