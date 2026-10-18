@@ -31,3 +31,36 @@ java --enable-native-access=ALL-UNNAMED \
 ```
 
 It creates temporary authored storage unless given a new directory argument. It verifies explicit preparation, 50 + 11 Item-ID pages, distinct name outcomes and the Sparse-only nonmatch, both partial proof chains, two-context artifact/row sharing, missing Sparse with independent Item queries still available, corrupt Item revoking paired readiness, fresh-store restart with explicit preparation and zero HTTP. It asserts no Sparse projection during queries, without claiming preparation skips projection. Native keyboard/scale/screenshot acceptance remains a separate later harness.
+
+## Explicit literal-search corpus
+
+The original two-argument constructor still selects `Corpus.BROWSE`: 61 Item anchors,
+22 Sparse physical names, and the existing browse fixture bytes/counts. Search now delegates
+through the real names service in either profile and increments the public `searches` counter.
+
+For native literal-search qualification use:
+
+```java
+new ItemNamesFixtureBackend(root, true, ItemNamesFixtureBackend.Corpus.LITERAL_SEARCH);
+// Reopen the same persisted fixture with false and the SAME explicit profile.
+```
+
+`LITERAL_SEARCH` has 60 Sparse physical rows: 59 match Item anchors (including one empty
+candidate), plus one Sparse-only row. All 58 nonempty Item-anchored candidates contain
+`Authored`, producing exactly 50 then 8 matches with page size 50. ID 1002 remains valid
+empty, 1003 remains an unindexed Sparse copy of 1001, 1004 has no physical Sparse match,
+and 700001 remains Sparse-only. These exclusions never become search matches.
+
+Positive exact-text examples: `sword` → 1001; `Sword` → 1005; NFC `Café` → 1006;
+NFD `Cafe\u0301` (actual combining accent, not the six-character escape) → 1007;
+`🗡` → 1008; `%_literal`, `\path`, and `O'Brien` → 1009. ID 1010 contains consecutive
+spaces. No normalization, folding, wildcard interpretation, or copied names are added.
+`Sparse-only` and an absent authored token produce complete scoped empty results.
+
+A small corpus marker prevents reopening a persisted literal fixture as the browse profile
+or vice versa. Old browse fixtures without that marker retain their original default.
+Use a fresh directory for each profile. The same actual-reader/CAS/SQL and synthetic
+root/config/EN proof-port boundary above applies; none of these authored names is game data.
+After restart, explicit prepares may reproject for source proof; take the project-counter
+baseline afterward. Page, lookup, and search must preserve that baseline, reuse the same
+stored artifact/rows, and make zero outbound calls.

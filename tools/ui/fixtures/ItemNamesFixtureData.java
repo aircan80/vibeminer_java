@@ -11,14 +11,23 @@ final class ItemNamesFixtureData {
   static final long COPY_ID = 1003, MISSING_ID = 1004, SPARSE_ONLY_ID = 700001;
 
   static List<Long> physicalIds() {
+    return physicalIds(ItemNamesFixtureBackend.Corpus.BROWSE);
+  }
+
+  static List<Long> physicalIds(ItemNamesFixtureBackend.Corpus corpus) {
     var result = new ArrayList<Long>(List.of(1001L, 1002L));
-    for (long id = 1005; id <= 1061; id++) if (id % 3 == 0) result.add(id);
+    for (long id = 1005; id <= 1061; id++)
+      if (corpus == ItemNamesFixtureBackend.Corpus.LITERAL_SEARCH || id % 3 == 0) result.add(id);
     result.add(SPARSE_ONLY_ID);
     return List.copyOf(result);
   }
 
   static byte[] decoded() {
-    var ids = physicalIds();
+    return decoded(ItemNamesFixtureBackend.Corpus.BROWSE);
+  }
+
+  static byte[] decoded(ItemNamesFixtureBackend.Corpus corpus) {
+    var ids = physicalIds(corpus);
     var records = new ArrayList<byte[]>();
     int area = 0;
     for (long id : ids) {
@@ -28,6 +37,17 @@ final class ItemNamesFixtureData {
               : id == 1001
                   ? "Authored sword α"
                   : id == SPARSE_ONLY_ID ? "Authored Sparse-only" : "Authored item " + id;
+      if (corpus == ItemNamesFixtureBackend.Corpus.LITERAL_SEARCH)
+        display =
+            switch ((int) id) {
+              case 1005 -> "Authored Sword";
+              case 1006 -> "Authored Café";
+              case 1007 -> "Authored Cafe\u0301";
+              case 1008 -> "Authored 🗡";
+              case 1009 -> "Authored 100%_literal \\path O'Brien";
+              case 1010 -> "Authored  space  candidate";
+              default -> display;
+            };
       byte[] row = ("Authored note\0\0\0\0" + display + "\0tail").getBytes(StandardCharsets.UTF_8);
       records.add(row);
       area += row.length;
@@ -76,7 +96,11 @@ final class ItemNamesFixtureData {
   }
 
   static byte[] encoded() {
-    byte[] decoded = decoded();
+    return encoded(ItemNamesFixtureBackend.Corpus.BROWSE);
+  }
+
+  static byte[] encoded(ItemNamesFixtureBackend.Corpus corpus) {
+    byte[] decoded = decoded(corpus);
     int count = (decoded.length + 255) / 256, header = 12 + 24 * count;
     byte[] data = new byte[header + decoded.length + count];
     data[0] = 'B';

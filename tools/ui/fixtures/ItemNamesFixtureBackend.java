@@ -30,6 +30,12 @@ import java.util.concurrent.atomic.*;
  * authentication, complete decoded CKey verification or live content. No test/private imports.
  */
 public final class ItemNamesFixtureBackend implements AutoCloseable {
+  public enum Corpus {
+    BROWSE,
+    LITERAL_SEARCH
+  }
+
+  private final Corpus corpus;
   public static final long FIRST_ID = 1001,
       EMPTY_ID = 1002,
       COPY_ID = ItemNamesFixtureData.COPY_ID,
@@ -67,6 +73,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
   public final AtomicInteger prepares = new AtomicInteger(),
       pages = new AtomicInteger(),
       lookups = new AtomicInteger(),
+      searches = new AtomicInteger(),
       projects = new AtomicInteger(),
       queryVerifications = new AtomicInteger(),
       activeReaders = new AtomicInteger(),
@@ -77,7 +84,20 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
       queryEntered = new AtomicBoolean();
 
   public ItemNamesFixtureBackend(Path root, boolean seed) throws Exception {
+    this(root, seed, Corpus.BROWSE);
+  }
+
+  public ItemNamesFixtureBackend(Path root, boolean seed, Corpus corpus) throws Exception {
+    this.corpus = Objects.requireNonNull(corpus);
+    Path marker = root.resolve("names-fixture-corpus.txt");
+    if (!seed) {
+      Corpus stored =
+          Files.exists(marker) ? Corpus.valueOf(Files.readString(marker).strip()) : Corpus.BROWSE;
+      if (stored != corpus)
+        throw new IllegalArgumentException("Restart must use the original explicit corpus");
+    }
     items = new ItemProjectionFixtureBackend(root, seed);
+    if (seed) Files.writeString(marker, corpus.name());
     catalog = items.fixtureCatalog();
     store = items.fixtureStore();
     files = items.fixtureFiles();
@@ -245,6 +265,15 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
         return actualService.lookup(pair, id);
       }
 
+      public CompletionStage<ItemNamesSearchPage> search(
+          PreparedItemNames pair,
+          ItemNameLiteralQuery query,
+          Optional<ItemNamesSearchCursor> cursor,
+          int size) {
+        searches.incrementAndGet();
+        return actualService.search(pair, query, cursor, size);
+      }
+
       public void close() {}
     };
   }
@@ -347,7 +376,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
   }
 
   private void seedSparse() throws Exception {
-    byte[] bytes = ItemNamesFixtureData.encoded();
+    byte[] bytes = ItemNamesFixtureData.encoded(corpus);
     var first = association(0, bytes);
     var reservation =
         files.reserve(
@@ -385,7 +414,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
       sparse.add(
           files
               .findOriginalAssociation(
-                  association(n, ItemNamesFixtureData.encoded()).descriptor(), NONE)
+                  association(n, ItemNamesFixtureData.encoded(corpus)).descriptor(), NONE)
               .orElseThrow());
   }
 
@@ -436,7 +465,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
             new ResolvedSourceIdentity("encoding", "authored-Sparse-EN", "synthetic-v1"),
             "synthetic-association-v2",
             "6".repeat(64),
-            OptionalLong.of(ItemNamesFixtureData.decoded().length),
+            OptionalLong.of(ItemNamesFixtureData.decoded(corpus).length),
             List.of(
                 new EncodedCandidate(ekey, OptionalLong.of(bytes.length), OptionalLong.empty())));
     return new SelectedFileAssociation(
@@ -520,7 +549,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
   }
 
   public void restoreSparseSource() {
-    publish(ItemNamesFixtureData.encoded());
+    publish(ItemNamesFixtureData.encoded(corpus));
   }
 
   public void corruptItemSource() throws IOException {
