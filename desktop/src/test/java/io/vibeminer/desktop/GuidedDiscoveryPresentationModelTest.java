@@ -3,6 +3,8 @@ package io.vibeminer.desktop;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.vibeminer.application.buildlibrary.*;
+import io.vibeminer.application.buildoverview.BuildOverview;
+import io.vibeminer.application.buildreadiness.*;
 import io.vibeminer.application.discoveryhistory.DiscoveryEvent;
 import io.vibeminer.application.discoveryhistory.DiscoveryEventSummary.DocumentReceipt;
 import io.vibeminer.domain.SourceDocument;
@@ -174,6 +176,329 @@ class GuidedDiscoveryPresentationModelTest {
         List.of(),
         failures,
         false);
+  }
+
+  static final class ReadinessOperation implements BuildReadinessService.Operation {
+    final List<BuildReadiness.Context> contexts;
+    final CompletableFuture<List<BuildReadiness.Status>> done = new CompletableFuture<>();
+    int canceled;
+    Runnable onCancel = () -> {};
+
+    ReadinessOperation(List<BuildReadiness.Context> contexts) {
+      this.contexts = List.copyOf(contexts);
+    }
+
+    public CompletionStage<List<BuildReadiness.Status>> completion() {
+      return done;
+    }
+
+    public void requestCancellation() {
+      canceled++;
+      onCancel.run();
+    }
+  }
+
+  static final class ReadinessService implements BuildReadinessService {
+    final List<ReadinessOperation> operations = new ArrayList<>();
+    int closes;
+
+    public Operation read(List<BuildReadiness.Context> contexts) {
+      assertTrue(contexts.size() <= BuildReadiness.MAXIMUM_CONTEXTS);
+      var operation = new ReadinessOperation(contexts);
+      operations.add(operation);
+      return operation;
+    }
+
+    public void close() {
+      closes++;
+    }
+  }
+
+  private static ReadinessService readiness(Harness h) {
+    var service = new ReadinessService();
+    h.model.configureReadiness(service, "enUS", "metadata-v1", "inventory-v1");
+    return service;
+  }
+
+  private static BuildReadiness.Status status(
+      BuildReadiness.Context context,
+      BuildReadiness.AdmissionPresence admission,
+      BuildOverview.Readiness checked) {
+    var ref = context.reference();
+    var observation =
+        checked == null
+            ? Optional.<BuildReadiness.Observation>empty()
+            : Optional.of(
+                new BuildReadiness.Observation(
+                    checked,
+                    NOW,
+                    "f".repeat(64),
+                    new BuildReadiness.Origin(
+                        ref.eventId(),
+                        ref.observationSequence(),
+                        ref.versionsRowOrdinal(),
+                        ref.key().identity(),
+                        ref.snapshotId(),
+                        ref.region()),
+                    checked == BuildOverview.Readiness.FULL
+                        ? Optional.of(
+                            new io.vibeminer.application.buildretention.BuildRetention.Target(
+                                ref.key().identity(),
+                                ref.snapshotId(),
+                                "a".repeat(64),
+                                "b".repeat(64),
+                                1,
+                                context.inventoryScopeRevision(),
+                                "c".repeat(64)))
+                        : Optional.empty()));
+    return new BuildReadiness.Status(context, admission, observation);
+  }
+
+  @Test
+  void cancellationReentryKeepsNewerProductInsteadOfOuterRestore() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var old = service.operations.getFirst();
+    old.onCancel = () -> h.model.restore("wowt", GuidedDiscoveryPane.Filter.ALL);
+    h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
+    assertEquals("wowt", h.model.state().productId());
+    assertEquals(1, h.service.pages.size());
+    assertEquals("wowt", h.service.pages.peek().query().productId());
+    assertEquals(1, service.operations.size());
+    old.done.complete(List.of());
+    assertEquals("wowt", h.model.state().productId());
+  }
+
+  @Test
+  void selectionCancellationReentryCannotInspectNewerProductWithOldGroup() {
+    var h = new Harness();
+    var service = readiness(h);
+    var row = entry("wow", "a", 1, true, false);
+    h.restore(row);
+    service.operations.getFirst().onCancel =
+        () -> h.model.restore("wowt", GuidedDiscoveryPane.Filter.ALL);
+    h.model.select(row.row().group().key().identity());
+    assertEquals("wowt", h.model.state().productId());
+    assertTrue(h.service.selections.isEmpty());
+    assertNull(h.model.state().selected());
+  }
+
+  @Test
+  void localeCancellationReentryKeepsNewerLocaleAndOnePendingFlight() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var old = service.operations.getFirst();
+    old.onCancel = () -> h.model.setReadinessLocale("frFR");
+    h.model.setReadinessLocale("deDE");
+    assertEquals(1, service.operations.size());
+    old.done.complete(List.of());
+    assertEquals(2, service.operations.size());
+    assertEquals("frFR", service.operations.getLast().contexts.getFirst().locale());
+  }
+
+  @Test
+  void readinessConfigurationAndAliasesDoNotReadUntilAnActualVisiblePageArrives() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.model.setProducts(PRODUCTS);
+    assertTrue(service.operations.isEmpty());
+    var row = entry("wow", "a", 1, true, false);
+    h.restore(row);
+    assertEquals(1, service.operations.size());
+    var contexts = service.operations.getFirst().contexts;
+    assertEquals(1, contexts.size());
+    assertEquals(row.row().group().preferredReference(), contexts.getFirst().reference());
+    assertEquals("enUS", contexts.getFirst().locale());
+    assertEquals("metadata-v1", contexts.getFirst().metadataScopeRevision());
+    assertEquals("inventory-v1", contexts.getFirst().inventoryScopeRevision());
+    assertFalse(h.model.viewData().rows().getFirst().status().contains("Fully downloaded"));
+    assertTrue(h.opens.isEmpty());
+  }
+
+  @Test
+  void returningFromMiningReloadsOnlySavedObservationsAndPreservesSelection() {
+    var h = new Harness();
+    var service = readiness(h);
+    var row = entry("wow", "a", 1, true, false);
+    h.restore(row);
+    var first = service.operations.getFirst();
+    first.done.complete(
+        List.of(status(first.contexts.getFirst(), BuildReadiness.AdmissionPresence.PRESENT, null)));
+    h.model.select(row.row().group().key().identity());
+    h.service.selections.remove().complete(row);
+    var selectedRead = service.operations.getLast();
+    selectedRead.done.complete(
+        List.of(
+            status(
+                selectedRead.contexts.getFirst(), BuildReadiness.AdmissionPresence.PRESENT, null)));
+    int pages = h.service.pages.size();
+    int refreshes = h.service.refreshes.size();
+    h.model.refreshReadiness();
+    var returned = service.operations.getLast();
+    returned.done.complete(
+        List.of(
+            status(
+                returned.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    assertSame(row, h.model.state().selected());
+    assertEquals(pages, h.service.pages.size());
+    assertEquals(refreshes, h.service.refreshes.size());
+    assertTrue(h.opens.isEmpty());
+    assertTrue(
+        h.model.viewData().rows().getFirst().status().startsWith("Last checked: Fully downloaded"));
+  }
+
+  @Test
+  void readinessAdmissionPresenceIsNotAClaimOfCurrentCoverage() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var operation = service.operations.getFirst();
+    operation.done.complete(
+        List.of(
+            status(operation.contexts.getFirst(), BuildReadiness.AdmissionPresence.PRESENT, null)));
+    assertEquals("Local readiness not checked", h.model.viewData().rows().getFirst().status());
+    h.model.setReadinessLocale("deDE");
+    operation = service.operations.getLast();
+    operation.done.complete(
+        List.of(
+            status(operation.contexts.getFirst(), BuildReadiness.AdmissionPresence.ABSENT, null)));
+    assertEquals("Not ready", h.model.viewData().rows().getFirst().status());
+  }
+
+  @Test
+  void datedHistoricalFullHasHumanTimeLocaleAndExplicitNonCurrentInspectorNote() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var operation = service.operations.getFirst();
+    operation.done.complete(
+        List.of(
+            status(
+                operation.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    var row = h.model.viewData().rows().getFirst();
+    assertEquals("Last checked: Fully downloaded · 18 Oct 2026, 12:00 UTC · enUS", row.status());
+    assertTrue(row.details().stream().anyMatch(d -> d.value().contains("Files may have changed")));
+    assertTrue(h.opens.isEmpty());
+  }
+
+  @Test
+  void missingAdmissionOverridesHistoricalFullButPreservesDatedEvidenceInInspector() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var operation = service.operations.getFirst();
+    operation.done.complete(
+        List.of(
+            status(
+                operation.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.ABSENT,
+                BuildOverview.Readiness.FULL)));
+    var row = h.model.viewData().rows().getFirst();
+    assertEquals("Not ready", row.status());
+    assertTrue(
+        row.details().stream().anyMatch(d -> d.value().contains("Last checked: Fully downloaded")));
+  }
+
+  @Test
+  void changingPageCoalescesUntilCanceledSqlObservationActuallyTerminates() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    var old = service.operations.getFirst();
+    h.model.filter(GuidedDiscoveryPane.Filter.LOCAL);
+    complete(h.service.pages.remove(), entry("wow", "b", 2, true, false));
+    assertEquals(
+        1,
+        service.operations.size(),
+        "Do not release the old actual SQL operation on cancellation");
+    assertTrue(old.canceled > 0);
+    old.done.complete(
+        List.of(
+            status(
+                old.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    assertEquals(2, service.operations.size());
+    assertEquals(
+        "b".repeat(32),
+        service.operations.getLast().contexts.getFirst().reference().key().buildConfig());
+    assertFalse(h.model.viewData().rows().getFirst().status().contains("Fully downloaded"));
+    assertTrue(h.service.refreshProducts.isEmpty());
+  }
+
+  @Test
+  void localeAndExactSelectionRetireOldReadinessWithoutPreparingOrOpening() {
+    var h = new Harness();
+    var service = readiness(h);
+    var oldRow = entry("wow", "a", 1, true, false);
+    h.restore(oldRow);
+    var old = service.operations.getFirst();
+    h.model.setReadinessLocale("deDE");
+    old.done.complete(
+        List.of(
+            status(
+                old.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    var locale = service.operations.getLast();
+    assertEquals("deDE", locale.contexts.getFirst().locale());
+    h.model.select(oldRow.row().group().key().identity());
+    var fresh = entry("wow", "a", 2, true, false);
+    h.service.selections.remove().complete(fresh);
+    locale.done.complete(
+        List.of(
+            status(
+                locale.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    assertEquals(
+        fresh.row().group().preferredReference(),
+        service.operations.getLast().contexts.getFirst().reference());
+    assertFalse(h.model.viewData().rows().getFirst().status().contains("Fully downloaded"));
+    assertTrue(h.opens.isEmpty());
+  }
+
+  @Test
+  void wrongOrIncompleteReadinessResponseNeverPaintsFullAndKeepsLibraryRows() {
+    var h = new Harness();
+    var service = readiness(h);
+    var row = entry("wow", "a", 1, true, false);
+    h.restore(row);
+    service.operations.getFirst().done.complete(List.of());
+    assertEquals(List.of(row), h.model.state().page().entries());
+    assertEquals("Local readiness not checked", h.model.viewData().rows().getFirst().status());
+    assertTrue(h.model.viewData().error().contains("Local readiness"));
+  }
+
+  @Test
+  void readinessFailureAndCloseKeepUnknownAndDoNotCloseBorrowedService() {
+    var h = new Harness();
+    var service = readiness(h);
+    h.restore(entry("wow", "a", 1, true, false));
+    service
+        .operations
+        .getFirst()
+        .done
+        .completeExceptionally(new IllegalStateException("private path"));
+    assertFalse(h.model.viewData().error().contains("private"));
+    assertFalse(h.model.viewData().rows().getFirst().status().contains("Fully downloaded"));
+    h.model.setReadinessLocale("deDE");
+    var pending = service.operations.getLast();
+    h.model.close();
+    assertTrue(pending.canceled > 0);
+    pending.done.complete(
+        List.of(
+            status(
+                pending.contexts.getFirst(),
+                BuildReadiness.AdmissionPresence.PRESENT,
+                BuildOverview.Readiness.FULL)));
+    assertEquals(0, service.closes);
   }
 
   @Test

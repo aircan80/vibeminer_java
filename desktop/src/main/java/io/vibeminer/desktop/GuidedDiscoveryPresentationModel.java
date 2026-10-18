@@ -1,6 +1,9 @@
 package io.vibeminer.desktop;
 
 import io.vibeminer.application.buildlibrary.*;
+import io.vibeminer.application.buildreadiness.*;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -45,6 +48,27 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   private long generation, selectionGeneration;
   private boolean closed;
   private BuildLibraryService.RefreshOperation refreshing;
+  private BuildReadinessService readinessService;
+  private String readinessLocale, metadataScopeRevision, inventoryScopeRevision;
+  private long readinessGeneration;
+  private ReadinessFlight readinessFlight;
+  private ReadinessRequest pendingReadiness;
+  private Map<List<String>, BuildReadiness.Status> readinessValues = Map.of();
+  private boolean readinessLoading;
+  private String readinessError = "";
+
+  private record ReadinessRequest(long generation, List<BuildReadiness.Context> contexts) {}
+
+  private static final class ReadinessFlight {
+    final ReadinessRequest request;
+    BuildReadinessService.Operation operation;
+    boolean cancelRequested;
+
+    ReadinessFlight(ReadinessRequest request) {
+      this.request = request;
+    }
+  }
+
   private BuildLibraryService.LocalPreparationOperation preparing;
   private final Map<String, LegacyBuildObservationImporter.Cursor> localCursors =
       new LinkedHashMap<>();
@@ -84,6 +108,186 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
             "");
   }
 
+  /** Optional SQL-only historical overlay. Policy revisions are supplied by composition. */
+  public void configureReadiness(
+      BuildReadinessService service, String locale, String metadataScope, String inventoryScope) {
+    if (closed || readinessService != null)
+      throw new IllegalStateException("Readiness already configured or closed");
+    validateLocale(locale);
+    validateReadinessRevision(metadataScope);
+    validateReadinessRevision(inventoryScope);
+    readinessService = Objects.requireNonNull(service);
+    readinessLocale = locale;
+    metadataScopeRevision = metadataScope;
+    inventoryScopeRevision = inventoryScope;
+    requestReadiness();
+  }
+
+  public void setReadinessLocale(String locale) {
+    validateLocale(locale);
+    if (closed || readinessService == null || locale.equals(readinessLocale)) return;
+    readinessLocale = locale;
+    long request = invalidateReadiness();
+    if (!closed && request == readinessGeneration) requestReadiness();
+  }
+
+  private static void validateLocale(String locale) {
+    if (locale == null || !locale.matches("[a-z]{2}[A-Z]{2}"))
+      throw new IllegalArgumentException("Exact research locale required");
+  }
+
+  static void validateReadinessRevision(String revision) {
+    if (revision == null
+        || revision.isBlank()
+        || revision.length() > 128
+        || !java.nio.charset.StandardCharsets.UTF_8.newEncoder().canEncode(revision)
+        || revision.chars().anyMatch(Character::isISOControl))
+      throw new IllegalArgumentException("Bounded policy revision required");
+  }
+
+  private BuildReadiness.Context readinessContext(BuildLibraryPage.Entry entry) {
+    return new BuildReadiness.Context(
+        entry.row().group().preferredReference(),
+        readinessLocale,
+        metadataScopeRevision,
+        inventoryScopeRevision);
+  }
+
+  /** Reloads saved observations only; never prepares or verifies build content. */
+  public void refreshReadiness() {
+    requestReadiness();
+  }
+
+  private void requestReadiness() {
+    if (closed || readinessService == null || state.page() == null) return;
+    List<BuildReadiness.Context> contexts =
+        state.page().entries().stream()
+            .map(
+                entry ->
+                    state.selected() != null
+                            && state
+                                .selected()
+                                .row()
+                                .group()
+                                .key()
+                                .equals(entry.row().group().key())
+                        ? state.selected()
+                        : entry)
+            .map(this::readinessContext)
+            .toList();
+    if (contexts.size() > BuildReadiness.MAXIMUM_CONTEXTS)
+      throw new IllegalStateException("Visible readiness page exceeds application bound");
+    long generation = ++readinessGeneration;
+    readinessValues = Map.of();
+    readinessError = "";
+    readinessLoading = !contexts.isEmpty();
+    pendingReadiness = contexts.isEmpty() ? null : new ReadinessRequest(generation, contexts);
+    cancelReadiness();
+    if (closed || generation != readinessGeneration) return;
+    notifyReadiness();
+    startReadiness();
+  }
+
+  private long invalidateReadiness() {
+    long request = ++readinessGeneration;
+    pendingReadiness = null;
+    readinessValues = Map.of();
+    readinessLoading = false;
+    readinessError = "";
+    cancelReadiness();
+    return request;
+  }
+
+  private void cancelReadiness() {
+    if (readinessFlight == null || readinessFlight.cancelRequested) return;
+    readinessFlight.cancelRequested = true;
+    if (readinessFlight.operation != null) {
+      try {
+        readinessFlight.operation.requestCancellation();
+      } catch (RuntimeException ignored) {
+        /* Wait for actual terminal before replacing the flight. */
+      }
+    }
+  }
+
+  private void startReadiness() {
+    if (closed || readinessFlight != null || pendingReadiness == null) return;
+    var request = pendingReadiness;
+    pendingReadiness = null;
+    if (request.generation() != readinessGeneration) return;
+    var flight = new ReadinessFlight(request);
+    readinessFlight = flight;
+    try {
+      var operation = Objects.requireNonNull(readinessService.read(request.contexts()));
+      flight.operation = operation;
+      if (closed || flight.cancelRequested || request.generation() != readinessGeneration) {
+        try {
+          operation.requestCancellation();
+        } catch (RuntimeException ignored) {
+          /* Terminal still retires the actual SQL observation. */
+        }
+      }
+      Objects.requireNonNull(operation.completion())
+          .whenComplete(
+              (values, failure) ->
+                  presentation.execute(() -> finishReadiness(flight, values, failure)));
+    } catch (RuntimeException failure) {
+      finishReadiness(flight, null, failure);
+    }
+  }
+
+  private void finishReadiness(
+      ReadinessFlight flight, List<BuildReadiness.Status> values, Throwable failure) {
+    if (readinessFlight != flight) return;
+    readinessFlight = null;
+    if (!closed && flight.request.generation() == readinessGeneration) {
+      readinessLoading = false;
+      boolean valid =
+          failure == null && values != null && values.size() == flight.request.contexts().size();
+      if (valid)
+        for (int i = 0; i < values.size(); i++)
+          if (values.get(i) == null
+              || !flight.request.contexts().get(i).equals(values.get(i).context())) {
+            valid = false;
+            break;
+          }
+      if (valid) {
+        var mapped = new LinkedHashMap<List<String>, BuildReadiness.Status>();
+        for (var value : values) mapped.put(value.context().key(), value);
+        readinessValues = Map.copyOf(mapped);
+      } else {
+        readinessValues = Map.of();
+        readinessError =
+            "Local readiness could not be read. Open the build to verify its current scope.";
+      }
+      notifyReadiness();
+    }
+    startReadiness();
+  }
+
+  private void notifyReadiness() {
+    if (!closed) observer.accept(state);
+  }
+
+  private static String checkedLabel(BuildReadiness.Observation observation, String locale) {
+    String time;
+    try {
+      time =
+          DateTimeFormatter.ofPattern("d MMM uuuu, HH:mm 'UTC'", Locale.ENGLISH)
+              .withZone(ZoneOffset.UTC)
+              .format(observation.measuredAt());
+    } catch (java.time.DateTimeException outsideCalendar) {
+      time = observation.measuredAt().toString();
+    }
+    String status =
+        switch (observation.readiness()) {
+          case NOT_READY -> "Not ready";
+          case PARTIAL -> "Partial";
+          case FULL -> "Fully downloaded";
+        };
+    return "Last checked: " + status + " · " + time + " · " + locale;
+  }
+
   private static List<GuidedDiscoveryPane.ProductOption> checkedProducts(
       List<GuidedDiscoveryPane.ProductOption> products) {
     products = List.copyOf(products);
@@ -103,7 +307,8 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
     localCursors.keySet().retainAll(suppliedIds);
     if (state.productId() != null
         && products.stream().noneMatch(p -> p.productId().equals(state.productId()))) {
-      retire();
+      long request = retire();
+      if (!current(request)) return;
       publish(
           new State(
               products,
@@ -155,6 +360,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       boolean remoteAfterPage,
       boolean explicitRemoteRetry) {
     long request = retire();
+    if (!current(request)) return;
     migrationIssue = "";
     migrationFailure = null;
     var prior = product.equals(state.productId()) ? state.page() : null;
@@ -309,6 +515,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   public void reload() {
     if (closed || state.productId() == null) return;
     long request = retire();
+    if (!current(request)) return;
     publish(
         new State(
             state.products(),
@@ -328,6 +535,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
     Objects.requireNonNull(filter);
     if (closed || state.productId() == null || filter == state.filter()) return;
     long request = retire();
+    if (!current(request)) return;
     publish(
         new State(
             state.products(),
@@ -351,6 +559,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       return;
     var cursor = state.page().nextCursor();
     long request = retire();
+    if (!current(request)) return;
     publish(
         new State(
             state.products(),
@@ -367,6 +576,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
 
   private void beginRefresh(String product, boolean preservePage) {
     long request = retire();
+    if (!current(request)) return;
     var prior = preservePage ? state.page() : null;
     publish(
         new State(
@@ -487,6 +697,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                                 false,
                                 message,
                                 combinedError));
+                        if (current(request)) requestReadiness();
                         if (current(request)) afterPage.run();
                       }));
     } catch (RuntimeException failure) {
@@ -521,6 +732,8 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
             .orElse(null);
     if (candidate == null) return;
     long request = generation, selection = ++selectionGeneration;
+    invalidateReadiness();
+    if (!selectionCurrent(request, selection)) return;
     publish(
         new State(
             state.products(),
@@ -569,6 +782,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                                 false,
                                 "Exact build selected. Opening is a separate action.",
                                 state.error()));
+                        if (selectionCurrent(request, selection)) requestReadiness();
                       }));
     } catch (RuntimeException failure) {
       if (selectionCurrent(request, selection))
@@ -621,7 +835,9 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
         state.productId() != null,
         state.page() != null && state.page().nextCursor().isPresent(),
         state.message(),
-        state.error());
+        readinessError.isBlank()
+            ? state.error()
+            : state.error().isBlank() ? readinessError : state.error() + " " + readinessError);
   }
 
   private GuidedDiscoveryPane.BuildRow display(BuildLibraryPage.Entry entry) {
@@ -652,11 +868,60 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                   case ABSENT_FROM_CHECKED_SCOPE -> "Absent from the successfully checked scope";
                   case UNKNOWN -> "Unknown or incomplete regional check";
                 }));
+    String status = "Readiness not assessed";
+    if (readinessService != null) {
+      var value = readinessValues.get(readinessContext(entry).key());
+      var expanded = new ArrayList<GuidedDiscoveryPane.Detail>(details);
+      if (value != null) {
+        if (value.admission() == BuildReadiness.AdmissionPresence.ABSENT) status = "Not ready";
+        else
+          status =
+              value
+                  .lastChecked()
+                  .map(o -> checkedLabel(o, readinessLocale))
+                  .orElse("Local readiness not checked");
+        if (value.lastChecked().isPresent()) {
+          var observation = value.lastChecked().orElseThrow();
+          expanded.add(
+              new GuidedDiscoveryPane.Detail(
+                  "HISTORICAL READINESS", checkedLabel(observation, readinessLocale)));
+          expanded.add(
+              new GuidedDiscoveryPane.Detail(
+                  "READINESS NOTE",
+                  "Files may have changed since this assessment. Open the build and refresh"
+                      + " coverage to verify current readiness."));
+          expanded.add(
+              new GuidedDiscoveryPane.Detail(
+                  "ASSESSMENT SCOPE", inventoryScopeRevision + " · " + readinessLocale));
+        } else
+          expanded.add(
+              new GuidedDiscoveryPane.Detail(
+                  "READINESS NOTE",
+                  value.admission() == BuildReadiness.AdmissionPresence.ABSENT
+                      ? "No complete metadata admission is stored for this exact context. Open the"
+                          + " build to prepare and verify it."
+                      : "Stored metadata admission alone does not establish current content"
+                          + " coverage. Open the build and refresh coverage to check it."));
+      } else {
+        status = "Local readiness not checked";
+        expanded.add(
+            new GuidedDiscoveryPane.Detail(
+                "READINESS NOTE",
+                readinessLoading
+                    ? "Reading saved local readiness observations; no files are being hashed or"
+                        + " downloaded."
+                    : readinessError.isBlank()
+                        ? "No compatible saved assessment is loaded. Open the build and refresh"
+                            + " coverage to check it."
+                        : readinessError));
+      }
+      details = List.copyOf(expanded);
+    }
     return new GuidedDiscoveryPane.BuildRow(
         key.identity(),
         key.versionLabel(),
         group.references().stream().map(BuildLibraryReference::region).distinct().sorted().toList(),
-        "Readiness not assessed",
+        status,
         row.local().isLocal(),
         row.advertisement() == BuildLibraryProjection.Advertisement.PRESENT_IN_CHECKED_SCOPE,
         row.seen().isNew(),
@@ -671,7 +936,8 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   }
 
   private void invalidProduct() {
-    retire();
+    long request = retire();
+    if (!current(request)) return;
     publish(
         new State(
             state.products(),
@@ -686,19 +952,21 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   }
 
   private long retire() {
-    generation++;
+    long request = ++generation;
     selectionGeneration++;
+    // Detach all old handles before foreign cancellation can reenter this model.
     var local = preparing;
+    var prior = refreshing;
     preparing = null;
+    refreshing = null;
+    invalidateReadiness();
     if (local != null)
       try {
         local.requestCancellation();
       } catch (RuntimeException ignored) {
       }
-    var prior = refreshing;
-    refreshing = null;
     if (prior != null) cancel(prior);
-    return generation;
+    return request;
   }
 
   private static void cancel(BuildLibraryService.RefreshOperation operation) {

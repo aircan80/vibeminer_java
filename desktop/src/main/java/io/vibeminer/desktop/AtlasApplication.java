@@ -61,6 +61,8 @@ public final class AtlasApplication extends Application {
   private static ItemNamesService configuredNames;
   private static ItemEvidenceService configuredEvidence;
   private static ItemEvidenceDestinationChooser evidenceChooser;
+  private static io.vibeminer.application.buildreadiness.BuildReadinessService configuredReadiness;
+  private static String configuredMetadataScope, configuredInventoryScope;
   private static BuildLibraryService configuredBuildLibrary;
   private static BuildOpeningService configuredBuildOpening;
   private static BuildInventoryPreparationService configuredPreparation;
@@ -78,6 +80,23 @@ public final class AtlasApplication extends Application {
     if (configuredBuildLibrary != null)
       throw new IllegalStateException("Build library has already been configured");
     configuredBuildLibrary = Objects.requireNonNull(library);
+  }
+
+  /** Optional bounded historical SQL observations; the runtime owns this borrowed service. */
+  public static synchronized void configureBuildReadiness(
+      io.vibeminer.application.buildreadiness.BuildReadinessService service,
+      String metadataScopeRevision,
+      String inventoryScopeRevision) {
+    if (configuredBuildLibrary == null)
+      throw new IllegalStateException("Configure the build library before readiness");
+    if (configuredReadiness != null)
+      throw new IllegalStateException("Build readiness already configured");
+    // Validate injected policy identities without inferring infrastructure revisions.
+    GuidedDiscoveryPresentationModel.validateReadinessRevision(metadataScopeRevision);
+    GuidedDiscoveryPresentationModel.validateReadinessRevision(inventoryScopeRevision);
+    configuredReadiness = Objects.requireNonNull(service);
+    configuredMetadataScope = metadataScopeRevision;
+    configuredInventoryScope = inventoryScopeRevision;
   }
 
   /** Optional exact-build metadata opening; the application runtime owns the service. */
@@ -248,6 +267,9 @@ public final class AtlasApplication extends Application {
     configuredNames = names;
     configuredEvidence = evidence;
     configuredBuildLibrary = null;
+    configuredReadiness = null;
+    configuredMetadataScope = null;
+    configuredInventoryScope = null;
     configuredBuildOpening = null;
     configuredPreparation = null;
     configuredOverview = null;
@@ -536,6 +558,9 @@ public final class AtlasApplication extends Application {
                                   + " locale."),
               this::openGuidedBuild,
               this::guidedSourceDetails);
+      if (configuredReadiness != null)
+        guidedModel.configureReadiness(
+            configuredReadiness, currentLocale, configuredMetadataScope, configuredInventoryScope);
       guidedPane =
           new GuidedDiscoveryPane(
               guidedModel.viewData(),
@@ -1268,8 +1293,10 @@ public final class AtlasApplication extends Application {
         && !name.equals("Archive")
         && !name.equals("Settings")
         && !(name.equals("BuildHome") && overviewPane != null)) return;
-    if (openingModel != null && name.equals("Archive") && destination.equals("BuildHome"))
+    if (openingModel != null && name.equals("Archive") && destination.equals("BuildHome")) {
       retireOpening();
+      if (guidedModel != null) guidedModel.refreshReadiness();
+    }
     if (openingModel != null
         && name.equals("Archive")
         && destination.equals("Settings")
@@ -2484,6 +2511,7 @@ public final class AtlasApplication extends Application {
     rememberWorkspaceView();
     activeWorkspace = null;
     currentLocale = "enUS";
+    if (guidedModel != null) guidedModel.setReadinessLocale(currentLocale);
     researchTopic = "All research areas";
     searchText = "";
     privateNote = "";
@@ -2499,6 +2527,7 @@ public final class AtlasApplication extends Application {
     rememberWorkspaceView();
     activeWorkspace = w;
     currentLocale = w.locale();
+    if (guidedModel != null) guidedModel.setReadinessLocale(currentLocale);
     WorkspaceView view = workspaceViews.get(w.id());
     destination = view == null ? "Research" : view.destination();
     researchTopic = view == null ? "All research areas" : view.topic();
