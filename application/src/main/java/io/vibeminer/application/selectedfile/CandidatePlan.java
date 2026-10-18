@@ -26,6 +26,8 @@ public record CandidatePlan(
         || candidates.size() > budgets.lookup().maximumCandidates()
         || !variant.rootSource().equals(root.source())
         || !proof.rootSource().equals(root.source())
+        || !proof.authenticatedCandidates().isEmpty()
+            && !proof.authenticatedCandidates().equals(candidates)
         || candidates.stream().map(EncodedCandidate::encodingKey).distinct().count()
             != candidates.size())
       throw new IllegalArgumentException("Inconsistent selected-file candidate plan");

@@ -23,12 +23,14 @@ A CKey here is an independently authenticated root/EN declaration. Encoded verif
 
 - An empty slot can reserve one selected EKey under an immutable canonical plan. Same-EKey requests share that reservation and its actual source receipt. A concurrent different-EKey request for the same CKey returns busy until the winner settles.
 - After EKey A is retained, a request for EKey B must replan. It cannot silently retain B alongside A, replace A, delete A or pretend A was verified as B.
-- Initial cross-build reuse is deliberately conservative: the new build's independently authenticated EN candidate set must contain the retained **actual EKey A**, with consistent known encoded length. Persist the original acquisition receipt and the new build's separate root/EN association evidence. Do not manufacture a new URL/capture or current EN membership.
+- Initial cross-build reuse requires the new build's independently authenticated EN candidate set to contain the retained **actual EKey A**. Its complete encoded proof and physical receipt supply the known actual length; compare the EN length when supplied. An unknown EN length stays unknown and does not contradict a separately verified actual length. Persist the original acquisition receipt and the new build's separate root/EN association evidence. Do not manufacture a new URL/capture or current EN membership.
 - If the new build advertises only B, the workflow reports an existing canonical representation requiring a future association/replacement decision. It blocks duplicate B acquisition. CKey equality alone does not establish decoded equivalence, and no fallback is invented.
 - A conclusively failed attempt with no completed publication may relinquish its pending reservation so an explicit new candidate can be planned. Historical intent definitions remain unchanged. Cancellation of a returned future alone does not establish worker retirement or absence of publication.
 - An interrupted or uncertain publication remains a recovery state, not an empty slot. Replay/recover the reserved EKey and reconcile its receipt before allowing a different candidate. A crash between CAS promotion and catalog commit must not allow a second encoding to evade the slot policy as an untracked cache object.
 
 Automatic replacement, deletion and alternate retained encodings are outside this slice. The same physical encoded object may later receive a separate decoded-CKey attestation without copying it or overwriting its earlier encoded-only proof.
+
+For fresh acquisition, an unknown EN size may become a known payload cost through an explicit strict loose HEAD or authenticated archive mapping. This does not fill in the missing EN declaration. Acquisition still requires a concrete known-size plan, followed by complete encoded verification; retained reuse requires verified physical bytes. A known conflicting EN size is an integrity failure in either path.
 
 ## Identity, membership and durable association
 
