@@ -1,0 +1,75 @@
+{
+  "schema": "vibeminer-metadata-opening-observation-v1",
+  "sourceRevision": "56711b100102992dc1bc97fe144008517dd4fe66",
+  "observedCompletedAt": "2026-10-18T20:47:52.406205+00:00",
+  "productId": "wow_classic_beta",
+  "versionLabel": "1.60.1.70450",
+  "region": "us",
+  "locale": "enUS",
+  "buildConfig": "84bea4233331e390fda8724c6f91ffa5",
+  "cdnConfig": "f065eade5276a5ac05606e60a4c5a1f7",
+  "scopeRevision": "wow-root-loose-metadata-opening-v1",
+  "completeRequiredMetadataAdmission": true,
+  "requiredRoles": 7,
+  "metadataObjects": [
+    {
+      "role": "BUILD_CONFIG",
+      "physicalSha256": "d242f86b35c10307bf864d6118ca7d3aa2d801b274304d79da130311ba887870",
+      "storedBytes": 59537
+    },
+    {
+      "role": "CDN_CONFIG",
+      "physicalSha256": "cd1efbd680adcc8f8a77dad07011920eaa6b38c32f53217d2acc5e37b44f2c26",
+      "storedBytes": 59333
+    },
+    {
+      "role": "ENCODING",
+      "physicalSha256": "d88614d7aafb5d39c388876962253ca0b91d32daee84f57c074e640fbd2564bb",
+      "storedBytes": 141273036
+    },
+    {
+      "role": "ROOT",
+      "physicalSha256": "022493d20dee3237bec8f9b0d5d6757bb1d611bd3677554090c9b39f4872fc23",
+      "storedBytes": 38885945
+    },
+    {
+      "role": "INSTALL",
+      "physicalSha256": "4f5add01bba630ec7993d77403e9b46804b46ea372f2a60ff3b84703aff780d8",
+      "storedBytes": 18581
+    },
+    {
+      "role": "DOWNLOAD",
+      "physicalSha256": "a159d2c7b93ad3f6ebf1865641032ffcbd9d70bda245589cde743ec96b179815",
+      "storedBytes": 48612067
+    },
+    {
+      "role": "SIZE",
+      "physicalSha256": "07e9f62a1f067bb8cb72b829a65e7624962fcd92354b49c18d8d459c7a5549c0",
+      "storedBytes": 31289352
+    }
+  ],
+  "discoveryDocumentObservations": [
+    {
+      "url": "https://us.version.battle.net/v2/products/wow_classic_beta/versions",
+      "bytes": 630,
+      "sha256": "ab8dab6f16863c5b8a6186e3d851c335e3d6981c12c154e0956a3147be9cec43"
+    },
+    {
+      "url": "https://us.version.battle.net/v2/products/wow_classic_beta/cdns",
+      "bytes": 1338,
+      "sha256": "94faf4759ef5397cdd36356bce9a9fd6a3f6e6c0d0c9a269efaaf1336361d6be"
+    }
+  ],
+  "freshRuntimeOfflineReopen": {
+    "completeRequiredRoles": 7,
+    "forbiddenTransportAttempts": 0
+  },
+  "limits": [
+    "Metadata admission only; no payload inventory or entire live-build retention claim.",
+    "Object byte sum is not measured network traffic.",
+    "Exact source code ran from an immutable qualified overlay; downloaded bodies are excluded.",
+    "Recorded URLs and hashes are evidence, not authority to bypass normal source verification.",
+    "Stored representations include raw configuration documents; not every object is BLTE encoded."
+  ],
+  "sumStoredMetadataRepresentationBytes": 260197851
+}
