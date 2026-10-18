@@ -52,6 +52,10 @@ class BuildMetadataAdmissionRepositoryTest {
     final BuildMetadataAdmissionFacts facts;
 
     Fixture() throws Exception {
+      this("archives = " + "e".repeat(32) + "\n");
+    }
+
+    Fixture(String cdnText) throws Exception {
       byte[] config =
           utf(
               "root = "
@@ -65,7 +69,7 @@ class BuildMetadataAdmissionRepositoryTest {
                   + " "
                   + E
                   + "\ninstall-size = 20 18\n");
-      byte[] cdn = utf("archives = " + "e".repeat(32) + "\n");
+      byte[] cdn = utf(cdnText);
       String c = hash("MD5", config),
           d = hash("MD5", cdn),
           base = "https://us.version.battle.net/v2/products/wow/";
@@ -181,6 +185,26 @@ class BuildMetadataAdmissionRepositoryTest {
 
     public void close() {
       store.close();
+    }
+  }
+
+  @Test
+  void completeAdmissionReopensLongAuthenticatedCdnArchiveLine() throws Exception {
+    String cdn =
+        "archives = "
+            + java.util.stream.IntStream.range(0, 1024)
+                .mapToObj(i -> String.format("%032x", i))
+                .collect(java.util.stream.Collectors.joining(" "))
+            + "\n";
+    assertTrue(utf(cdn).length > 16384);
+    try (var f = new Fixture(cdn)) {
+      var admitted = f.repository.commit(f.facts, NONE);
+      assertEquals(
+          admitted,
+          new BuildMetadataAdmissionRepository(f.catalog, f.store)
+              .find(f.facts.reference(), "enUS", f.facts.scopeRevision(), NONE)
+              .orElseThrow()
+              .admission());
     }
   }
 

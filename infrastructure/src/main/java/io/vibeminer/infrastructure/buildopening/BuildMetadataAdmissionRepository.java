@@ -489,7 +489,8 @@ public final class BuildMetadataAdmissionRepository {
         .parse(
             leases.config(cdn.originalAlias().object(), token),
             ref.key().cdnConfig(),
-            new TactConfigParser.Limits(1 << 20, 16384, 16384, 64, Long.MAX_VALUE, Long.MAX_VALUE),
+            new TactConfigParser.Limits(
+                1 << 20, 16384, 1 << 20, 100000, Long.MAX_VALUE, Long.MAX_VALUE),
             token::isCancellationRequested);
     return new BuildMetadataAdmissionFacts(ref, locale, scope, declaration, configs, metadata);
   }
