@@ -41,6 +41,8 @@ An encoded-only A cannot establish this stronger metadata capability. It must be
 
 Before representation-aware metadata reuse is delivered, the narrow safe behavior is to detect a canonical same-CKey representation with a different EKey and return an explicit replan/unsupported-reuse outcome before acquiring the second payload. Do not silently store B, replace A, delete A or manufacture a B alias.
 
+The initial guarded metadata workflow also reports missing or corrupt canonical A explicitly instead of fetching a repair. Its exclusive ownership and original evidence remain intact. A separate, newly consented known-cost repair of that same A is tracked in [#83](https://github.com/aircan80/vibeminer/issues/83); this restriction does not change the existing selected-file repair contract. Neither failure permits alternate encoding B.
+
 The guard must operate across all supported content-producing paths, not merely check one service's in-memory map or existing per-build membership. Use the shared durable canonical slot and its prospective-publication recovery boundary. It must cover metadata and selected-file contenders for the same reviewed namespace/CKey. If a canonical slot is absent but verified historical metadata exists, adopt or reconcile that original receipt first; do not treat absence of the new slot row as permission to duplicate it.
 
 Same actual EKey requests may share source acquisition. Different EKeys for one CKey are busy while the canonical winner is active; a cancelled subscriber does not release a source worker that is still publishing. A definitively failed unpublished attempt can release its reservation. An uncertain publication remains exclusive recovery state, including after process restart.
@@ -75,6 +77,10 @@ Use synthetic content encoded into two deliberately different valid BLTE represe
 - Legacy duplicate representations remain visible and pinned; no automatic deletion or false reclaimed-byte claim occurs. Identical physical SHA aliases always count once.
 
 These checks are separate from full-build archive, general cache eviction and decoded-table sharing acceptance. No live data is needed for the deterministic suite.
+
+## Actual publisher ownership follow-up (#84)
+
+The approved [publisher ownership and startup-fencing contract](PUBLISHER-OWNERSHIP.md) distinguishes durable reservation intent from an actual worker permit. Core API/session/helper foundations exist, but joint SQL, selected-flight and runtime integration remains pending and is not enabled; no recovery or completed cross-workflow guard claim follows yet. The separate same-representation repair restriction under #83 remains unchanged.
 
 ## Approved first guard architecture (#80)
 
