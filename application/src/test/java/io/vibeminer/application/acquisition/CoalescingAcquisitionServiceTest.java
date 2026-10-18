@@ -240,6 +240,7 @@ class CoalescingAcquisitionServiceTest {
         }
         @Override public Optional<StoredObject> verify(ObjectDigest digest, CancellationToken cancellation) { cancellation.throwIfCancellationRequested(); if (corrupt) throw new ObjectStoreException(ObjectStoreException.Code.INTEGRITY_FAILURE, "synthetic corrupt local bytes"); return Optional.ofNullable(objects.get(digest)); }
         @Override public StoredObject publish(InputStream input, ExpectedObjectChecksum expected, long max, CancellationToken cancellation) { throw new UnsupportedOperationException(); }
+        @Override public StoredObject publishVerified(InputStream input, long length, long max, CompletionVerification completion, CancellationToken cancellation) { throw new UnsupportedOperationException(); }
         @Override public ObjectReadLease openRead(ObjectDigest digest, CancellationToken cancellation) { throw new UnsupportedOperationException(); }
         @Override public void close() { closed = true; }
     }

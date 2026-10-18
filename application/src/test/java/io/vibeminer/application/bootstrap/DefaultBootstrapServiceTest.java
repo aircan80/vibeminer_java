@@ -37,6 +37,7 @@ class DefaultBootstrapServiceTest {
     };
     static final ObjectStore NO_STORE = new ObjectStore() {
         public StoredObject publish(InputStream stream, ExpectedObjectChecksum expected, long maximum, CancellationToken token) { throw new AssertionError(); }
+        public StoredObject publishVerified(InputStream stream, long length, long maximum, CompletionVerification completion, CancellationToken token) { throw new AssertionError(); }
         public Optional<StoredObject> verify(ObjectDigest digest, CancellationToken token) { throw new AssertionError(); }
         public ObjectReadLease openRead(ObjectDigest digest, CancellationToken token) { throw new AssertionError(); }
         public void close() { throw new AssertionError("Service does not own storage"); }

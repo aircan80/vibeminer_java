@@ -1,6 +1,7 @@
 package io.vibeminer.infrastructure.storage;
 
 import io.vibeminer.application.CancellationToken;
+import io.vibeminer.application.CompletionVerification;
 import io.vibeminer.application.ObjectReadLease;
 import io.vibeminer.application.ObjectStore;
 import io.vibeminer.application.ObjectStoreException;
@@ -75,17 +76,28 @@ public final class FileObjectStore implements ObjectStore {
 
     @Override public StoredObject publish(InputStream source, ExpectedObjectChecksum expected,
             long maximumBytes, CancellationToken cancellation) {
-        Objects.requireNonNull(source, "source");
         Objects.requireNonNull(expected, "expected");
+        return publishInternal(source, expected.length(), maximumBytes, expected, null, cancellation);
+    }
+
+    @Override public StoredObject publishVerified(InputStream encodedSource, long expectedEncodedLength,
+            long maximumBytes, CompletionVerification completion, CancellationToken cancellation) {
+        Objects.requireNonNull(completion, "completion");
+        return publishInternal(encodedSource, expectedEncodedLength, maximumBytes, null, completion, cancellation);
+    }
+
+    private StoredObject publishInternal(InputStream source, long expectedLength, long maximumBytes,
+            ExpectedObjectChecksum expectedChecksum, CompletionVerification completion, CancellationToken cancellation) {
+        Objects.requireNonNull(source, "source");
         Objects.requireNonNull(cancellation, "cancellation");
-        if (maximumBytes < 0) throw new IllegalArgumentException("Maximum bytes cannot be negative");
-        if (expected.length() > maximumBytes) throw failure(LIMIT_EXCEEDED, "Object exceeds the configured byte limit");
+        if (maximumBytes < 0 || expectedLength < 0) throw new IllegalArgumentException("Object byte bounds cannot be negative");
+        if (expectedLength > maximumBytes) throw failure(LIMIT_EXCEEDED, "Object exceeds the configured byte limit");
         beginOperation();
         Path stage = null;
         try {
             cancellation.throwIfCancellationRequested();
             stage = Files.createTempFile(work, "stage-", ".tmp");
-            var sourceHash = hash(expected.algorithm().jcaName());
+            var sourceHash = expectedChecksum == null ? null : hash(expectedChecksum.algorithm().jcaName());
             var physicalHash = hash("SHA-256");
             long total = 0;
             try (var output = FileChannel.open(stage, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)) {
@@ -102,17 +114,20 @@ public final class FileObjectStore implements ObjectStore {
                         read = 1;
                     }
                     if (read > maximumBytes - total) throw failure(LIMIT_EXCEEDED, "Object exceeds the configured byte limit");
-                    if (read > expected.length() - total) throw failure(INTEGRITY_FAILURE, "Object length differs from its expected length");
-                    sourceHash.update(buffer, 0, read);
+                    if (read > expectedLength - total) throw failure(INTEGRITY_FAILURE, "Object length differs from its expected length");
+                    if (sourceHash != null) sourceHash.update(buffer, 0, read);
                     physicalHash.update(buffer, 0, read);
                     var bytes = ByteBuffer.wrap(buffer, 0, read);
                     while (bytes.hasRemaining()) output.write(bytes);
                     total += read;
                 }
                 cancellation.throwIfCancellationRequested();
-                if (total != expected.length() || !MessageDigest.isEqual(sourceHash.digest(), HexFormat.of().parseHex(expected.hexDigest()))) {
-                    throw failure(INTEGRITY_FAILURE, "Object checksum or length differs from its expected identity");
+                if (total != expectedLength) throw failure(INTEGRITY_FAILURE, "Object length differs from its expected length");
+                if (expectedChecksum != null && !MessageDigest.isEqual(sourceHash.digest(), HexFormat.of().parseHex(expectedChecksum.hexDigest()))) {
+                    throw failure(INTEGRITY_FAILURE, "Object checksum differs from its expected identity");
                 }
+                if (completion != null) completion.verifyComplete(cancellation);
+                cancellation.throwIfCancellationRequested();
                 output.force(true);
             }
             var object = new StoredObject(new ObjectDigest(HexFormat.of().formatHex(physicalHash.digest())), total);

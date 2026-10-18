@@ -78,3 +78,12 @@ Additional cases: duplicate aliases; corrupt existing blob; inconsistent length/
 ## Risks and open decisions
 
 Bulk manifests/indexes can dominate initial disk/download cost; measure before UI promises. A reproducible complete historical build requires retained resolvers as well as payloads. SQLite logical page freeing differs from filesystem reclaimable bytes; do not count a removed row as immediate disk reduction. Native file locking and directory durability differ across Windows/macOS/Linux and need packaging/runtime validation. Define explicit checksum revalidation policy and corruption behavior before claiming permanent integrity.
+
+
+## Completion-verified streaming publication (#46)
+
+`ObjectStore.publishVerified` supports an exact-length bounded encoded stream when a whole-encoded checksum is not known upfront. The store computes physical SHA-256 into one staging file, observes actual EOF and exact length, then invokes the completion verifier once. Only successful verification and subsequent cancellation checks permit force/atomic promotion. The inline protocol verifier must have checked required BLTE chunks and complete decoded CKey/length. A header EKey is never substituted for a whole-encoded MD5. The existing checksum publication path shares the same storage implementation.
+
+Caller ownership of streams, active leases, process exclusion, corruption handling and dedup remain in force. Failed verification, I/O, malformed length or cancellation leaves no new published object or ready membership. Catalog attachment remains a later transaction; this does not make filesystem and SQLite promotion one atomic resource.
+
+The first production root-retention design uses one complete encoded CAS object, without persistent chunks or a decoded root duplicate. Selected EN proof pages remain bounded session memory initially. After protocol verification and publication, an offline read lease can decode/parse requested IDs in a second bounded pass. Structural parser failure blocks lookup results without relabeling correctly protocol-verified raw bytes as corrupt. This is the storage contract for the upcoming lookup slice, not a delivered raw-file/archive workflow.
