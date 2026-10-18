@@ -96,18 +96,32 @@ class SqliteBuildInventoryTest {
         boolean zeroEncoded,
         boolean officialSourceRow)
         throws Exception {
+      this(malformedRoot, missingMapping, prefixCollision, zeroEncoded, officialSourceRow, false);
+    }
+
+    Fixture(
+        boolean malformedRoot,
+        boolean missingMapping,
+        boolean prefixCollision,
+        boolean zeroEncoded,
+        boolean officialSourceRow,
+        boolean metadataMember)
+        throws Exception {
       try (var c = sql.connect()) {
         BuildMetadataAdmissionSql.migrate(c);
         EncodingLookupSchema.migrate(c);
         InventorySchema.migrate(c);
       }
-      byte[] payload = new byte[100], encodedPayload = blte(payload);
+      byte[]
+          payload = metadataMember ? new byte[] {'I', 'N', 1, 16, 0, 0, 0, 0, 0, 0} : new byte[100],
+          encodedPayload = blte(payload);
       payloadC = md5(payload);
       payloadE = ekey(encodedPayload);
       var decoded =
           new EnumMap<BuildMetadataAdmission.Role, byte[]>(BuildMetadataAdmission.Role.class);
       decoded.put(BuildMetadataAdmission.Role.ROOT, root(payloadC, malformedRoot));
-      decoded.put(BuildMetadataAdmission.Role.INSTALL, install(payloadC));
+      decoded.put(
+          BuildMetadataAdmission.Role.INSTALL, metadataMember ? payload : install(payloadC));
       decoded.put(
           BuildMetadataAdmission.Role.DOWNLOAD,
           download(payloadE, zeroEncoded ? 0 : encodedPayload.length));
@@ -121,7 +135,8 @@ class SqliteBuildInventoryTest {
               payloadE,
               zeroEncoded ? 0 : encodedPayload.length,
               missingMapping,
-              prefixCollision));
+              prefixCollision,
+              payload.length));
       var encoded =
           new EnumMap<BuildMetadataAdmission.Role, byte[]>(BuildMetadataAdmission.Role.class);
       for (var entry : decoded.entrySet()) encoded.put(entry.getKey(), blte(entry.getValue()));
@@ -179,7 +194,7 @@ class SqliteBuildInventoryTest {
                       utf(
                           officialSourceRow
                               ? "Name!STRING:0|Path!STRING:0|Hosts!STRING:0|Servers!STRING:0|ConfigPath!STRING:0\n"
-                                  + "us|tpr/wow|us.cdn.blizzard.com|https://us.cdn.blizzard.com/|tpr/configs/data\n"
+                                    + "us|tpr/wow|us.cdn.blizzard.com|https://us.cdn.blizzard.com/|tpr/configs/data\n"
                               : "Name!STRING:0|Path!STRING:0|Hosts!STRING:0\n"
                                   + "us|tpr/wow|cdn.example.invalid\n")));
       new SqliteDiscoveryHistoryRepository(sql)
@@ -635,10 +650,16 @@ class SqliteBuildInventoryTest {
 
   static byte[] en(String ck, String ek, long bytes, boolean missing, boolean collision)
       throws Exception {
+    return en(ck, ek, bytes, missing, collision, 100);
+  }
+
+  static byte[] en(
+      String ck, String ek, long bytes, boolean missing, boolean collision, long decodedBytes)
+      throws Exception {
     var cp = new ByteArrayOutputStream();
     var co = new DataOutputStream(cp);
     co.writeByte(1);
-    u40(co, 100);
+    u40(co, decodedBytes);
     co.write(HexFormat.of().parseHex(missing ? "1".repeat(32) : ck));
     co.write(HexFormat.of().parseHex(ek));
     byte[] content = Arrays.copyOf(cp.toByteArray(), 1024);

@@ -64,6 +64,8 @@ public final class OfficialBuildRetentionSource implements BuildRetentionSource 
           || !authority.reservationPolicy().archives().equals(archives))
         throw new BuildRetentionException(
             LIMIT_EXCEEDED, "Locator policy differs from sealed reservation");
+      var metadata = associations.findMetadata(authority, target, member, token);
+      if (metadata.isPresent()) return metadata.get();
       var build = authority.metadata().declaration().build();
       var slot = new ContentSlotKey("wow", member.contentKey());
       var limits =
