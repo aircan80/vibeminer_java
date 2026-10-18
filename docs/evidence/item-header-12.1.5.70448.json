@@ -1,0 +1,96 @@
+{
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "cdnConfig": "f065eade5276a5ac05606e60a4c5a1f7",
+  "priorRootProof": {
+    "rootCKey": "e84483ee756c69a7dc5fbff04af81316",
+    "buildConfig": "88d5e8ef05ec5a8446cdec93d142d7c6",
+    "acquiredThisRun": false
+  },
+  "target": {
+    "fileDataId": 841626,
+    "CKey": "1df6b6dbae36878cea020a62b15b9bd6",
+    "EKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+    "encodedBytes": 738344,
+    "decodedBytes": 2139665
+  },
+  "archive": {
+    "key": "31236b924da7e06973fb5603c537fa7b",
+    "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+    "offset": 45153828,
+    "observedWholeBytes": 55261444,
+    "selectedOrdinal": 276,
+    "checkedIndexes": 277,
+    "advertisedArchiveCount": 1424,
+    "indexAuthenticatedWholeBytes": 4148,
+    "advertisedIndexSizeHint": 12388,
+    "indexHintConflict": true,
+    "completeArchiveChecksumVerified": false
+  },
+  "childVerification": {
+    "headerEKeyVerified": true,
+    "headerBytes": 1428,
+    "chunkCount": 59,
+    "consumedChunkIndexes": [
+      0
+    ],
+    "consumedChunkEncodedBytes": 2949,
+    "consumedChunkDecodedBytes": 7152,
+    "fullTableCKeyVerified": false
+  },
+  "header": {
+    "signature": "WDC5",
+    "tableHash": "50238EC2",
+    "layoutHash": "996192AA",
+    "schemaVersion": 5,
+    "schemaString": "WOWSTATIC_12_1_5_70077",
+    "flags": 4,
+    "recordCount": 60025,
+    "fieldCount": 15,
+    "recordSize": 11,
+    "stringTableSize": 2,
+    "minId": 17,
+    "maxId": 287078,
+    "locale": 4294967295,
+    "idFieldIndex": 0,
+    "totalFieldCount": 15,
+    "packedDataOffset": 0,
+    "lookupColumnCount": 0,
+    "fieldStorageInfoSize": 360,
+    "commonDataSize": 0,
+    "palletDataSize": 3300,
+    "sectionCount": 50,
+    "candidateTableLayoutMatch": true,
+    "candidateRevision": "b9a63096cdd99b26967f17f9515377ae62cadfd7"
+  },
+  "cost": {
+    "requests": 836,
+    "responseBodyBytes": 1342650,
+    "decodedWorkBytes": 7152,
+    "elapsedNanos": 8143447154
+  },
+  "coverage": {
+    "tableBodyValidated": false,
+    "rowsSupported": false,
+    "noPayloadWrites": true
+  },
+  "selectedEvidenceLines": [
+    "TRANSFER suffix source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index Range=bytes=-28 maxObservedTotal=2097152",
+    "RECEIVED suffix source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index observedTotal=4148 at=2026-10-18T06:11:38.351738559Z footerSHA256=19b52d451dde3d35cbe702ad5ebb1c535d8a396c1f3e6d68f1ece948d933f50a",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index start=4096 count=24 pinnedWhole=4148",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index at=2026-10-18T06:11:38.358924236Z rangeSHA256=95a04b6d922df3119dd3faecf0cf33a1e69d3f40bdb3a374c7ceacdc24f85dc4",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index start=0 count=4096 pinnedWhole=4148",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b.index at=2026-10-18T06:11:38.366545081Z rangeSHA256=a63b1a858cca40de07a8129205d0b555221682df9d15ae86573a682e869fa5fe",
+    "VERIFIED ARCHIVE MAPPING ordinal=276 checkedIndexes=277 archive=31236b924da7e06973fb5603c537fa7b targetEKey=a928b6c9c7ce92d85b638400f81b2fc2 offset=45153828 encodedBytes=738344 completeArchiveChecksumVerified=false",
+    "TRANSFER HEAD source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b maxObservedTotal=8589934592",
+    "RECEIVED HEAD source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b observedTotal=55261444 at=2026-10-18T06:11:38.505687898Z ETag=Optional.empty wholeArchiveChecksumVerified=false",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b start=45153828 count=8 pinnedWhole=55261444",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b at=2026-10-18T06:11:38.517069151Z rangeSHA256=e210955956dd6e05eda37ee9b507d67ce8443859802db631cc6149453a5e4f4a",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b start=45153828 count=1428 pinnedWhole=55261444",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b at=2026-10-18T06:11:38.523872744Z rangeSHA256=ba18e21bbaf4a6778f6be425ea80be65a46ab4a5c0c60cfa981428d103ad29e8",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b start=45155256 count=2949 pinnedWhole=55261444",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b at=2026-10-18T06:11:38.538254468Z rangeSHA256=fd7c774dafcaa5c002fc9df8fe22fba34e6b89ed9089184964372d35e6c3a673"
+  ],
+  "diagnosticSourceCommit": "5c89df5"
+}
