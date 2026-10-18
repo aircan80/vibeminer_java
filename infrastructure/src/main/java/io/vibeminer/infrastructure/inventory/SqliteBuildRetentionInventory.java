@@ -87,6 +87,7 @@ public final class SqliteBuildRetentionInventory
   private final MetadataStreamBudgets budgets;
   private final SqliteEncodingLookupIndex.Limits limits;
   private final ReservationPolicy policy;
+  private final int maximumContexts;
   private final Object monitor = new Object();
   private final LinkedHashMap<String, Context> contexts = new LinkedHashMap<>(4, .75f, true);
   private int initializing;
@@ -100,6 +101,22 @@ public final class SqliteBuildRetentionInventory
       MetadataStreamBudgets budgets,
       SqliteEncodingLookupIndex.Limits limits,
       ReservationPolicy policy) {
+    this(catalog, store, admissions, encoding, budgets, limits, policy, 2);
+  }
+
+  /** Contexts retain source leases/receipts, never decoded payload buffers or new executors. */
+  public SqliteBuildRetentionInventory(
+      SqliteCatalog catalog,
+      ObjectStore store,
+      BuildMetadataAdmissionRepository admissions,
+      SqliteEncodingLookupIndex encoding,
+      MetadataStreamBudgets budgets,
+      SqliteEncodingLookupIndex.Limits limits,
+      ReservationPolicy policy,
+      int maximumContexts) {
+    if (maximumContexts < 1 || maximumContexts > 16)
+      throw new IllegalArgumentException("Verified context capacity must be1..16");
+    this.maximumContexts = maximumContexts;
     this.catalog = Objects.requireNonNull(catalog);
     this.store = Objects.requireNonNull(store);
     this.admissions = Objects.requireNonNull(admissions);
@@ -211,7 +228,8 @@ public final class SqliteBuildRetentionInventory
         cached = hit;
       }
       if (cached == null) {
-        if (contexts.size() + initializing >= 2) {
+        if (initializing >= 2) throw fail(BUSY, "Two inventory contexts are already initializing");
+        if (contexts.size() + initializing >= maximumContexts) {
           for (var it = contexts.entrySet().iterator(); it.hasNext(); ) {
             var e = it.next();
             if (e.getValue().borrowers == 0) {
@@ -220,7 +238,7 @@ public final class SqliteBuildRetentionInventory
               break;
             }
           }
-          if (evicted == null) throw fail(BUSY, "Two verified inventory contexts are active");
+          if (evicted == null) throw fail(BUSY, "Verified inventory context capacity is active");
         }
         initializing++;
       }

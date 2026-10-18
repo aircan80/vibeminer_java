@@ -405,4 +405,125 @@ class SqliteBuildRetentionInventoryTest {
         BuildRetentionException.Code.LIMIT_EXCEEDED,
         assertThrows(BuildRetentionException.class, () -> policy.cost(100)).code());
   }
+
+  private java.util.List<BuildRetention.Target> threeScopes(SqliteBuildRetentionInventory a)
+      throws Exception {
+    var result = new java.util.ArrayList<BuildRetention.Target>();
+    for (int i = 0; i < 3; i++) {
+      String scope = f.facts.scopeRevision() + "-" + i;
+      var facts =
+          new io.vibeminer.infrastructure.buildopening.BuildMetadataAdmissionFacts(
+              f.facts.reference(),
+              f.facts.locale(),
+              scope,
+              f.facts.declaration(),
+              f.facts.configurations(),
+              f.facts.metadata());
+      f.admissions.commit(facts, NONE);
+      var prepared =
+          f.inventory.prepare(
+              facts.reference(), facts.locale(), scope, budgets(), EN_LIMITS, LIMITS, NONE);
+      result.add(a.issueTarget(facts.reference(), facts.locale(), scope, prepared, NONE));
+    }
+    return java.util.List.copyOf(result);
+  }
+
+  @Test
+  void configurableThreeContextCacheAvoidsRoundRobinSourceRehashes() throws Exception {
+    int[] reads = {0};
+    var observing =
+        (io.vibeminer.application.ObjectStore)
+            java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {io.vibeminer.application.ObjectStore.class},
+                (proxy, method, args) -> {
+                  if (method.getName().equals("openRead")) reads[0]++;
+                  try {
+                    return method.invoke(f.store, args);
+                  } catch (java.lang.reflect.InvocationTargetException e) {
+                    throw e.getCause();
+                  }
+                });
+    try (var a =
+        new SqliteBuildRetentionInventory(
+            f.sql,
+            observing,
+            f.admissions,
+            new SqliteEncodingLookupIndex(f.sql, f.store, f.admissions, UUID.randomUUID()),
+            budgets(),
+            EN_LIMITS,
+            new SqliteBuildRetentionInventory.ReservationPolicy(
+                SelectedFileBudgets.defaults(), ArchiveSearchBudgets.defaults()),
+            3)) {
+      var targets = threeScopes(a);
+      for (var target : targets)
+        try (var opened = a.openSealed(target, NONE)) {
+          assertEquals(1, opened.members(0, 1, NONE).size());
+        }
+      int verified = reads[0];
+      for (int round = 0; round < 3; round++)
+        for (var target : targets)
+          try (var opened = a.openSealed(target, NONE)) {
+            assertEquals(1, opened.members(0, 1, NONE).size());
+          }
+      assertEquals(verified, reads[0], "Round-robin builds reuse their held verified contexts");
+    }
+  }
+
+  @Test
+  void largerCacheStillAdmitsOnlyTwoActualInitializers() throws Exception {
+    var started = new java.util.concurrent.CountDownLatch(2);
+    var release = new java.util.concurrent.CountDownLatch(1);
+    var armed = new java.util.concurrent.atomic.AtomicBoolean();
+    var observing =
+        (io.vibeminer.application.ObjectStore)
+            java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {io.vibeminer.application.ObjectStore.class},
+                (proxy, method, args) -> {
+                  if (method.getName().equals("openRead") && armed.get()) {
+                    started.countDown();
+                    if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                      throw new AssertionError("Initializer was not released");
+                  }
+                  try {
+                    return method.invoke(f.store, args);
+                  } catch (java.lang.reflect.InvocationTargetException e) {
+                    throw e.getCause();
+                  }
+                });
+    try (var a =
+            new SqliteBuildRetentionInventory(
+                f.sql,
+                observing,
+                f.admissions,
+                new SqliteEncodingLookupIndex(f.sql, f.store, f.admissions, UUID.randomUUID()),
+                budgets(),
+                EN_LIMITS,
+                new SqliteBuildRetentionInventory.ReservationPolicy(
+                    SelectedFileBudgets.defaults(), ArchiveSearchBudgets.defaults()),
+                16);
+        var workers = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+      var targets = threeScopes(a);
+      armed.set(true);
+      var first = workers.submit(() -> a.openSealed(targets.get(0), NONE));
+      var second = workers.submit(() -> a.openSealed(targets.get(1), NONE));
+      try {
+        assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        assertEquals(
+            BuildRetentionException.Code.BUSY,
+            assertThrows(BuildRetentionException.class, () -> a.openSealed(targets.get(2), NONE))
+                .code());
+      } finally {
+        release.countDown();
+      }
+      first.get(5, java.util.concurrent.TimeUnit.SECONDS).close();
+      second.get(5, java.util.concurrent.TimeUnit.SECONDS).close();
+      try (var third = a.openSealed(targets.get(2), NONE)) {
+        assertEquals(1, third.members(0, 1, NONE).size());
+      }
+    } finally {
+      release.countDown();
+    }
+  }
 }
