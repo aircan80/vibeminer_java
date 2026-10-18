@@ -20,8 +20,15 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     READY,
     PAGING,
     LOOKING,
+    SEARCHING,
     FAILED,
     CANCELLED
+  }
+
+  public enum QueryMode {
+    BROWSE,
+    EXACT_ID,
+    SEARCH
   }
 
   public record State(
@@ -38,9 +45,17 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
       NamedItemRow selected,
       String mode,
       String message,
-      ItemNamesException.Code code) {
+      ItemNamesException.Code code,
+      String searchInput,
+      boolean searchBlocked,
+      ItemNameLiteralQuery executedQuery,
+      ItemNamesSearchPage searchPage,
+      QueryMode queryMode) {
     public boolean busy() {
-      return stage == Stage.PREPARING || stage == Stage.PAGING || stage == Stage.LOOKING;
+      return stage == Stage.PREPARING
+          || stage == Stage.PAGING
+          || stage == Stage.LOOKING
+          || stage == Stage.SEARCHING;
     }
   }
 
@@ -73,6 +88,11 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
   private PreparedItemNames pair, historicalPair;
   private ItemNamesPage page;
   private ItemNamesLookup lookup;
+  private String searchInput = "";
+  private boolean searchBlocked;
+  private ItemNameLiteralQuery executedQuery;
+  private ItemNamesSearchPage searchPage;
+  private QueryMode queryMode = QueryMode.BROWSE;
   private String input = "",
       mode = "No query",
       message = "Choose a prepared Item source and a verified retained Sparse source.";
@@ -104,7 +124,12 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
         selected,
         mode,
         message,
-        code);
+        code,
+        searchInput,
+        searchBlocked,
+        executedQuery,
+        searchPage,
+        queryMode);
   }
 
   public SparseNameLimits limits() {
@@ -137,6 +162,10 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     clearReady();
     if (!retainHistory) historicalPair = null;
     input = "";
+    searchInput = "";
+    searchBlocked = false;
+    executedQuery = null;
+    queryMode = QueryMode.BROWSE;
     mode = "No query";
     code = null;
     stage =
@@ -243,10 +272,17 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
   }
 
   public void firstPage() {
+    if (!canQuery()) return;
+    queryMode = QueryMode.BROWSE;
+    executedQuery = null;
     page(Optional.empty());
   }
 
   public void nextPage() {
+    if (queryMode == QueryMode.SEARCH) {
+      if (canContinueSearch()) search(searchPage.nextCursor());
+      return;
+    }
     if (page != null && page.nextCursor().isPresent()) page(page.nextCursor());
   }
 
@@ -327,7 +363,7 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
   public void setInput(String value) {
     Objects.requireNonNull(value);
     if (closed || input.equals(value)) return;
-    if (stage == Stage.PAGING || stage == Stage.LOOKING) {
+    if (stage == Stage.PAGING || stage == Stage.LOOKING || stage == Stage.SEARCHING) {
       retire();
       stage = pair == null ? Stage.UNPREPARED : Stage.READY;
     }
@@ -341,6 +377,7 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     message = "Draft Item record ID changed. No query was made.";
     if (page != null) mode = "Previous browse page · draft ID not queried";
     else if (lookup != null) mode = "Previous exact lookup · draft ID not queried";
+    else if (searchPage != null) mode = "Previous literal search · exact ID draft not queried";
     emit();
   }
 
@@ -359,6 +396,8 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
       return;
     }
     var current = pair;
+    queryMode = QueryMode.EXACT_ID;
+    executedQuery = null;
     clearResults();
     mode = "Exact Item record ID " + id;
     run(
@@ -400,6 +439,182 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     }
   }
 
+  /** Reject the native editor's lossy input subset before JavaFX can strip characters. */
+  public static boolean acceptsEditorText(String value) {
+    if (value == null) return false;
+    for (int n = 0; n < value.length(); n++) {
+      char c = value.charAt(n);
+      if (c < 0x20 && c != '\n' && c != '\t' || c == 0x7f) return false;
+    }
+    return true;
+  }
+
+  public boolean setSearchInput(String value) {
+    Objects.requireNonNull(value);
+    if (closed) return false;
+    if (!acceptsEditorText(value)) {
+      rejectSearchIngress();
+      return false;
+    }
+    if (searchInput.equals(value) && !searchBlocked) return true;
+    if (stage == Stage.SEARCHING) {
+      retire();
+      stage = pair == null ? Stage.UNPREPARED : Stage.READY;
+    }
+    searchInput = value;
+    searchBlocked = false;
+    selected = null;
+    if (pair == null && stage == Stage.FAILED) {
+      emit();
+      return true;
+    }
+    code = null;
+    message = "Literal draft changed. No search was made.";
+    if (searchPage != null) mode = "Previous literal search · draft text not queried";
+    emit();
+    return true;
+  }
+
+  public void rejectSearchIngress() {
+    if (closed) return;
+    if (stage == Stage.SEARCHING) {
+      retire();
+      stage = pair == null ? Stage.UNPREPARED : Stage.READY;
+    }
+    searchBlocked = true;
+    selected = null;
+    code = ItemNamesException.Code.INVALID_REQUEST;
+    message =
+        "This native editor cannot preserve CR, NUL, other control characters or DEL. The insertion"
+            + " was rejected; edit valid text or Clear before Search. LF and tab are supported.";
+    if (searchPage != null) mode = "Previous literal search · rejected insertion not queried";
+    emit();
+  }
+
+  public void clearSearch() {
+    if (closed) return;
+    if (stage == Stage.SEARCHING || stage == Stage.PAGING || stage == Stage.LOOKING) retire();
+    searchInput = "";
+    searchBlocked = false;
+    executedQuery = null;
+    queryMode = QueryMode.BROWSE;
+    clearResults();
+    mode = "Browse mode · no query made";
+    if (pair != null) {
+      stage = Stage.READY;
+      code = null;
+      message = "Browse mode · no query made. Choose Browse explicitly to read a page.";
+    }
+    emit();
+  }
+
+  public boolean canContinueSearch() {
+    return canQuery()
+        && queryMode == QueryMode.SEARCH
+        && !searchBlocked
+        && executedQuery != null
+        && searchInput.equals(executedQuery.text())
+        && searchPage != null
+        && searchPage.nextCursor().isPresent();
+  }
+
+  public void search() {
+    if (!canQuery()) return;
+    if (searchBlocked) {
+      rejectSearchIngress();
+      return;
+    }
+    try {
+      executedQuery = new ItemNameLiteralQuery(searchInput);
+    } catch (IllegalArgumentException bad) {
+      code = ItemNamesException.Code.INVALID_REQUEST;
+      message =
+          "Enter 1 to 128 Unicode scalar values, at most 512 UTF-8 bytes. Text is literal and"
+              + " case-sensitive; invalid Unicode and NUL are rejected. No search was made.";
+      if (searchPage != null) mode = "Previous literal search · invalid draft not queried";
+      emit();
+      return;
+    }
+    queryMode = QueryMode.SEARCH;
+    search(Optional.empty());
+  }
+
+  private void search(Optional<ItemNamesSearchCursor> cursor) {
+    if (!canQuery() || executedQuery == null) return;
+    var current = pair;
+    var query = executedQuery;
+    try {
+      cursor.ifPresent(c -> c.requireContext(current, query, pageSize()));
+    } catch (IllegalArgumentException bad) {
+      fail(new ItemNamesException(ItemNamesException.Code.STALE_CURSOR, "Cursor"));
+      return;
+    }
+    clearResults();
+    mode = "Display candidates · exact text, case-sensitive";
+    run(
+        Stage.SEARCHING,
+        "Scanning admitted physical candidates locally. Page size bounds displayed matches, not"
+            + " total scan or proof work.",
+        () -> service.search(current, query, cursor, pageSize()),
+        result -> {
+          if (!validSearch(result, current, query, cursor)) {
+            invalid();
+            return;
+          }
+          searchPage = result;
+          stage = Stage.READY;
+          message =
+              result.rows().isEmpty()
+                  ? "No matching Display candidate in the admitted paired physical scope for this"
+                      + " query. This does not establish whole-build absence."
+                  : result.rows().size()
+                      + " matching physical Item rows in this page. No total match count is"
+                      + " claimed.";
+          emit();
+        });
+  }
+
+  private boolean validSearch(
+      ItemNamesSearchPage result,
+      PreparedItemNames current,
+      ItemNameLiteralQuery query,
+      Optional<ItemNamesSearchCursor> cursor) {
+    if (result == null
+        || !result.pair().equals(current)
+        || !result.query().equals(query)
+        || result.rows().size() > pageSize()
+        || result.rows().size() > current.item().coverage().physicalRows()
+        || result.rows().size() > current.names().coverage().physicalRows()
+        || cursor.isPresent()
+            && !cursor.get().generationFingerprint().equals(result.generationFingerprint()))
+      return false;
+    long previous = cursor.map(ItemNamesSearchCursor::afterRecordId).orElse(0L);
+    var items = new HashSet<Integer>();
+    var names = new HashSet<Integer>();
+    try {
+      for (var row : result.rows()) {
+        current.requireRow(row);
+        if (row.item().recordId() <= previous
+            || !items.add(row.item().physicalOrdinal())
+            || row.name().candidate().isEmpty()
+            || !validName(row.name())
+            || !names.add(row.name().candidate().get().physicalOrdinal())
+            || !query.matches(row.name().candidate().get())) return false;
+        previous = row.item().recordId();
+      }
+      if (result.nextCursor().isPresent()) {
+        var next = result.nextCursor().get();
+        next.requireContext(current, query, pageSize());
+        if (result.rows().size() != pageSize()
+            || next.afterRecordId() != previous
+            || !next.generationFingerprint().equals(result.generationFingerprint())) return false;
+      }
+      return true;
+    } catch (IllegalArgumentException bad) {
+      return false;
+    }
+  }
+
   public static String nameStatus(ItemNameMatch match) {
     return switch (match.outcome()) {
       case PHYSICAL_NAME ->
@@ -420,7 +635,11 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
       }
       return;
     }
-    if (pair == null || page == null || !page.rows().contains(row) || row.equals(selected)) return;
+    if (pair == null || row.equals(selected)) return;
+    boolean visible =
+        page != null && page.rows().contains(row)
+            || searchPage != null && searchPage.rows().contains(row);
+    if (!visible) return;
     selected = row;
     emit();
   }
@@ -464,6 +683,10 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     if (closed || generation != request) return;
     try {
       var f = Objects.requireNonNull(action.get()).toCompletableFuture();
+      if (closed || generation != request) {
+        f.cancel(true);
+        return;
+      }
       pending = f;
       f.whenComplete(
           (value, error) ->
@@ -496,6 +719,7 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
       emit();
       return;
     }
+    boolean wasSearch = stage == Stage.SEARCHING || queryMode == QueryMode.SEARCH;
     code =
         error instanceof ItemNamesException typed
             ? typed.code()
@@ -505,7 +729,8 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
         || code == ItemNamesException.Code.NOT_READY
         || code == ItemNamesException.Code.INCOMPATIBLE
         || code == ItemNamesException.Code.UNSUPPORTED
-        || code == ItemNamesException.Code.STALE_CURSOR) pair = null;
+        || code == ItemNamesException.Code.STALE_CURSOR && !wasSearch) pair = null;
+    if (wasSearch && code == ItemNamesException.Code.STALE_CURSOR) executedQuery = null;
     stage = Stage.FAILED;
     message =
         switch (code) {
@@ -536,17 +761,27 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
           case STORAGE_UNAVAILABLE ->
               "Local names storage is unavailable. No new paired result is claimed.";
         };
+    if (wasSearch && code == ItemNamesException.Code.STALE_CURSOR)
+      message =
+          "Search generations changed. Search again explicitly from the beginning; the prepared"
+              + " pair remains available.";
+    if (wasSearch && code == ItemNamesException.Code.LIMIT_EXCEEDED)
+      message =
+          "Search incomplete: a bounded scan limit was reached. No partial matches or no-match"
+              + " conclusion are available.";
     emit();
   }
 
   private void clearResults() {
     page = null;
     lookup = null;
+    searchPage = null;
     selected = null;
   }
 
   private void clearReady() {
     pair = null;
+    executedQuery = null;
     clearResults();
   }
 
