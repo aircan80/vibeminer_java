@@ -203,7 +203,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
   }
 
   @Override
-  public CompletionStage<MetadataBuildAssociation> execute(MetadataRepairPlan issued) {
+  public CompletionStage<MetadataRepairResult> execute(MetadataRepairPlan issued) {
     return submit(
         token -> {
           Context context;
@@ -218,7 +218,8 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
             validate(context, token);
             var initial = current(issued.request(), token);
             exact(initial, issued);
-            var completed = owned(context, initial, token);
+            var source = owned(context, initial, token);
+            var completed = source.representation();
             // owned() returns only after its source finally has retired the actual permit.
             token.throwIfCancellationRequested();
             declarations.validateDeclaration(context.declaration(), context.budgets(), token);
@@ -233,7 +234,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
                 || !attached.actualRepresentation().equals(completed))
               throw failure(
                   INTEGRITY_FAILURE, "Consumer attachment changed immutable metadata facts");
-            return attached;
+            return new MetadataRepairResult(attached, source.audit());
           } finally {
             synchronized (this) {
               executing.remove(issued.issuanceId());
@@ -242,8 +243,10 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
         });
   }
 
-  private MetadataContentProof owned(
-      Context context, ContentClaim initial, CancellationToken token) {
+  private record CompletedSource(
+      MetadataContentProof representation, Optional<MetadataRepairAudit> audit) {}
+
+  private CompletedSource owned(Context context, ContentClaim initial, CancellationToken token) {
     var permit = contents.claimWorker(initial.token(), token);
     if (!permit.reservationToken().equals(initial.token()))
       throw failure(INTEGRITY_FAILURE, "Worker admission changed original reservation");
@@ -258,6 +261,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
       exact(current, context.plan());
       var original = (MetadataContentProof) current.proof().orElseThrow();
       MetadataContentProof fresh;
+      Optional<MetadataRepairAudit> completedAudit = Optional.empty();
       if (physical(original, token))
         fresh = local.verifyOriginal(context.plan().request(), original, context.budgets(), token);
       else {
@@ -281,6 +285,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
             || !audit.events().getLast().observation().equals(Optional.of(result)))
           throw failure(INTEGRITY_FAILURE, "Repair audit completion changed exact attempt facts");
         observer.auditCompleted = true;
+        completedAudit = Optional.of(audit);
         fresh =
             new MetadataContentProof(
                 original.originalAlias(),
@@ -299,7 +304,7 @@ public final class DefaultMetadataRepairService implements MetadataRepairService
           || !done.proof().equals(Optional.of(merged)))
         throw failure(INTEGRITY_FAILURE, "Canonical completion changed original representation");
       published = true;
-      return merged;
+      return new CompletedSource(merged, completedAudit);
     } catch (RuntimeException failure) {
       if (failure instanceof MetadataAcquisitionFailure scoped) certainty = scoped.publication();
       var unwrapped =

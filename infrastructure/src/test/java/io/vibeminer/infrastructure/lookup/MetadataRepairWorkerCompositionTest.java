@@ -44,6 +44,7 @@ class MetadataRepairWorkerCompositionTest {
     final RootSelectionPlan selection;
     final MetadataContentProof original;
     final ContentClaim claim;
+    final AtomicReference<MetadataRepairAudit> completedAudit = new AtomicReference<>();
 
     Fixture(Path path) throws Exception {
       this(path, 0);
@@ -639,6 +640,22 @@ class MetadataRepairWorkerCompositionTest {
     }
     var local = new OfficialMetadataLocalVerificationGateway(f.store);
     var declarations = new OfficialMetadataReuseGateway(f.store);
+    // Observe the exact real SQL completion object without substituting any verification or write.
+    var observedAudits =
+        (MetadataRepairAuditRepository)
+            java.lang.reflect.Proxy.newProxyInstance(
+                MetadataRepairAuditRepository.class.getClassLoader(),
+                new Class<?>[] {MetadataRepairAuditRepository.class},
+                (proxy, method, args) -> {
+                  try {
+                    var value = method.invoke(f.audits, args);
+                    if (method.getName().equals("complete"))
+                      f.completedAudit.set((MetadataRepairAudit) value);
+                    return value;
+                  } catch (java.lang.reflect.InvocationTargetException failure) {
+                    throw failure.getCause();
+                  }
+                });
     return new Policy(
         new DefaultMetadataRepairService(
             issuer,
@@ -647,7 +664,7 @@ class MetadataRepairWorkerCompositionTest {
             declarations,
             new SqliteBuildObjectCatalog(f.sql, f.store),
             f.claims,
-            f.audits,
+            observedAudits,
             new SqliteMetadataAssociationRepository(f.sql, f.store, f.store.contentSession()),
             f.store,
             executor,
@@ -670,7 +687,9 @@ class MetadataRepairWorkerCompositionTest {
         var issued = policy.service.prepareRoot(f.selection).toCompletableFuture().join();
         assertTrue(issued.cost().encodedTransferBytes() > 0);
         assertEquals(1, f.head.requests.size());
-        attached = policy.service.execute(issued).toCompletableFuture().join();
+        var execution = policy.service.execute(issued).toCompletableFuture().join();
+        attached = execution.association();
+        assertCompletedResult(f, issued, execution);
         assertEquals(f.original.originalAlias(), attached.actualRepresentation().originalAlias());
         if (history == 2) assertEquals(f.original, attached.actualRepresentation());
         else {
@@ -729,7 +748,10 @@ class MetadataRepairWorkerCompositionTest {
       int requests = f.wire.requests.size();
       Files.write(f.objectPath(), bytes);
       var result = policy.service.execute(issued).toCompletableFuture().join();
-      assertEquals(f.original.originalAlias(), result.actualRepresentation().originalAlias());
+      assertEquals(
+          f.original.originalAlias(), result.association().actualRepresentation().originalAlias());
+      assertTrue(result.completedAudit().isEmpty());
+      assertNull(f.completedAudit.get());
       assertEquals(requests, f.wire.requests.size());
       assertEquals(0, count(f.sql, "metadata_repair_attempts"));
       assertEquals(1, count(f.sql, "retention_scopes"));
@@ -901,7 +923,9 @@ class MetadataRepairWorkerCompositionTest {
                 .prepareInstall(seed.ordinary(), LookupBudgets.defaults())
                 .toCompletableFuture()
                 .join();
-        attached = policy.service.execute(issued).toCompletableFuture().join();
+        var execution = policy.service.execute(issued).toCompletableFuture().join();
+        attached = execution.association();
+        assertCompletedResult(f, issued, execution);
         assertEquals(1, calls.get());
         assertEquals(seed.original(), attached.actualRepresentation());
         assertEquals(seed.claim(), f.claims.lookup(seed.claim().slot(), NONE).orElseThrow());
@@ -938,6 +962,24 @@ class MetadataRepairWorkerCompositionTest {
         assertTrue(noWire.requests.isEmpty());
       }
     }
+  }
+
+  static void assertCompletedResult(
+      Fixture f, MetadataRepairPlan issued, MetadataRepairResult result) {
+    var audit = result.completedAudit().orElseThrow();
+    assertSame(f.completedAudit.get(), audit);
+    assertEquals(issued, audit.issued());
+    assertEquals(MetadataRepairAuditEvent.Kind.COMPLETED, audit.events().getLast().kind());
+    var fresh = audit.events().getLast().observation().orElseThrow();
+    assertEquals(issued.originalProof(), fresh.originalProof());
+    assertEquals(
+        issued.sourceObservation().resourceUrl(), fresh.actualTransfer().evidence().sourceUrl());
+    assertEquals(issued.originalProof().object(), fresh.actualTransfer().object());
+    assertTrue(fresh.payloadRequestCount() > 0);
+    assertTrue(fresh.payloadResponseBytes() > 0);
+    assertEquals(
+        issued.originalProof().originalAlias(),
+        result.association().actualRepresentation().originalAlias());
   }
 
   static final class PayloadClient extends java.net.http.HttpClient {

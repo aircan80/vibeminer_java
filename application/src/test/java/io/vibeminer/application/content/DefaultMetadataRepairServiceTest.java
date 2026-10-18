@@ -39,6 +39,7 @@ class DefaultMetadataRepairServiceTest {
   Runnable publicationHook;
   CountDownLatch retired;
   RetentionScope pinned;
+  MetadataRepairAudit completedAudit;
 
   @SuppressWarnings("unchecked")
   <T> T port(Class<T> type, java.lang.reflect.InvocationHandler handler) {
@@ -246,7 +247,8 @@ class DefaultMetadataRepairServiceTest {
                           MetadataRepairAuditEvent.Kind.COMPLETED,
                           NOW,
                           Optional.of((MetadataRepairObservation) a[2])));
-                  return new MetadataRepairAudit(attempt, issued, NOW, auditEvents);
+                  completedAudit = new MetadataRepairAudit(attempt, issued, NOW, auditEvents);
+                  return completedAudit;
                 case "fail":
                   events.add("audit-fail:" + a[2]);
                   return null;
@@ -342,7 +344,9 @@ class DefaultMetadataRepairServiceTest {
   void sourceAuditCompletesBeforeCanonicalAndRetirementBeforeConsumerAttachment() {
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
-      var result = s.execute(p).toCompletableFuture().join();
+      var response = s.execute(p).toCompletableFuture().join();
+      var result = response.association();
+      assertSame(completedAudit, response.completedAudit().orElseThrow());
       assertEquals(original.originalAlias(), result.actualRepresentation().originalAlias());
       assertTrue(events.indexOf("prospective") < events.indexOf("grammar"));
       assertTrue(events.indexOf("audit-complete") < events.indexOf("canonical"));
@@ -370,7 +374,9 @@ class DefaultMetadataRepairServiceTest {
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
       healthy = true;
-      var result = s.execute(p).toCompletableFuture().join();
+      var response = s.execute(p).toCompletableFuture().join();
+      var result = response.association();
+      assertTrue(response.completedAudit().isEmpty());
       assertTrue(events.contains("local"));
       assertFalse(events.contains("GET"));
       assertFalse(events.contains("begin"));
@@ -416,7 +422,8 @@ class DefaultMetadataRepairServiceTest {
             Optional.of(new MetadataStructureAttestation(kind, "old-grammar")));
     try (var s = service(Runnable::run)) {
       var p = prepare(s);
-      var result = s.execute(p).toCompletableFuture().join();
+      var response = s.execute(p).toCompletableFuture().join();
+      var result = response.association();
       assertEquals(original, result.actualRepresentation());
       assertNotEquals(
           original.decodedAttestation().orElseThrow(),
@@ -631,7 +638,8 @@ class DefaultMetadataRepairServiceTest {
               100,
               80);
       var p = s.prepareInstall(ordinary, budgets).toCompletableFuture().join();
-      var result = s.execute(p).toCompletableFuture().join();
+      var response = s.execute(p).toCompletableFuture().join();
+      var result = response.association();
       assertFalse(events.contains("grammar"));
       assertEquals(2, auditEvents.size());
       assertEquals(E, result.declaration().preferredEncodingKey().orElseThrow());

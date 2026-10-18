@@ -12,7 +12,7 @@ public interface MetadataRepairService extends AutoCloseable {
 
   CompletionStage<MetadataRepairPlan> prepareRoot(RootSelectionPlan ordinary);
 
-  CompletionStage<MetadataBuildAssociation> execute(MetadataRepairPlan issued);
+  CompletionStage<MetadataRepairResult> execute(MetadataRepairPlan issued);
 
   @Override
   void close();
