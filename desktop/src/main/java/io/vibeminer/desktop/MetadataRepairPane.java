@@ -145,20 +145,7 @@ public final class MetadataRepairPane extends VBox {
                       + proof.sourceObservation().resourceKey()
                       + "\nSHA-256 to restore: "
                       + original.object().digest().value()));
-      var c = proof.cost();
-      Label limits =
-          copy(
-              "Additional physical storage ceiling: "
-                  + c.maximumAdditionalPhysicalBytes()
-                  + " bytes. Local decoding/verification work ceiling: "
-                  + c.maximumDecodedWorkBytes()
-                  + " bytes. Payload requests: at most "
-                  + c.maximumPayloadRequests()
-                  + "; duration: "
-                  + c.maximumPayloadDuration()
-                  + ". Availability HEAD is separate. Root verification work includes both required"
-                  + " passes.",
-              "secondary");
+      Label limits = copy(limitsText(proof), "secondary");
       TitledPane limitPane = new TitledPane("Repair limits", limits);
       limitPane.setId(prefix + "limits");
       limitPane.setExpanded(limitsExpanded);
@@ -242,12 +229,21 @@ public final class MetadataRepairPane extends VBox {
         + p.originalProof().actualEncodingKey()
         + "\nMaximum download: "
         + p.cost().encodedTransferBytes()
-        + " bytes · metadata object only\nMaximum additional storage: "
-        + p.cost().maximumAdditionalPhysicalBytes()
-        + " bytes · local verification work: "
-        + p.cost().maximumDecodedWorkBytes()
-        + " bytes\nConsent expires: "
+        + " bytes · metadata only\nConsent expires: "
         + p.expiresAt();
+  }
+
+  static String limitsText(MetadataRepairPlan plan) {
+    var c = plan.cost();
+    return "Additional physical storage ceiling: "
+        + c.maximumAdditionalPhysicalBytes()
+        + " bytes. Local decoding/verification work ceiling: "
+        + c.maximumDecodedWorkBytes()
+        + " bytes. Payload requests: at most "
+        + c.maximumPayloadRequests()
+        + "; duration: "
+        + c.maximumPayloadDuration()
+        + ". Availability HEAD is separate. Root verification work includes both required passes.";
   }
 
   static String actionFor(MetadataRepairPresentationModel.State s) {

@@ -67,15 +67,19 @@ class MetadataRepairPaneTest {
   }
 
   @Test
-  void adjacentConsentNamesOriginalRepresentationPositiveWireAndLocalWorkSeparately() {
+  void adjacentConsentKeepsExactOriginalWireAndExpiryWithFullLimitsSeparately() {
     var plan = MetadataRepairFixture.plan(MetadataRepairFixture.build("one"), Kind.ROOT);
     String text = MetadataRepairPane.consentText(plan);
     assertTrue(text.contains(plan.originalProof().actualEncodingKey()));
     assertTrue(text.contains("Maximum download: 90 bytes"));
-    assertTrue(text.contains("Maximum additional storage: 90 bytes"));
+    assertEquals(3, text.lines().count());
+    String limits = MetadataRepairPane.limitsText(plan);
+    assertTrue(limits.contains("Additional physical storage ceiling: 90 bytes"));
     assertTrue(
-        text.contains(
-            "local verification work: " + plan.cost().maximumDecodedWorkBytes() + " bytes"));
+        limits.contains(
+            "Local decoding/verification work ceiling: "
+                + plan.cost().maximumDecodedWorkBytes()
+                + " bytes"));
     assertTrue(text.contains(plan.expiresAt().toString()));
   }
 
