@@ -69,12 +69,13 @@ public final class SelectedRootLookup {
     long version = reader.u32();
     long total = reader.u32();
     long named = reader.u32();
+    reader.context = "version=" + version;
     if (version != 1 && version != 2)
-      throw error(UNSUPPORTED, "Unsupported root header/block version");
+      throw reader.failure(UNSUPPORTED, "Unsupported root header/block version");
     if ((headerSize != 20 && headerSize != 24) || (version == 2 && headerSize != 24))
-      throw error(UNSUPPORTED, "Unsupported explicit root header size");
+      throw reader.failure(UNSUPPORTED, "Unsupported explicit root header size");
     if (headerSize == 24 && reader.u32() != 0)
-      throw error(UNSUPPORTED, "Unsupported root header extension data");
+      throw reader.failure(UNSUPPORTED, "Unsupported root header extension data");
     if (total > limits.maxRecords()) throw error(LIMIT, "Root declared record count exceeds limit");
     if (named > total) throw error(MALFORMED, "Root named count exceeds total count");
     var entries = new LinkedHashMap<Long, List<WowRootManifest.Entry>>();
@@ -82,6 +83,7 @@ public final class SelectedRootLookup {
     int blocks = 0, retained = 0;
     while (true) {
       checkCancelled(cancelled);
+      reader.context = "version=" + version + ", blockOffset=" + reader.position;
       long count = reader.u32OrEof();
       if (count < 0) break;
       if (blocks >= limits.maxBlocks()) throw error(LIMIT, "Root block count exceeds limit");
@@ -100,10 +102,10 @@ public final class SelectedRootLookup {
         third = 0;
       }
       long flags = first | second | ((long) third << 17);
-      if ((flags & ~WowRootParser.SUPPORTED_CONTENT_FLAGS) != 0)
-        throw error(UNSUPPORTED, "Unsupported root content flags");
+      // Preserve all raw bits; no enum-derived semantic policy controls metadata framing.
+      reader.context += ", rawFlags1=" + first + ", rawFlags2=" + second + ", rawFlags3=" + third;
       if (count > limits.maxEntriesPerBlock() || count > limits.maxRecords() - observed)
-        throw error(LIMIT, "Root block record count exceeds limit");
+        throw reader.failure(LIMIT, "Root block record count exceeds limit");
       boolean hasNames = (flags & WowRootParser.NO_NAMES) == 0;
       reader.checkBudget(count * (hasNames ? 28L : 20L));
       var rawFlags = new WowRootManifest.RawContentFlags(first, second, third);
@@ -113,7 +115,7 @@ public final class SelectedRootLookup {
         checkCancelled(cancelled);
         long id = nextBase + reader.u32();
         if (id > 0xffffffffL)
-          throw error(MALFORMED, "Root FileDataID delta overflows unsigned 32-bit");
+          throw reader.failure(MALFORMED, "Root FileDataID delta overflows unsigned 32-bit");
         nextBase = id + 1;
         if (requested.contains(id)) {
           if (matches.size() >= limits.maxMatches() - retained)
@@ -148,7 +150,7 @@ public final class SelectedRootLookup {
       if (hasNames) observedNamed += count;
     }
     if (observed != total || observedNamed != named)
-      throw error(MALFORMED, "Root declared and observed record counts disagree");
+      throw reader.failure(MALFORMED, "Root declared and observed record counts disagree");
     checkCancelled(cancelled);
     return new SelectedRootMemberships(
         (int) headerSize,
@@ -179,6 +181,7 @@ public final class SelectedRootLookup {
     final byte[] buffer = new byte[8192];
     int offset, end;
     long physicalBytes, position;
+    String context = "";
 
     Reader(InputStream input, long limit, BooleanSupplier cancelled) {
       this.input = input;
@@ -202,10 +205,10 @@ public final class SelectedRootLookup {
           }
         }
       } catch (IOException ex) {
-        throw new StreamingRootException(IO, "Unable to read root stream", ex);
+        throw new StreamingRootException(IO, diagnostic("Unable to read root stream"), ex);
       }
       if (count < 0) return false;
-      if (count > limit - physicalBytes) throw error(LIMIT, "Root decoded byte limit exceeded");
+      if (count > limit - physicalBytes) throw failure(LIMIT, "Root decoded byte limit exceeded");
       physicalBytes += count;
       offset = 0;
       end = count;
@@ -220,7 +223,7 @@ public final class SelectedRootLookup {
 
     int u8() throws StreamingRootException {
       int value = next();
-      if (value < 0) throw error(MALFORMED, "Truncated root stream");
+      if (value < 0) throw failure(MALFORMED, "Truncated root stream");
       return value;
     }
 
@@ -245,16 +248,28 @@ public final class SelectedRootLookup {
       return HexFormat.of().formatHex(bytes);
     }
 
+    String diagnostic(String message) {
+      return message
+          + " [decodedOffset="
+          + position
+          + (context.isEmpty() ? "" : ", " + context)
+          + "]";
+    }
+
+    StreamingRootException failure(StreamingRootException.Reason reason, String message) {
+      return error(reason, diagnostic(message));
+    }
+
     void checkBudget(long count) throws StreamingRootException {
       if (count < 0 || count > limit - position)
-        throw error(LIMIT, "Declared root framing exceeds decoded byte bound");
+        throw failure(LIMIT, "Declared root framing exceeds decoded byte bound");
     }
 
     void discard(long count) throws StreamingRootException {
       checkBudget(count);
       while (count > 0) {
         checkCancelled(cancelled);
-        if (offset == end && !refill()) throw error(MALFORMED, "Truncated skipped root data");
+        if (offset == end && !refill()) throw failure(MALFORMED, "Truncated skipped root data");
         int step = (int) Math.min(count, end - offset);
         offset += step;
         position += step;

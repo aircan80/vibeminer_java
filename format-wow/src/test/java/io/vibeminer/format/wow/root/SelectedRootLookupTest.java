@@ -176,12 +176,11 @@ class SelectedRootLookupTest {
   }
 
   @Test
-  void unsupportedVersionsAndFlagsMatchCompleteSubsetWithoutFallback() throws Exception {
+  void unsupportedVersionsRemainStrictWithoutFallback() throws Exception {
     byte[] bytes =
         WowRootParserTest.fixture2(
             new WowRootParserTest.Block2(
                 0x20, 0, 0, 2, new long[] {1}, new int[] {1}, new long[] {1}));
-    failure(StreamingRootException.Reason.UNSUPPORTED, () -> read(bytes, Set.of(1L)));
     byte[] version = bytes.clone();
     WowRootParserTest.put32(version, 8, 3);
     failure(StreamingRootException.Reason.UNSUPPORTED, () -> read(version, Set.of(1L)));
@@ -256,6 +255,47 @@ class SelectedRootLookupTest {
   void truncatedUnknownSignatureStillMatchesMandatoryPrefixFraming() {
     for (byte[] input : new byte[][] {{'X'}, {'T', 'X'}, {'T', 'S', 'X'}})
       failure(StreamingRootException.Reason.MALFORMED, () -> read(input, Set.of()));
+  }
+
+  @Test
+  void opaqueFlagsHaveFragmentedStreamingParityForBothNameArrayShapes() throws Exception {
+    for (boolean nameless : new boolean[] {false, true}) {
+      long flags1 = 0x20;
+      long flags2 = nameless ? 0x10000040L : 0x40;
+      long[] hashes = nameless ? null : new long[] {0xfedcba9876543210L};
+      byte[] bytes =
+          WowRootParserTest.fixture2(
+              new WowRootParserTest.Block2(
+                  flags1, flags2, 0xff, 2, new long[] {1}, new int[] {1}, hashes));
+      var full =
+          new WowRootParser()
+              .parse(bytes, new WowRootParser.Limits(8192, 100, 10, 50), () -> false);
+      for (int fragment : new int[] {1, 7}) {
+        var result =
+            lookup.read(new Fragmented(bytes, fragment), Set.of(1L, 999L), limits, () -> false);
+        assertEquals(full.findFileDataId(1), result.findFileDataId(1));
+        assertTrue(result.findFileDataId(999).isEmpty());
+        assertEquals(0x20, result.findFileDataId(1).getFirst().rawContentFlags().first());
+        assertEquals(flags2, result.findFileDataId(1).getFirst().rawContentFlags().second());
+        assertEquals(0xff, result.findFileDataId(1).getFirst().rawContentFlags().third());
+      }
+    }
+  }
+
+  @Test
+  void malformedOpaqueFlagStreamHasSafeVersionOffsetAndRawFlagDiagnostics() throws Exception {
+    byte[] full =
+        WowRootParserTest.fixture2(
+            new WowRootParserTest.Block2(
+                0x20, 0x40, 0xff, 2, new long[] {1}, new int[] {1}, new long[] {1}));
+    byte[] truncated = Arrays.copyOf(full, full.length - 1);
+    var error = assertThrows(StreamingRootException.class, () -> read(truncated, Set.of(1L)));
+    assertEquals(StreamingRootException.Reason.MALFORMED, error.reason());
+    assertTrue(error.getMessage().contains("version=2"));
+    assertTrue(error.getMessage().contains("decodedOffset="));
+    assertTrue(error.getMessage().contains("rawFlags1=32"));
+    assertTrue(error.getMessage().contains("rawFlags2=64"));
+    assertTrue(error.getMessage().contains("rawFlags3=255"));
   }
 
   SelectedRootMemberships read(byte[] bytes, Set<Long> ids) throws StreamingRootException {
