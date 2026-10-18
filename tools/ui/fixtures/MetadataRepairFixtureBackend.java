@@ -65,6 +65,14 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
   private volatile boolean seeding = true;
 
   public MetadataRepairFixtureBackend(Path directory, boolean seed) throws Exception {
+    this(directory, seed, null);
+  }
+
+  /**
+   * Planning time may follow the native UI clock; original authored acquisition times stay fixed.
+   */
+  public MetadataRepairFixtureBackend(Path directory, boolean seed, Instant planningTime)
+      throws Exception {
     restart = !seed;
     contentRoot = directory.resolve("content");
     store = new FileObjectStore(contentRoot);
@@ -160,7 +168,7 @@ public final class MetadataRepairFixtureBackend implements AutoCloseable {
         throw new AssertionError("Authored bytes differ from durable original physical identity");
     }
     seeding = false;
-    clock.current = clock.current.plusSeconds(600);
+    clock.current = planningTime == null ? clock.current.plusSeconds(600) : planningTime;
     head.lengths.put(fixture.rootEKey, (long) fixture.encodedRoot.length);
     head.lengths.put(
         MetadataReuseInstallSeed.hash("MD5", encodedInstall), (long) encodedInstall.length);

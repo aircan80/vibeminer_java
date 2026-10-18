@@ -189,6 +189,18 @@ public final class ItemProjectionFixtureBackend implements AutoCloseable {
     return associations.stream().map(a -> a.descriptor().association().build()).toList();
   }
 
+  SqliteCatalog fixtureCatalog() {
+    return catalog;
+  }
+
+  FileObjectStore fixtureStore() {
+    return store;
+  }
+
+  SqliteSelectedFileCatalog fixtureFiles() {
+    return files;
+  }
+
   public WorkspaceService workspaces() {
     return workspaces;
   }
