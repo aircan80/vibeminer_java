@@ -5,10 +5,13 @@ import static io.vibeminer.application.lookup.FileLookupException.Code.*;
 import io.vibeminer.application.*;
 import io.vibeminer.application.acquisition.*;
 import io.vibeminer.application.catalog.*;
+import io.vibeminer.application.content.*;
 import io.vibeminer.application.retention.RetentionException;
 import io.vibeminer.application.retention.RetentionRepository;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.content.MetadataStructureAttestation;
 import io.vibeminer.domain.retention.*;
+import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,6 +26,7 @@ public final class DefaultFileLookupService implements FileLookupService {
   public static final String CONFIGURATION_ROLE = "BUILD_CONFIG", ROOT_ROLE = "ROOT_MANIFEST";
   private final FileLookupGateway gateway;
   private final Optional<RetentionRepository> retention;
+  private final Optional<MetadataContentAcquisition> content;
   private final BuildObjectCatalog catalog;
   private final Executor jobs;
   private final CoalescingAcquisitionService acquisitions;
@@ -94,6 +98,19 @@ public final class DefaultFileLookupService implements FileLookupService {
       Executor jobs,
       Executor acquisitionExecutor,
       RetentionRepository retention) {
+    this(gateway, catalog, store, jobs, acquisitionExecutor, retention, null);
+  }
+
+  /** Opt-in guard; ContentClaimException preserves canonical contention/recovery outcomes. Production composition is separate. */
+  public DefaultFileLookupService(
+      FileLookupGateway gateway,
+      BuildObjectCatalog catalog,
+      ObjectStore store,
+      Executor jobs,
+      Executor acquisitionExecutor,
+      RetentionRepository retention,
+      CanonicalContentRepository content) {
+    this.content = Optional.ofNullable(content).map(MetadataContentAcquisition::new);
     this.retention = Optional.ofNullable(retention);
     this.gateway = Objects.requireNonNull(gateway);
     this.catalog = Objects.requireNonNull(catalog);
@@ -105,7 +122,8 @@ public final class DefaultFileLookupService implements FileLookupService {
             Objects.requireNonNull(acquisitionExecutor),
             4,
             256,
-            1024);
+            1024,
+            content == null);
   }
 
   @Override
@@ -246,13 +264,53 @@ public final class DefaultFileLookupService implements FileLookupService {
 
   private VerifiedSourceAlias acquire(ResolvedSourceIdentity identity, CancellationToken token) {
     token.throwIfCancellationRequested();
-    var retained = catalog.findVerifiedSourceAlias(identity, token);
-    if (retained.isPresent()) return retained.get();
+    if (content.isEmpty()) {
+      var retained = catalog.findVerifiedSourceAlias(identity, token);
+      if (retained.isPresent()) return retained.get();
+    }
     RootSelectionPlan selection;
     synchronized (sources) {
       var context = sources.get(identity);
       if (context == null) throw new CancellationException("Root consumers detached");
       selection = context.selection;
+    }
+    if (content.isPresent()) {
+      if (!selection.plan().build().productId().equals("wow"))
+        throw failure(UNSUPPORTED, "Metadata content namespace is not reviewed for this product");
+      gateway.validateSelection(selection, token);
+      var plan = selection.plan();
+      var configuration =
+          catalog
+              .findVerifiedSourceAlias(gateway.configurationIdentity(plan.build()), token)
+              .orElseThrow(() -> failure(INVALID_PLAN, "Guarded root lost exact configuration"));
+      if (!configuration.equals(plan.configuration()))
+        throw failure(INVALID_PLAN, "Guarded root configuration changed");
+      var request =
+          new MetadataContentRequest(
+              plan.build(),
+              configuration,
+              MetadataStructureAttestation.Kind.ROOT,
+              new ContentSlotKey("wow", plan.contentKey()),
+              selection.candidate().encodingKey(),
+              selection.candidate().encodedBytes(),
+              OptionalLong.of(plan.decodedBytes()));
+      return content
+          .get()
+          .acquire(
+              request,
+              identity,
+              () -> catalog.findVerifiedSourceAlias(identity, token),
+              (observer, cancellation) -> gateway.acquireRoot(selection, observer, cancellation),
+              (artifact, observer, cancellation) ->
+                  gateway.lookupRetained(
+                      plan.build(),
+                      configuration,
+                      artifact,
+                      Set.of(),
+                      plan.budgets(),
+                      observer,
+                      cancellation),
+              token);
     }
     return gateway.acquireRoot(selection, token);
   }
@@ -353,6 +411,8 @@ public final class DefaultFileLookupService implements FileLookupService {
   private static RuntimeException classify(Throwable error) {
     while ((error instanceof ExecutionException || error instanceof CompletionException)
         && error.getCause() != null) error = error.getCause();
+    if (error instanceof ContentClaimException scoped) return scoped;
+    if (error instanceof MetadataAcquisitionFailure scoped) return classify(scoped.failure());
     if (error instanceof FileLookupException scoped) return scoped;
     if (error instanceof CancellationException cancelled) return cancelled;
     if (error instanceof RetentionException retention)

@@ -3,6 +3,9 @@ package io.vibeminer.application.bootstrap;
 import io.vibeminer.application.*;
 import io.vibeminer.application.acquisition.*;
 import io.vibeminer.application.catalog.*;
+import io.vibeminer.application.content.*;
+import io.vibeminer.domain.content.MetadataStructureAttestation;
+import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import io.vibeminer.application.retention.RetentionException;
 import io.vibeminer.application.retention.RetentionRepository;
 import io.vibeminer.domain.BuildSnapshot;
@@ -24,6 +27,7 @@ public final class DefaultBootstrapService implements BootstrapService {
     private static final String CONFIG_ROLE = "BUILD_CONFIG", INSTALL_ROLE = "INSTALL_MANIFEST";
     private final BootstrapArtifactGateway gateway;
     private final Optional<RetentionRepository> retention;
+    private final Optional<MetadataContentAcquisition> content;
     private final BuildObjectCatalog catalog;
     private final Executor executor;
     private final CoalescingAcquisitionService acquisitions;
@@ -62,13 +66,26 @@ public final class DefaultBootstrapService implements BootstrapService {
             Executor executor,
             Executor acquisitionExecutor,
             RetentionRepository retention) {
+        this(gateway, catalog, store, executor, acquisitionExecutor, retention, null);
+    }
+
+    /** Opt-in guard; ContentClaimException preserves canonical contention/recovery outcomes. Runtime wiring is separate. */
+    public DefaultBootstrapService(
+            BootstrapArtifactGateway gateway,
+            BuildObjectCatalog catalog,
+            ObjectStore store,
+            Executor executor,
+            Executor acquisitionExecutor,
+            RetentionRepository retention,
+            CanonicalContentRepository content) {
+        this.content = Optional.ofNullable(content).map(MetadataContentAcquisition::new);
         this.retention = Optional.ofNullable(retention);
         this.gateway = Objects.requireNonNull(gateway);
         this.catalog = Objects.requireNonNull(catalog);
         this.executor = Objects.requireNonNull(executor);
         acquisitions =
                 new CoalescingAcquisitionService(
-                        store, this::acquireVerified, acquisitionExecutor, 4, 256, 1024);
+                        store, this::acquireVerified, acquisitionExecutor, 4, 256, 1024, content == null);
     }
 
     @Override
@@ -236,15 +253,51 @@ public final class DefaultBootstrapService implements BootstrapService {
     private VerifiedSourceAlias acquireVerified(
             ResolvedSourceIdentity source, CancellationToken token) {
         token.throwIfCancellationRequested();
-        var retained = catalog.findVerifiedSourceAlias(source, token);
-        if (retained.isPresent()) return retained.get();
+        if (content.isEmpty()) {
+            var retained = catalog.findVerifiedSourceAlias(source, token);
+            if (retained.isPresent()) return retained.get();
+        }
         InstallPlan plan;
         synchronized (sources) {
             var context = sources.get(source);
             if (context == null)
-                throw failure(
-                        BootstrapException.Reason.CANCELLED, "Pinned source consumer detached");
+                throw failure(BootstrapException.Reason.CANCELLED, "Pinned source consumer detached");
             plan = context.firstPlan;
+        }
+        if (content.isPresent()) {
+            if (!plan.build().productId().equals("wow"))
+                throw failure(
+                        BootstrapException.Reason.UNSUPPORTED,
+                        "Metadata content namespace is not reviewed for this product");
+            var configuration =
+                    catalog
+                            .findVerifiedSourceAlias(gateway.configurationIdentity(plan.build()), token)
+                            .orElseThrow(
+                                    () ->
+                                            failure(
+                                                    BootstrapException.Reason.INTEGRITY,
+                                                    "Guarded source lost exact configuration"));
+            if (!gateway.restoreConfiguration(plan.build(), configuration, token).equals(plan))
+                throw failure(BootstrapException.Reason.INTEGRITY, "Guarded source configuration changed");
+            var request =
+                    new MetadataContentRequest(
+                            plan.build(),
+                            configuration,
+                            MetadataStructureAttestation.Kind.INSTALL,
+                            new ContentSlotKey("wow", plan.contentKey()),
+                            plan.encodingKey(),
+                            plan.encodedBytes(),
+                            OptionalLong.of(plan.decodedBytes()));
+            return content
+                    .get()
+                    .acquire(
+                            request,
+                            source,
+                            () -> catalog.findVerifiedSourceAlias(source, token),
+                            (observer, cancellation) -> gateway.acquireInstall(plan, observer, cancellation),
+                            (artifact, observer, cancellation) ->
+                                    gateway.inspectRetained(plan, artifact, observer, cancellation),
+                            token);
         }
         return gateway.acquireInstall(plan, token);
     }
@@ -356,6 +409,8 @@ public final class DefaultBootstrapService implements BootstrapService {
     private static RuntimeException classify(Throwable error) {
         while ((error instanceof CompletionException || error instanceof ExecutionException)
                 && error.getCause() != null) error = error.getCause();
+        if (error instanceof ContentClaimException scoped) return scoped;
+        if (error instanceof MetadataAcquisitionFailure scoped) return classify(scoped.failure());
         if (error instanceof BootstrapException scoped) return scoped;
         if (error instanceof CancellationException)
             return new BootstrapException(

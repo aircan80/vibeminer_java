@@ -30,6 +30,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     private final int maximumSources;
     private final int maximumConsumers;
     private final int maximumAliases;
+    private final boolean reuseProcessAliases;
     private final Map<ResolvedSourceIdentity, Flight> inFlight = new HashMap<>();
     private final Set<Flight> active = new HashSet<>();
     private final LinkedHashMap<ResolvedSourceIdentity, VerifiedSourceAlias> aliases = new LinkedHashMap<>(16, .75f, true);
@@ -45,6 +46,13 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
      */
     public CoalescingAcquisitionService(ObjectStore store, VerifiedSourceAcquirer acquirer, Executor executor,
             int maximumSources, int maximumConsumers, int maximumAliases) {
+        this(store, acquirer, executor, maximumSources, maximumConsumers, maximumAliases, true);
+    }
+
+    /** Disable alias shortcuts when every source worker must replay a durable authority policy. */
+    public CoalescingAcquisitionService(ObjectStore store, VerifiedSourceAcquirer acquirer, Executor executor,
+            int maximumSources, int maximumConsumers, int maximumAliases, boolean reuseProcessAliases) {
+        this.reuseProcessAliases = reuseProcessAliases;
         this.store = Objects.requireNonNull(store);
         this.acquirer = Objects.requireNonNull(acquirer);
         this.executor = Objects.requireNonNull(executor);
@@ -93,7 +101,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         try {
             flight.checkCancellation();
             VerifiedSourceAlias cached;
-            synchronized (coordinator) { cached = aliases.get(flight.identity); }
+            synchronized (coordinator) { cached = reuseProcessAliases ? aliases.get(flight.identity) : null; }
             if (cached != null) {
                 try {
                     var verified = store.verify(cached.object().digest(), flight.cancelled::get);
@@ -149,7 +157,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             if (!active.remove(flight)) return;
             inFlight.remove(flight.identity, flight);
             flight.worker = null;
-            if (failure == null && object != null && !flight.cancelled.get() && !flight.consumers.isEmpty()) {
+            if (reuseProcessAliases && failure == null && object != null && !flight.cancelled.get() && !flight.consumers.isEmpty()) {
                 aliases.put(flight.identity, object);
                 if (aliases.size() > maximumAliases) aliases.remove(aliases.keySet().iterator().next());
             }

@@ -22,6 +22,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class CoalescingAcquisitionServiceTest {
     private static final ResolvedSourceIdentity SOURCE = new ResolvedSourceIdentity("wow:encoded-object", "full-immutable-key", "test:whole-stream-sha256:v1");
 
+    @Test
+    void guardedSourcesCanRequireAuthorityReplayEvenWithVerifiedCachedBytes() {
+        var executor = new ManualExecutor();
+        var store = new FakeStore();
+        var calls = new AtomicInteger();
+        try (var service = new CoalescingAcquisitionService(
+                store,
+                (source, token) -> {
+                    calls.incrementAndGet();
+                    return verified(source, store.add("shared"));
+                },
+                executor, 4, 256, 1024, false)) {
+            var first = service.acquire(SOURCE);
+            executor.runNext();
+            var original = first.completion().toCompletableFuture().join();
+            var second = service.acquire(SOURCE);
+            executor.runNext();
+            assertEquals(original, second.completion().toCompletableFuture().join());
+            assertEquals(2, calls.get(), "Authority must run inside every actual source worker");
+        }
+    }
+
     @Test void concurrentCrossHostConsumersAndLocalReuseReceiveTheActualOriginalAcquisitionProof() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
         var acquiredAt = java.time.Instant.parse("2026-10-18T00:00:00Z");
