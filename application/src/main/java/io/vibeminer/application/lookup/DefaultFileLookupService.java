@@ -5,7 +5,10 @@ import static io.vibeminer.application.lookup.FileLookupException.Code.*;
 import io.vibeminer.application.*;
 import io.vibeminer.application.acquisition.*;
 import io.vibeminer.application.catalog.*;
+import io.vibeminer.application.retention.RetentionException;
+import io.vibeminer.application.retention.RetentionRepository;
 import io.vibeminer.domain.*;
+import io.vibeminer.domain.retention.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,10 +22,44 @@ import java.util.function.Function;
 public final class DefaultFileLookupService implements FileLookupService {
   public static final String CONFIGURATION_ROLE = "BUILD_CONFIG", ROOT_ROLE = "ROOT_MANIFEST";
   private final FileLookupGateway gateway;
+  private final Optional<RetentionRepository> retention;
   private final BuildObjectCatalog catalog;
   private final Executor jobs;
   private final CoalescingAcquisitionService acquisitions;
   private final Map<ResolvedSourceIdentity, SourceContext> sources = new HashMap<>();
+  private final Map<String, CandidateContext> activeCandidates = new HashMap<>();
+
+  private static final class CandidateContext {
+    final ResolvedSourceIdentity identity;
+    int consumers;
+
+    CandidateContext(ResolvedSourceIdentity identity) {
+      this.identity = identity;
+    }
+  }
+
+  private CandidateContext enterCandidate(String snapshotId, ResolvedSourceIdentity identity) {
+    synchronized (activeCandidates) {
+      var current = activeCandidates.get(snapshotId);
+      if (current != null && !current.identity.equals(identity))
+        throw failure(
+            CAPACITY_EXCEEDED,
+            "Another root candidate is still active for this exact build; retry after it finishes");
+      if (current == null) {
+        current = new CandidateContext(identity);
+        activeCandidates.put(snapshotId, current);
+      }
+      current.consumers++;
+      return current;
+    }
+  }
+
+  private void leaveCandidate(String snapshotId, CandidateContext context) {
+    synchronized (activeCandidates) {
+      if (--context.consumers == 0) activeCandidates.remove(snapshotId, context);
+    }
+  }
+
   private final Set<CompletableFuture<?>> active = ConcurrentHashMap.newKeySet();
   private final Semaphore capacity = new Semaphore(4);
   private final AtomicBoolean closed = new AtomicBoolean();
@@ -46,6 +83,18 @@ public final class DefaultFileLookupService implements FileLookupService {
       ObjectStore store,
       Executor jobs,
       Executor acquisitionExecutor) {
+    this(gateway, catalog, store, jobs, acquisitionExecutor, null);
+  }
+
+  /** Optional retention integration; legacy callers retain their existing acquisition behavior. */
+  public DefaultFileLookupService(
+      FileLookupGateway gateway,
+      BuildObjectCatalog catalog,
+      ObjectStore store,
+      Executor jobs,
+      Executor acquisitionExecutor,
+      RetentionRepository retention) {
+    this.retention = Optional.ofNullable(retention);
     this.gateway = Objects.requireNonNull(gateway);
     this.catalog = Objects.requireNonNull(catalog);
     this.jobs = Objects.requireNonNull(jobs);
@@ -107,32 +156,58 @@ public final class DefaultFileLookupService implements FileLookupService {
             throw failure(
                 BUDGET_EXCEEDED, "Selected root exceeds retention/verification work budget");
           var identity = gateway.rootIdentity(selection);
-          var existing = catalog.findVerifiedObject(plan.build().snapshotId(), ROOT_ROLE, token);
-          if (existing.isPresent() && !existing.get().source().equals(identity))
-            throw failure(INVALID_PLAN, "Exact build already retains a different root candidate");
-          SourceContext context;
-          synchronized (sources) {
-            context = sources.computeIfAbsent(identity, ignored -> new SourceContext(selection));
-            context.consumers++;
-          }
-          VerifiedSourceAlias root;
+          var candidateContext = enterCandidate(plan.build().snapshotId(), identity);
           try {
-            var request = acquisitions.acquire(identity);
-            root = await(request.completion().toCompletableFuture(), token, request::cancel);
-          } finally {
+            var existing = catalog.findVerifiedObject(plan.build().snapshotId(), ROOT_ROLE, token);
+            if (existing.isPresent() && !existing.get().source().equals(identity))
+              throw failure(INVALID_PLAN, "Exact build already retains a different root candidate");
+            token.throwIfCancellationRequested();
+            catalog.registerSnapshot(plan.build());
+            retention.ifPresent(
+                repository ->
+                    repository.replaceUnfulfilledRoot(
+                        new RetentionScope(
+                            plan.build().snapshotId(),
+                            ScopeKind.ROOT_METADATA,
+                            List.of(
+                                new ScopeRequirement(
+                                    CONFIGURATION_ROLE,
+                                    Optional.of(configuration.source()),
+                                    OptionalLong.of(configuration.object().length()),
+                                    OptionalLong.of(configuration.object().length())),
+                                new ScopeRequirement(
+                                    ROOT_ROLE,
+                                    Optional.of(identity),
+                                    OptionalLong.of(selection.candidate().encodedBytes()),
+                                    OptionalLong.of(plan.decodedBytes())))),
+                        token));
+            token.throwIfCancellationRequested();
+            SourceContext context;
             synchronized (sources) {
-              if (--context.consumers == 0) sources.remove(identity, context);
+              context = sources.computeIfAbsent(identity, ignored -> new SourceContext(selection));
+              context.consumers++;
             }
+            VerifiedSourceAlias root;
+            try {
+              var request = acquisitions.acquire(identity);
+              root = await(request.completion().toCompletableFuture(), token, request::cancel);
+            } finally {
+              synchronized (sources) {
+                if (--context.consumers == 0) sources.remove(identity, context);
+              }
+            }
+            if (!root.source().equals(identity)
+                || root.object().length() != selection.candidate().encodedBytes())
+              throw failure(
+                  INTEGRITY_FAILURE, "Verified root receipt does not match selected source/size");
+            token.throwIfCancellationRequested();
+            catalog.registerSnapshot(plan.build());
+            attach(plan.build(), CONFIGURATION_ROLE, configuration, token);
+            attach(plan.build(), ROOT_ROLE, root, token);
+            return root;
+          } finally {
+            leaveCandidate(plan.build().snapshotId(), candidateContext);
           }
-          if (!root.source().equals(identity)
-              || root.object().length() != selection.candidate().encodedBytes())
-            throw failure(
-                INTEGRITY_FAILURE, "Verified root receipt does not match selected source/size");
-          token.throwIfCancellationRequested();
-          catalog.registerSnapshot(plan.build());
-          attach(plan.build(), CONFIGURATION_ROLE, configuration, token);
-          attach(plan.build(), ROOT_ROLE, root, token);
-          return root;
         });
   }
 
@@ -280,6 +355,17 @@ public final class DefaultFileLookupService implements FileLookupService {
         && error.getCause() != null) error = error.getCause();
     if (error instanceof FileLookupException scoped) return scoped;
     if (error instanceof CancellationException cancelled) return cancelled;
+    if (error instanceof RetentionException retention)
+      return new FileLookupException(
+          switch (retention.code()) {
+            case INTEGRITY_FAILURE -> INTEGRITY_FAILURE;
+            case CLOSED -> CLOSED;
+            case CAPACITY_EXCEEDED -> CAPACITY_EXCEEDED;
+            case NOT_FOUND -> MISSING_LOCAL;
+            case STORAGE_UNAVAILABLE -> STORAGE_FAILURE;
+          },
+          retention.getMessage(),
+          retention);
     if (error instanceof CatalogException catalog) {
       boolean integrity =
           catalog.code() == CatalogException.Code.INTEGRITY_FAILURE

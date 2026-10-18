@@ -10,6 +10,7 @@ import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
+import io.vibeminer.infrastructure.retention.SqliteRetentionRepository;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /** Concrete content resources, initialized only by an explicit content action on a worker. */
 final class ContentRuntime implements LazyBootstrapService.Resources {
@@ -47,29 +49,38 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   static ContentRuntime open(Path dataDirectory) {
+    return open(
+        dataDirectory,
+        () ->
+            HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .build());
+  }
+
+  /** Composition seam for deterministic tests; this runtime owns the supplied client. */
+  static ContentRuntime open(Path dataDirectory, Supplier<HttpClient> clientFactory) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
     HttpClient client = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     try {
-      client =
-          HttpClient.newBuilder()
-              .connectTimeout(Duration.ofSeconds(10))
-              .followRedirects(HttpClient.Redirect.NEVER)
-              .build();
+      client = java.util.Objects.requireNonNull(clientFactory.get());
       var transport = new PinnedCdnTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
-      var catalog =
-          new SqliteBuildObjectCatalog(
-              new SqliteCatalog(dataDirectory.resolve("catalog.sqlite")), store);
+      var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
+      var catalog = new SqliteBuildObjectCatalog(sharedCatalog, store);
+      var retention = new SqliteRetentionRepository(sharedCatalog);
       var gateway = new OfficialBootstrapArtifactGateway(store, transport, Clock.systemUTC());
       var service =
-          new DefaultBootstrapService(gateway, catalog, store, orchestration, acquisition);
+          new DefaultBootstrapService(
+              gateway, catalog, store, orchestration, acquisition, retention);
       var rangeTransport =
           new PinnedCdnRangeTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var lookupGateway =
           new OfficialFileLookupGateway(store, transport, rangeTransport, Clock.systemUTC());
       var lookup =
-          new DefaultFileLookupService(lookupGateway, catalog, store, orchestration, acquisition);
+          new DefaultFileLookupService(
+              lookupGateway, catalog, store, orchestration, acquisition, retention);
       return new ContentRuntime(
           store, client, orchestration, acquisition, service, lookup, lookupGateway);
     } catch (RuntimeException | Error failure) {
