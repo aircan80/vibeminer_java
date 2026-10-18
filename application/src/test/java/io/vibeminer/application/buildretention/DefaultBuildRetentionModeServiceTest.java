@@ -216,6 +216,58 @@ class DefaultBuildRetentionModeServiceTest {
     }
   }
 
+  @Test
+  void fatalExecutorRejectionRetiresUnstartedSlotsAndPreservesCause() {
+    var repo = new Repo();
+    var rejected = new AssertionError("executor refused before runnable admission");
+    var submissions = new AtomicInteger();
+    Executor executor =
+        action -> {
+          if (submissions.incrementAndGet() <= 4) throw rejected;
+          action.run();
+        };
+    try (var service =
+        new DefaultBuildRetentionModeService(repo, new Pump(repo), executor, CLOCK)) {
+      for (int i = 0; i < 4; i++) {
+        var operation = service.read(TARGET);
+        var failed =
+            assertThrows(
+                CompletionException.class,
+                () -> operation.completion().toCompletableFuture().join());
+        assertEquals(
+            BuildRetentionException.Code.BUSY,
+            ((BuildRetentionException) failed.getCause()).code());
+        assertSame(rejected, failed.getCause().getCause());
+      }
+      assertEquals(
+          Mode.ON_DEMAND, service.read(TARGET).completion().toCompletableFuture().join().mode());
+      assertEquals(5, submissions.get());
+      assertEquals(0, repo.writes);
+    }
+  }
+
+  @Test
+  void executorErrorAfterRunningDoesNotOverrideCommittedOutcome() {
+    var repo = new Repo();
+    var pump = new Pump(repo);
+    Executor executor =
+        action -> {
+          action.run();
+          throw new AssertionError("after actual completion");
+        };
+    try (var service = new DefaultBuildRetentionModeService(repo, pump, executor, CLOCK)) {
+      var saved =
+          service
+              .setMode(TARGET, 0, Mode.DOWNLOAD_ALL, POLICY)
+              .completion()
+              .toCompletableFuture()
+              .join();
+      assertEquals(Mode.DOWNLOAD_ALL, saved.mode());
+      assertEquals(List.of("resume:1"), pump.calls);
+      assertEquals(1, repo.writes);
+    }
+  }
+
   static class Queue implements Executor {
     final ArrayDeque<Runnable> tasks = new ArrayDeque<>();
 

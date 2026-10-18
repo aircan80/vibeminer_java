@@ -127,7 +127,7 @@ public final class DefaultBuildRetentionModeService implements BuildRetentionMod
     if (!job.result.isDone()) {
       try {
         executor.execute(() -> run(job, action));
-      } catch (RuntimeException rejected) {
+      } catch (RuntimeException | Error rejected) {
         synchronized (this) {
           if (!job.started) {
             active.remove(job);
