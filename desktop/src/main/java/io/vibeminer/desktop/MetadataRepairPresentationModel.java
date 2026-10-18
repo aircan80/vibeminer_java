@@ -462,8 +462,8 @@ public final class MetadataRepairPresentationModel implements AutoCloseable {
               ? "Repair failed before a replacement was promoted. Payload may have been requested"
                   + " or received. No new repair completion is established. Review the exact"
                   + " source before a fresh explicit repair."
-              : "Repair did not complete. Local bytes may be present or restored; their current"
-                  + " readiness is unknown. Verify retained bytes explicitly before checking a"
+              : "This repair attempt did not establish readiness. Local bytes may be present or"
+                  + " restored. Verify retained bytes explicitly before checking a"
                   + " fresh repair plan. No automatic retry or offline opening was started.";
       publish(
           new State(

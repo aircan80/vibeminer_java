@@ -501,7 +501,7 @@ class MetadataRepairPresentationModelTest {
             MetadataAcquisitionFailure.Publication.UNCERTAIN,
             new CancellationException("cancelled after possible publication"));
     assertEquals(MetadataRepairPresentationModel.Stage.FAILED, state.stage());
-    assertTrue(state.message().contains("current readiness is unknown"));
+    assertTrue(state.message().contains("This repair attempt did not establish readiness"));
     assertFalse(state.message().contains("No payload download was needed"));
     assertFalse(state.message().contains("rollback"));
   }
