@@ -17,6 +17,8 @@ class ContentSchemaIntegrationTest {
 
   private static final List<String> DERIVED_TABLES =
       List.of(
+          "build_retention_sources",
+          "build_retention_bindings",
           "en_lookup_candidates",
           "en_lookup_content",
           "en_lookup_encoding",
@@ -46,7 +48,7 @@ class ContentSchemaIntegrationTest {
       }
     }
     try (var c = new SqliteCatalog(directory.resolve("catalog.sqlite")).connect()) {
-      assertEquals(18, scalar(c, "PRAGMA user_version"));
+      assertEquals(SqliteCatalog.SCHEMA_VERSION, scalar(c, "PRAGMA user_version"));
       for (String table : DERIVED_TABLES) {
         try (var query =
             c.prepareStatement(
