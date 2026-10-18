@@ -239,4 +239,64 @@ class SelectedFileContractsTest {
                 java.util.OptionalLong.of(12388),
                 0));
   }
+
+  @Test
+  void associationProofRetainsBoundedImmutableCandidateDeclarations() {
+    var source = variant().rootSource();
+    var candidates = new java.util.ArrayList<EncodedCandidate>();
+    var candidate =
+        new EncodedCandidate(EKEY, java.util.OptionalLong.of(10), java.util.OptionalLong.empty());
+    candidates.add(candidate);
+    var proof =
+        new FileAssociationProof(
+            source,
+            source,
+            "association-v2",
+            "1".repeat(64),
+            java.util.OptionalLong.of(42),
+            candidates);
+    candidates.clear();
+    assertEquals(1, proof.authenticatedCandidates().size());
+    assertEquals(42, proof.declaredDecodedBytes().orElseThrow());
+    assertThrows(
+        UnsupportedOperationException.class, () -> proof.authenticatedCandidates().clear());
+    assertTrue(
+        new FileAssociationProof(source, source, "legacy", "1".repeat(64))
+            .authenticatedCandidates()
+            .isEmpty());
+    assertTrue(
+        new FileAssociationProof(source, source, "legacy", "1".repeat(64))
+            .declaredDecodedBytes()
+            .isEmpty());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new FileAssociationProof(
+                source,
+                source,
+                "v2",
+                "1".repeat(64),
+                java.util.OptionalLong.of(-1),
+                java.util.List.of(candidate)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new FileAssociationProof(
+                source,
+                source,
+                "v2",
+                "1".repeat(64),
+                java.util.OptionalLong.empty(),
+                java.util.List.of(candidate, candidate)));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new FileAssociationProof(
+                source,
+                source,
+                "v2",
+                "1".repeat(64),
+                java.util.OptionalLong.empty(),
+                java.util.Collections.nCopies(256, candidate)));
+  }
 }
