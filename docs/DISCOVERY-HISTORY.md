@@ -1,6 +1,6 @@
 # Exact discovery observation history
 
-**Approved planning contract for [#92](https://github.com/aircan80/vibeminer/issues/92), under #18/#4. Not implemented. Implementation requires #91 qualification and explicit authorization.** This records metadata the application actually observed; it is not an archive of available game content, a complete historical catalog or broader #18 completion. No game-install reads, community catalog imports, arbitrary config entry, background refresh or acquisition integration are included.
+**Implementation is authorized for [#92](https://github.com/aircan80/vibeminer/issues/92), under #18/#4.** Contracts, persistence, source interpretation and application/runtime integration are being verified in separate steps. A history browser is a separate UI slice; this document does not claim it is delivered. History records metadata the application actually observed, rather than an archive of available game content, a complete historical catalog or broader #18 completion. No game-install reads, community catalog imports, arbitrary config entry, background refresh or acquisition integration are included.
 
 ## Events, snapshots and provenance
 
@@ -26,6 +26,14 @@ Application values compose existing `BuildSnapshot` and `SourceDocument` records
 
 The service bounds actual jobs to four until source/transaction retirement, then completes results outside its monitor so callbacks can admit their next operation. Failed, malformed or canceled pre-commit refreshes publish no partial event. If append commits before cancellation wins, return the actual committed event; do not recheck cancellation afterward and claim rollback. A compatibility `DiscoveryService.refresh` projection, if retained, must map this same returned event rather than a shared last-observation reference or canonical-first provenance. Canceling a derived observation future cannot erase a committed event. No startup or history-selection operation refreshes remote pointers.
 
+## Metadata runtime ownership
+
+The metadata runtime reuses the existing single workspace worker and its bounded 64-entry queue for workspace operations and history's flat blocking jobs. The history service independently limits admission to four actual jobs, including queued jobs. One `SqliteCatalog` factory is shared by the workspace and history repositories. The same official discovery gateway captures the event and supplies the compatibility build-list projection from that returned event; no second retrieval or shared diagnostic `lastObservation` lookup supplies provenance.
+
+Constructing these ports performs no HTTP, database connection or content-store initialization. History list and selection do not acquire the content CAS lock or start publisher recovery. Content acquisition retains its separate existing lifecycle over the same catalog file.
+
+Shutdown closes history admission and requests cancellation, then gracefully drains the existing worker queue while stopping the owned metadata HTTP client. Accepted queued refresh tasks must run their cancellation check and settle their read-only completion stages; dropping them with `shutdownNow` would leave unresolved operations. A running source that ignores cancellation remains active until actual retirement. A bounded shutdown timeout reports incomplete retirement, rather than claiming cancellation closed the underlying work. Public refresh completion continues to report a committed append even when cancellation arrived late. The UI's compatibility list future may be discarded independently without erasing that durable event.
+
 ## One catalog and shared bytes
 
 Use one additive migration in the existing shared catalog; allocate the actual next schema version at implementation. Reuse `source_blobs` for raw metadata SHA-256 deduplication and existing snapshot identities. Add an event header with persisted local sequence/counts, two role-specific document receipts, one bounded checked CDN-row interpretation and ordered event-build references with checked parsed-row facts. Event codecs store document references rather than repeated body arrays. Both document roles may reference the same digest while preserving their separate retrieval receipts.
@@ -50,6 +58,6 @@ Typed failures distinguish invalid requests, busy/closed service, no matching ev
 
 ## Contract-first verification
 
-Start with immutable values and narrow ports, then additive repository and shared pure observation mapping, followed by service, runtime and bounded history UI. No implementation follows from this planning document without explicit authorization.
+Implementation proceeds through immutable values and narrow ports, additive repository and shared pure observation mapping, then service/runtime and a separately reviewed bounded history UI. Each slice requires its stated verification; authorization does not make unfinished UI or broader historical-content scope complete.
 
 Required offline tests cover A→B→A; same-version/different-config identity; same UUID idempotence versus changed facts/conflict and new UUID/same bytes; shared body storage with distinct receipts; duplicate selected rows; raw optional/unknown/empty columns, ordered headers, sequence text and hex case; product/region/channel isolation; original workspace proof preservation; restart/migration; concurrent quota admission; missing/corrupt document, parent or row-map records; unsupported parser revision; halfway transaction failure and late pre-commit cancellation rollback; idempotence above quota and zero-new-body events above the byte cap; stable bounded pages with no bodies; 64-reference detail sharing the same two source objects; commit-aware cancellation; and selection with forbidden transport. Native authored-data checks must show explicit prior-observation labels and remote “Not checked,” with no acquisition or chronology claim.
