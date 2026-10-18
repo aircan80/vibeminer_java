@@ -288,7 +288,8 @@ public final class AtlasApplication extends Application {
         table.setRowFactory(tv->{TableRow<BuildSnapshot> row=new TableRow<>();row.setOnMouseClicked(e->{if(e.getClickCount()==2&&!row.isEmpty()){openBuild(row.getItem());}});return row;});
         Button open=button("Open metadata workspace →",()->openSelection(table),"primary");open.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
         Button inspect=button("Inspect identity",()->{BuildSnapshot b=table.getSelectionModel().getSelectedItem();if(b!=null)buildDetails(b);},"quiet-button");inspect.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
-        page.getChildren().add(panel(label("PUBLISHED / FIXTURE BUILDS","eyebrow"),table,new HBox(10,open,inspect)));
+        VBox buildResults=panel(label("OBSERVED BUILD METADATA · EXACT SOURCE PER ROW","eyebrow"),table,new HBox(10,open,inspect));
+        if(state.builds().isEmpty())page.getChildren().add(buildResults);else page.getChildren().add(1,buildResults);
         page.getChildren().add(note("ARCHIVE ACQUISITION · NOT IMPLEMENTED YET","This slice discovers metadata. Downloading historical content, pinning selected scopes and reference-safe cleanup will follow. Identical objects will be shared by build manifests; no duplicate per-build cache is planned. Storage byte totals are unknown until acquisition is implemented."));return page;
     }
     private void onProductState(ProductPresentationModel.State next){

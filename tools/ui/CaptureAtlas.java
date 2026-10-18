@@ -1,6 +1,8 @@
 import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.application.FixtureDiscovery;
+import io.vibeminer.application.WorkspaceService;
 import io.vibeminer.domain.BuildSnapshot;
+import io.vibeminer.domain.Workspace;
 import io.vibeminer.domain.ProductCatalogue;
 import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.PublishedProduct;
@@ -47,7 +49,7 @@ public final class CaptureAtlas {
         AtlasApplication.configure(new DiscoveryService() {
             public List<BuildSnapshot> fixtureBuilds(){return FixtureDiscovery.builds();}
             public CompletionStage<List<BuildSnapshot>> refresh(String p,String r){versionCalls.incrementAndGet();return CompletableFuture.failedFuture(new IllegalStateException("Offline screenshot fixture"));}
-        },null,()->{productCalls.incrementAndGet();return CompletableFuture.completedFuture(productFixtures());},false);
+        },emptyWorkspaceFixture(),()->{productCalls.incrementAndGet();return CompletableFuture.completedFuture(productFixtures());},false);
         Thread deadline=new Thread(()->{
             try {Thread.sleep(30_000);}catch(InterruptedException stopped){return;}
             if(!complete){System.err.println("Atlas screenshot sequence timed out");System.exit(2);}
@@ -75,6 +77,14 @@ public final class CaptureAtlas {
                 });
             });
         });
+    }
+    static WorkspaceService emptyWorkspaceFixture(){
+        return new WorkspaceService(){
+            public CompletionStage<List<Workspace>> list(){return CompletableFuture.completedFuture(List.of());}
+            public CompletionStage<Workspace> save(BuildSnapshot build,String locale,String name){return CompletableFuture.failedFuture(new UnsupportedOperationException("Read-only screenshot fixture"));}
+            public CompletionStage<Workspace> rename(String id,String name){return CompletableFuture.failedFuture(new UnsupportedOperationException("Read-only screenshot fixture"));}
+            public CompletionStage<Void> remove(String id){return CompletableFuture.failedFuture(new UnsupportedOperationException("Read-only screenshot fixture"));}
+        };
     }
     static ProductCatalogue productFixtures(){
         return new ProductCatalogue(List.of(
