@@ -1,11 +1,11 @@
 # Explicit repair of original canonical metadata
 
-**Status: explicit repair backend/runtime/controls are locally exercised; their newer all-platform qualification remains pending.** Exact remote `2be2962` passed a clean 1,319-Java-case check with zero failures/errors/skips and distribution assembly (16 seconds), plus 24 Python helpers and workflow/action lint. [CI 39125032855](https://github.com/aircan80/vibeminer/actions/runs/39125032855) has passed Windows, macOS ARM64 and Linux, including all ten Linux UI workflows. Intel failed before tests because Maven DNS resolution failed; a failed-job-only rerun on the same source is in progress. Prior [run 39123621460](https://github.com/aircan80/vibeminer/actions/runs/39123621460) failed the 200%-scale INSTALL consent geometry check; it is not a passing gate. No newer all-four result or alpha.6 tag is claimed.
+**Status: repair backend/runtime/controls have accepted local qualification at `c17ec25`; newer four-platform qualification remains pending.** The clean full source check passed 1,333 Java cases and verified Linux development package 24. Final exact-source DejaVu repair acceptance passed 71 assertions across two JVMs with zero HTTP. Earlier focused font correction/overlay evidence remains distinct; [visual references](design/metadata-repair/README.md) record layouts.
 
-DejaVu reproduction exposed a real clip: a 213-pixel cost action exceeded its 204-pixel viewport by nine pixels. Fix `8b8b8fe` reduced the consent/action block to 175 pixels in the same 204-pixel viewport at a 28-pixel font size, leaving 29 pixels spare. The nine-assertion probe and visual review passed without changing the fit assertion. The full 71-assertion DejaVu overlay passed, without an exact whole-source qualification claim; the separate `8ccbd42` names DejaVu workflow passed 63 assertions. These scoped results do not certify every font/layout.
+[CI 39125032855](https://github.com/aircan80/vibeminer/actions/runs/39125032855), attempt 2 at `2be2962`, passed all four targets and ten Linux workflows after Intel's transient Maven DNS recovery. Newer `62513a2` eleven-workflow qualification is pending; no alpha.6 tag/publication is claimed. Portable three-real-adapter regressions `619a9b4` are independently accepted and included in the clean 1,333-case source check. Same-issued-plan sharing remains bounded to 32 lifetime consumers/four actual jobs, with distinct issuance/cross-build BUSY; ROOT actual-halt recovery and native post-STRUCTURE UNCERTAIN/local-verification evidence do not turn symmetric INSTALL uncertainty into native coverage (it remains unit-only). Published alpha.5 is unchanged.
 
-Accepted same-issued-plan sharing `7613751` has 260 application cases, 41 independent checks and three real-adapter probes with overlapping coverage, not an additive total. It admits up to 32 lifetime consumers with four actual jobs; distinct issuances and cross-build contenders remain BUSY. Portable versions of the three real-adapter probes are under review, with a new integrated full check pending. Accepted ROOT crash recovery `4cec288` exercises actual halt/recovery and zero-HTTP reopening with ten independent checks. The native ROOT workflow exercises post-STRUCTURE UNCERTAIN, explicit local verification and ordinary ROOT-download refusal; symmetric IN uncertainty remains unit-only. See [reference captures](design/metadata-repair/README.md) and [central status](PLAN.md#delivered-baseline-and-current-work). No new release is implied.
 
+ROOT crash acceptance covers the actual halt-after-STRUCTURE/CAS boundary, restart RECOVERY and ordinary metadata-acquisition local-proof replay to RETAINED with zero HTTP; it is not INSTALL process-crash coverage, every crash cut or automatic startup finalization. Read-only local verification/Atlas reopen can prove present readability without finalizing the canonical state or rewriting historical UNCERTAIN audit. The scripted native fixture restores INSTALL bytes after cancellation only to support restart, not as evidence that a cancelled repair succeeded. Portable sharing tests preserve other-build references, pins and requirements through one/all-consumer cancellation, with one actual audit/source/physical object.
 
 This contract extends the [canonical metadata guard](METADATA-DEDUP.md), [actual publisher ownership](PUBLISHER-OWNERSHIP.md) and [shared storage](STORAGE.md). It covers app-owned install and root metadata only. VibeMiner does not access a game installation. It introduces no deletion, GC, encoding replacement, automatic retry or additional product namespace binding.
 
@@ -120,7 +120,7 @@ Canonical capability addition or publication remains a separate, explicitly perm
 
 Synthetic real-CAS/SQLite tests cover gate durability before promotion, ROOT/INSTALL ordering, exact original versus fresh receipts, missing/corrupt physical objects, expiry while waiting for SQLite, cancellation at final commit, stale/session fencing, blocked-worker cancellation, bounded admission and migration preservation. This accepted backend slice does not deliver the executing repair workflow, automatic recovery, runtime wiring or repair UI.
 
-## Approved Atlas presentation and isolated model foundation
+## Historical presentation-model checkpoint and preserved UI contract
 
 The repair branch belongs in the existing Root or Install missing/corrupt context, as one compact
 **Repair original retained metadata** card. Keep it separate from #85's explicitly zero-payload
@@ -149,9 +149,7 @@ The state sequence is explicit:
 At 100% and 200%, context, cost and the consent action stay adjacent and wrap vertically. Detailed
 identifiers expand below them rather than pushing consent into another panel. Keyboard focus
 progresses from explicit Check to plan review, explicit Download and result/offline opening.
-Enter elsewhere must not authorize either network operation. Native controls, screenshots and
-runtime wiring require their own subsequent acceptance; the isolated presentation-model tests
-are not evidence that this interface has shipped.
+Enter elsewhere must not authorize either network operation. At the original isolated-model checkpoint, native controls and runtime wiring were separate gates. The accepted later local controls and current pending cross-platform status are recorded above; model tests alone never establish shipped UI.
 
 `MetadataRepairPresentationModel` borrows `MetadataRepairService` and accepts an explicit ordinary
 `RootSelectionPlan`, or an ordinary `InstallPlan` plus its local budgets. It never closes the shared
@@ -186,6 +184,4 @@ branch, but never download preferred B as a repair fallback.
 
 Expired, altered, unavailable, cancelled, over-budget and unsupported plans require another
 explicit supported action. HEAD200 followed by GET404 leaves the repair unavailable, with no
-automatic retry, mirror, archive search or encoding substitution. The phase-one implementation
-contains only the pure presentation model and synthetic fixtures/tests. Service composition,
-native controls and runtime enablement remain separate gates.
+automatic retry, mirror, archive search or encoding substitution. At the historical phase-one checkpoint only the pure presentation model and synthetic fixtures existed. Later service/runtime/native controls have the scoped local acceptance recorded above; the newer all-platform release gate remains separate.
