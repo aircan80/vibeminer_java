@@ -136,3 +136,9 @@ Twenty-four DB2 tests (13 new metadata tests and 11 existing header tests), inde
 `FixedSectionIndexParser` accepts an exact bounded fixed-width, noninline-ID, zero-key section span and preserves uint32 IDs and ordered raw copy target/source pairs. It retains no record bytes and does not repair zero IDs, choose duplicate targets, resolve forward/cross-section copies or infer row absence. Sparse, keyed and unsupported relationship variants remain separate work. The caller must authenticate supplied bytes; these pure readers do not establish source or schema validity.
 
 Independent review passed the four bit-reader tests plus 100,000 oracle cases, seven numeric-mode tests plus 200,000 oracle cases, and eleven fixed-section tests plus 10,000 valid/100,000 malformed fixtures. These are decoding foundations, not an implemented item-table browser or complete supported cohort.
+
+## Sparse section suffix metadata (#63)
+
+`SparseSectionIndexParser` reads an explicitly supplied bounded zero-key sparse/noninline section suffix in the pinned physical order: ID list, raw copy pairs, six-byte offset/size entries and map-ID list. It preserves unsigned offsets, sizes, zero entries and differing ID lists without repairs or row selection. Exact suffix geometry, limits, cancellation and unsupported variants are checked; record data is not retained.
+
+The result explicitly marks raw offset origin unverified. The pinned reader consumes sizes cumulatively, while independent writer evidence and actual source coherence need separate validation before converting raw offsets into row coordinates. Nine tests and independent 10,000 suffix fixtures/100,000 malformed inputs passed. This is index metadata, not sparse-string or item-name decoding.
