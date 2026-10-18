@@ -528,4 +528,43 @@ class ItemNamesPresentationModelTest {
             .build()
             .observedAt());
   }
+
+  @Test
+  void nativeNullSelectionAfterDraftEditIsSafeForPageAndExactLookup() {
+    for (boolean browsing : List.of(true, false)) {
+      var f = new Fake();
+      var m = model(f);
+      ready(m, f);
+      var r = row(101, 0, ItemNameMatch.Outcome.PHYSICAL_NAME, "雪");
+      if (browsing) {
+        m.firstPage();
+        f.paging.complete(new ItemNamesPage(PAIR, List.of(r), Optional.empty()));
+        m.selectRow(r);
+      } else {
+        m.setInput("101");
+        m.lookup();
+        f.looking.complete(
+            new ItemNamesLookup(
+                PAIR,
+                new JoinedItemLookup(
+                    new ItemLookupResult(
+                        101,
+                        ItemLookupResult.Outcome.PHYSICAL_MATCH,
+                        Optional.of(r.item()),
+                        OptionalLong.empty(),
+                        PAIR.item().coverage()),
+                    Optional.of(r.name()))));
+      }
+      assertNotNull(m.state().selected());
+      assertDoesNotThrow(() -> m.selectRow(null));
+      assertNull(m.state().selected());
+      if (browsing) m.selectRow(r);
+      m.setInput("102");
+      assertDoesNotThrow(() -> m.selectRow(null));
+      assertNull(m.state().selected());
+      assertEquals(browsing ? 1 : 0, f.pages);
+      assertEquals(browsing ? 0 : 1, f.lookups);
+      assertNotNull(browsing ? m.state().page() : m.state().lookup());
+    }
+  }
 }

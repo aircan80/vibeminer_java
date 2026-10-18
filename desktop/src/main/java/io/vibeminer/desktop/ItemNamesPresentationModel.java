@@ -412,7 +412,15 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
   }
 
   public void selectRow(NamedItemRow row) {
-    if (closed || pair == null || page == null || !page.rows().contains(row)) return;
+    if (closed) return;
+    if (row == null) {
+      if (selected != null) {
+        selected = null;
+        emit();
+      }
+      return;
+    }
+    if (pair == null || page == null || !page.rows().contains(row) || row.equals(selected)) return;
     selected = row;
     emit();
   }
