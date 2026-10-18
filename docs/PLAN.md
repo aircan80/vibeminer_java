@@ -4,11 +4,21 @@ Formal implementation plan, 2026-10-18. GitHub Issues owns scope and delivery st
 
 ## Delivered baseline and current work
 
-- Released: [v0.1.0-alpha.2](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.2) at `0bba50b`, with all four native package/runtime gates passed. Scope is Atlas official product/build discovery, saved offline metadata workspaces and explicit verified install-list download/inspection. This is not the complete research MVP.
-- Closed foundations: #31–#39 provide bounded BLTE/config/IN parsing, structural WDC5 header inspection, official transport, shared acquisition, durable actual-source aliases/build memberships and the retained-list workflow. No item records are decoded by these slices.
-- Post-release source: #40 adds bounded explicit WoW root v1/v2 membership parsing; #41–#43 add exact range transport, authenticated BLTE chunk plans and bounded EN page lookup. Clean snapshot `1272c62` passed 290 Java tests and a Linux bundled-runtime check.
-- Current integration: #44 streams selected root IDs without building millions of membership objects. #45 will compose exact source proofs and inspect actual Item/ItemSparse headers. Schema candidates remain pinned metadata until actual bytes agree.
-- Remaining: complete verified raw-file browsing/offline UI, selected-content retention and safe cleanup, exact-layout DB2 records/schema/item research, comparisons, findings and research exports. Preserve each issue's remaining acceptance; early packaged alphas do not close the final research-MVP release gate.
+- Released: [v0.1.0-alpha.2](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.2) at `0bba50b`, with all four native package/runtime gates passed. Scope is Atlas official product/build discovery, saved offline metadata workspaces and explicit verified install-list download/inspection. Post-release source is not automatically included in that release, and this is not the complete research MVP.
+- Closed foundations: #31–#44 and #46–#49 provide bounded BLTE/config/IN parsing, structural WDC5 header inspection, official transport, shared acquisition, durable actual-source aliases/build memberships, streamed verified publication, selected root-ID streaming, bounded EN/range/chunk proof and authenticated archive-index lookup. #47 records modern-root compatibility evidence. Latest closed #48/#49 were checked with a clean 393-test run and Linux bundled-runtime check; the integrated backend snapshot `6093c4a` subsequently passed 407 cases and the same native gate. These are scoped protocol/storage foundations, not decoded item records or complete archives.
+- Root-lookup backend #50 is committed in `5384671`: exact-root plans, full verified encoded-root retention and bounded selected-ID lookup/offline policy. Reported validation includes 14 integration tests and an independent 157-case tamper sweep. The issue remains open: shared-runtime integration (#54) is committed in `56b9274` with 73 bootstrap tests and independent lifecycle review, while separate Atlas native acceptance (#53) is pending. No new end-user lookup capability is claimed from backend tests alone.
+- Actual Item header evidence #51 is committed in `5c89df5`/`6093c4a`: [non-payload evidence](evidence/item-header-12.1.5.70448.json) records archived FileDataID `841626` in WoW `12.1.5.70448`, authenticated archive-index mapping and consumed BLTE chunk, then WDC5 table `50238EC2` / layout `996192AA` with 50 sections. The bounded run used 836 requests and 1,342,650 response bytes; 76 generated-fixture offline assertions passed. It reused the prior root proof rather than rescanning root. Complete table CKey/body, ItemSparse cohort and row decoding remain unverified; a header/layout candidate match is not semantic support.
+- Validation still pending: #51 and cancellation-lifecycle correction #52 await replacement [CI run 39103673356](https://github.com/aircan80/vibeminer/actions/runs/39103673356), observed in progress at this documentation review. The #52 handshake correction is committed in `2479c6e`; do not infer a passing replacement run from prior local checks.
+- Active next slices: #53 exact-FileDataID Atlas workflow needs native UI acceptance; #54 shared lazy content runtime is integrated pending combined native verification; #55 pure bounded WDC5 section/field/storage metadata parsing remains in progress. The latter reports raw structure and unsupported/encrypted capabilities, not row values, schema meaning or authentication by itself.
+- Remaining: complete verified raw-file browsing/offline UI, selected-content retention and safe cleanup, exact-layout DB2 records/schema/item research, comparisons, findings and research exports. Preserve each issue's remaining acceptance; early packaged alphas and closed protocol subissues do not close broad research/archive stories.
+
+## Immediate dependencies and acceptance boundaries
+
+1. Complete #54 shared-runtime composition and #53 presentation/native acceptance before claiming the #50 root-lookup backend as a delivered desktop workflow. Keep install-list and file-lookup use cases separate; verify worker shutdown precedes closing shared storage.
+2. Obtain replacement CI evidence for #51/#52, including the offline diagnostics and cancellation lifecycle regression. Record the exact revision/platform/result; pending checks remain pending.
+3. Use #51's actual header facts to bound #55 metadata parsing and refine the still-open #45 Item/ItemSparse cohort. A matching Item header does not validate all 50 sections, storage modes, encryption state, relations, ItemSparse bytes or complete table content.
+4. Only after complete supported table features, exact schema evidence and required joins are validated may #20/#21 offer readable item rows/search. Maintain distinct unsupported, incomplete, missing and absent states throughout.
+5. Retention/GC and broader archive stories retain their own reference-safety, crash recovery, accounting and older-build acceptance. Retaining one complete encoded root is useful scoped evidence, not a full-game archive or general raw-file payload acquisition.
 
 ## Agreed product and engineering contract
 
@@ -104,14 +114,14 @@ For deterministic behavior: write a failing test, implement the smallest change,
 
 ## Validation-first decisions and risks
 
-The source build selects Java 25 and JavaFX 25.0.2, with the committed Gradle wrapper. Alpha.1 package evidence establishes the four named runtime targets; additional decoder/native dependency choices and future compatibility changes still require validation. See BUILDING.md for current setup.
+The source build selects Java 25 and JavaFX 25.0.2, with the committed Gradle wrapper. Alpha.2 package evidence establishes the four named runtime targets; additional decoder/native dependency choices and future compatibility changes still require validation. See BUILDING.md for current setup.
 
 Still to prove during the narrow spikes: official Forever/product mapping; exact available baseline/target builds; broader resolver/BLTE coverage and exact DB2 variants; minimal useful table dependencies; schema/listfile licensing/pinning; native package runners and signing/distribution requirements. Establish search/latency/memory/storage budgets from small representative measured workloads before claiming performance targets. Do not silently compensate for missing format support with fabricated data or another edition's records.
 
 
 ## Delivery tracking
 
-The public backlog contains stories #13–#26 and evidence spikes #27–#28, with build automation #29 and portable documentation #30. GitHub Issues is the source of truth.
+The public backlog contains stories #13–#26 and their linked implementation/evidence slices through #55, including build automation #29 and portable documentation #30. GitHub Issues is the source of truth. Closed foundation subissues do not close the broader user outcome automatically.
 
 - Increment 1: standalone discovery — #13–15 and #27.
 - Increment 2: verified shared archives — #16–19.
