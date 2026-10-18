@@ -1,0 +1,88 @@
+{
+  "sourceRevision": "8baaadbfb78732b39f2f2c37809718e76d61309d",
+  "kind": "local-exact-source-native-qualification",
+  "javaTests": 2144,
+  "pythonTests": 40,
+  "assertions": 956,
+  "captureCount": 56,
+  "cases": [
+    {
+      "width": 1440,
+      "height": 1100,
+      "textScalePercent": 100,
+      "seedAssertions": 184,
+      "restartAssertions": 55
+    },
+    {
+      "width": 1440,
+      "height": 1100,
+      "textScalePercent": 200,
+      "seedAssertions": 184,
+      "restartAssertions": 55
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "textScalePercent": 100,
+      "seedAssertions": 184,
+      "restartAssertions": 55
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "textScalePercent": 200,
+      "seedAssertions": 184,
+      "restartAssertions": 55
+    }
+  ],
+  "selectedCaptures": [
+    {
+      "file": "atlas-mining-seed-chooser-full-readiness-1440x1100-100pct.png",
+      "sha256": "6398bfbee85186f932103273521f575af49ea282e54902be05c4d5be95f298fa",
+      "case": "1440-100",
+      "phase": "seed"
+    },
+    {
+      "file": "atlas-mining-seed-downloading-header-1440x1100-100pct.png",
+      "sha256": "09472c9b35cc0381c778849e2bd4f7985b0953d29b707423941bd7fe74864ef1",
+      "case": "1440-100",
+      "phase": "seed"
+    },
+    {
+      "file": "atlas-mining-seed-full-on-demand-1440x1100-100pct.png",
+      "sha256": "1ec1a16d43484da4aadf110a456244cd205b81b64f26585e9fcd36a0e2622ef8",
+      "case": "1440-100",
+      "phase": "seed"
+    },
+    {
+      "file": "atlas-mining-restart-offline-full-1440x1100-100pct.png",
+      "sha256": "ecc99d55328df967b78ef13cd1c0d89b3c03c88de81519fa9b09017d94a1b628",
+      "case": "1440-100",
+      "phase": "restart"
+    },
+    {
+      "file": "atlas-mining-seed-chooser-full-readiness-1280x800-200pct.png",
+      "sha256": "22400a23b12f386c9306dfbe0ecb1ee4a957172b3109c2772325d18028eec442",
+      "case": "1280-200",
+      "phase": "seed"
+    },
+    {
+      "file": "atlas-mining-restart-chooser-historical-full-after-corruption-1280x800-200pct.png",
+      "sha256": "aa819affa428788666d79aedc2b5d6cc6a339d45d73eac495415e69da45b8209",
+      "case": "1280-200",
+      "phase": "restart"
+    },
+    {
+      "file": "atlas-mining-restart-current-partial-corrupt-1280x800-200pct.png",
+      "sha256": "76f867d82b929ef2aee1f81e8b193543030616db6ac1072b65c31fbf576665d4",
+      "case": "1280-200",
+      "phase": "restart"
+    },
+    {
+      "file": "atlas-mining-restart-chooser-partial-readiness-1280x800-200pct.png",
+      "sha256": "a5c25263f04e3b8238af1016aefbf838519ae244e0779069dca35eb2ce96ef9f",
+      "case": "1280-200",
+      "phase": "restart"
+    }
+  ]
+}
