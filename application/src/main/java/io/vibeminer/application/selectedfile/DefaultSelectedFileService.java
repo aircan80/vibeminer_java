@@ -32,6 +32,8 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     final String encodingKey;
     int consumers, workers;
     boolean cleanup;
+    CanonicalReservation cleanupReservation;
+    RuntimeException cleanupFailure;
 
     Slot(ContentSlotKey key, String encodingKey) {
       this.key = key;
@@ -48,6 +50,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     int consumers;
     volatile boolean cancelled;
     boolean accepting = true;
+    boolean publicationClosing;
     Thread worker;
 
     Flight(LocatedFilePlan plan, CanonicalReservation reservation) {
@@ -246,33 +249,38 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         return committed;
       }
     }
-    files.markPublishing(reservation.token(), token);
-    Flight flight;
+    FlightJoin joined;
     try {
-      flight = join(slot, reservation, located);
+      files.markPublishing(reservation.token(), token);
+      joined = join(slot, reservation, located);
     } catch (RuntimeException rejected) {
-      boolean unowned;
-      synchronized (coordinator) {
-        unowned = slot.workers == 0 && slot.consumers == 1;
-        if (unowned) slot.cleanup = true;
-      }
-      if (unowned) {
-        try {
-          files.releaseUnpublished(reservation.token(), CancellationToken.none());
-        } catch (RuntimeException cleanup) {
-          rejected.addSuppressed(cleanup);
-        } finally {
-          synchronized (coordinator) {
-            slot.cleanup = false;
-          }
-        }
-      }
+      scheduleUnownedReservationCleanup(slot, reservation, rejected);
       throw rejected;
     }
     try {
-      await(flight.result, token);
+      await(joined.flight().result, token);
+    } catch (RuntimeException failure) {
+      if (!joined.enrolled()) scheduleUnownedReservationCleanup(slot, reservation, failure);
+      throw failure;
     } finally {
-      detach(flight);
+      if (joined.enrolled()) detach(joined.flight());
+    }
+    if (!joined.enrolled()) {
+      // Publication froze its fanout before this consumer arrived. Its result is
+      // completed only after worker retirement; adopt the durable original receipt
+      // without starting another source worker or mutating the frozen fanout.
+      try {
+        var adopted = files.reserve(slot.key, slot.encodingKey, length, token);
+        checkReservation(adopted, slot.key, slot.encodingKey, length);
+        if (!adopted.token().equals(reservation.token()))
+          throw error(INTEGRITY_FAILURE, "Retirement handoff changed reservation token");
+        if (adopted.status() != CanonicalReservation.Status.RETAINED)
+          throw error(RECOVERY_REQUIRED, "Retired publication has no canonical receipt");
+        return inspect(choice, adopted.representation().orElseThrow(), token);
+      } catch (RuntimeException failure) {
+        scheduleUnownedReservationCleanup(slot, reservation, failure);
+        throw failure;
+      }
     }
     var completed =
         files
@@ -282,6 +290,18 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     if (completed.status() != CanonicalReservation.Status.RETAINED)
       throw error(RECOVERY_REQUIRED, "Publication has not been reconciled");
     return completed.representation().orElseThrow();
+  }
+
+  private void scheduleUnownedReservationCleanup(
+      Slot slot, CanonicalReservation reservation, RuntimeException failure) {
+    synchronized (coordinator) {
+      // Defer cleanup until the final orchestration consumer retires. Several
+      // canceled waiters can all reach here before any one leaves its slot.
+      if (slot.workers == 0) {
+        slot.cleanupReservation = reservation;
+        slot.cleanupFailure = failure;
+      }
+    }
   }
 
   private Optional<ContentRepresentation> inspectAvailable(
@@ -523,9 +543,29 @@ public final class DefaultSelectedFileService implements SelectedFileService {
   }
 
   private void leaveSlot(Slot slot) {
+    CanonicalReservation cleanupReservation;
+    RuntimeException cleanupFailure;
     synchronized (coordinator) {
       slot.consumers--;
-      removeSlot(slot);
+      if (slot.consumers != 0 || slot.workers != 0 || slot.cleanupReservation == null) {
+        removeSlot(slot);
+        return;
+      }
+      slot.cleanup = true;
+      cleanupReservation = slot.cleanupReservation;
+      cleanupFailure = slot.cleanupFailure;
+    }
+    try {
+      // The repository refuses prospective, retained or recovery proof. Actual
+      // source workers are independently protected by their slot worker holds.
+      files.releaseUnpublished(cleanupReservation.token(), CancellationToken.none());
+    } catch (RuntimeException failure) {
+      cleanupFailure.addSuppressed(failure);
+    } finally {
+      synchronized (coordinator) {
+        slot.cleanup = false;
+        removeSlot(slot);
+      }
     }
   }
 
@@ -533,15 +573,25 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     if (slot.consumers == 0 && slot.workers == 0) slots.remove(slot.key, slot);
   }
 
-  private Flight join(Slot slot, CanonicalReservation reservation, LocatedFilePlan plan) {
+  private record FlightJoin(Flight flight, boolean enrolled) {}
+
+  private FlightJoin join(Slot slot, CanonicalReservation reservation, LocatedFilePlan plan) {
     Flight flight;
     boolean start = false;
     var source = ContentRepresentation.encodedIdentity(slot.encodingKey);
     synchronized (coordinator) {
       if (closed.get()) throw error(CLOSED, "Selected-file service closed");
       flight = flights.get(source);
-      if (flight != null && (!flight.accepting || flight.cancelled))
+      if (flight != null && flight.cancelled)
         throw error(BUSY, "Previous source worker has not retired");
+      if (flight != null && !flight.accepting) {
+        if (!flight.publicationClosing) throw error(BUSY, "Previous source worker has not retired");
+        if (flight.firstPlan.encodedBytes() != plan.encodedBytes())
+          throw error(INTEGRITY_FAILURE, "Shared EKey length conflict");
+        // The bounded orchestration jobs already account for these waiters. They
+        // own no source subscription and cannot cancel or extend frozen publication.
+        return new FlightJoin(flight, false);
+      }
       if (flight == null) {
         if (flights.size() >= 4) throw error(CAPACITY_EXCEEDED, "Source worker capacity exceeded");
         flight = new Flight(plan, reservation);
@@ -572,7 +622,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
             true);
       }
     }
-    return shared;
+    return new FlightJoin(shared, true);
   }
 
   private void detach(Flight flight) {
@@ -638,6 +688,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       List<CanonicalReservation> reservations;
       synchronized (coordinator) {
         flight.accepting = false;
+        flight.publicationClosing = true;
         reservations = List.copyOf(flight.reservations.values());
       }
       ready =
@@ -680,6 +731,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     List<CanonicalReservation> reservations;
     synchronized (coordinator) {
       flight.accepting = false;
+      flight.publicationClosing = failure == null && flight.publicationClosing;
       reservations = List.copyOf(flight.reservations.values());
     }
     if (failure != null)

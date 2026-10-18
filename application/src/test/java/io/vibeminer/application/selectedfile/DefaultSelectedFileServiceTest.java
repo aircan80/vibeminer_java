@@ -796,6 +796,125 @@ class DefaultSelectedFileServiceTest {
     }
   }
 
+  @Test
+  void successfulClosingFlightWaitsForPublicationBeforeAdoptingOriginalSource() throws Exception {
+    for (boolean differentContent : List.of(false, true)) {
+      for (String outcome : List.of("success", "cancel", "failure")) {
+        var f = new SelectedFileFixture();
+        var one = f.add("one", C);
+        var two = f.add("two", differentContent ? "d".repeat(32) : C);
+        var publicationEntered = new CountDownLatch(1);
+        var releasePublication = new CountDownLatch(1);
+        var followerPublished = new CountDownLatch(1);
+        var followerRetired = new CountDownLatch(1);
+        var firstPublication = new java.util.concurrent.atomic.AtomicBoolean();
+        var nextIsFollower = new java.util.concurrent.atomic.AtomicBoolean();
+        var followerThread = new java.util.concurrent.atomic.AtomicReference<Thread>();
+        var catalog =
+            (SelectedFileCatalog)
+                java.lang.reflect.Proxy.newProxyInstance(
+                    SelectedFileCatalog.class.getClassLoader(),
+                    new Class<?>[] {SelectedFileCatalog.class},
+                    (proxy, method, arguments) -> {
+                      if (method.getName().equals("completePublication")
+                          && firstPublication.compareAndSet(false, true)) {
+                        publicationEntered.countDown();
+                        holdIgnoringInterrupts(releasePublication);
+                        if (outcome.equals("failure"))
+                          throw new IllegalStateException("Synthetic publication failure");
+                      }
+                      try {
+                        return method.invoke(f.files, arguments);
+                      } catch (java.lang.reflect.InvocationTargetException failure) {
+                        throw failure.getCause();
+                      }
+                    });
+        try (var jobWorkers = Executors.newFixedThreadPool(2);
+            var sourceWorkers = Executors.newSingleThreadExecutor()) {
+          Executor jobs =
+              task -> {
+                boolean follower = nextIsFollower.getAndSet(false);
+                jobWorkers.execute(
+                    () -> {
+                      if (follower) followerThread.set(Thread.currentThread());
+                      try {
+                        task.run();
+                      } finally {
+                        if (follower) followerRetired.countDown();
+                      }
+                    });
+              };
+          try (var service =
+              new DefaultSelectedFileService(
+                  f.gateway, f.builds, catalog, f.pins, jobs, sourceWorkers)) {
+            var a = await(service.planCandidates(one.build(), one, BUDGETS));
+            var b = await(service.planCandidates(two.build(), two, BUDGETS));
+            var aPlan = located(service, a, 0);
+            var bPlan = located(service, b, 0);
+            var first = service.retain(aPlan).toCompletableFuture();
+            try {
+              assertTrue(publicationEntered.await(3, TimeUnit.SECONDS));
+              // The source has frozen its publication list, but cannot commit or retire yet.
+              f.files.afterMarkPublishing = followerPublished::countDown;
+              nextIsFollower.set(true);
+              var second = service.retain(bPlan).toCompletableFuture();
+              assertTrue(followerPublished.await(3, TimeUnit.SECONDS));
+              // All follower ports before the join have returned and none block. Observe the
+              // actual wait or actual completion, rather than assuming submission means joining.
+              long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+              boolean waiting = false;
+              while (followerRetired.getCount() != 0 && System.nanoTime() < deadline) {
+                var state = followerThread.get().getState();
+                if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+                  waiting = true;
+                  break;
+                }
+                Thread.onSpinWait();
+              }
+              assertTrue(waiting, "A normal closing-flight follower must wait, not return BUSY");
+              assertFalse(second.isDone(), "Publication is still blocked");
+              if (outcome.equals("cancel")) assertTrue(second.cancel(true));
+              releasePublication.countDown();
+              if (outcome.equals("failure")) {
+                assertEquals(STORAGE_UNAVAILABLE, failure(first));
+                assertEquals(STORAGE_UNAVAILABLE, failure(second));
+                assertTrue(f.files.associations.isEmpty());
+                assertEquals(
+                    CanonicalReservation.Status.RECOVERY, f.files.slots.get(one.slot()).status());
+              } else {
+                var original = await(first);
+                if (outcome.equals("cancel")) {
+                  assertThrows(CancellationException.class, () -> await(second));
+                  assertTrue(followerRetired.await(3, TimeUnit.SECONDS));
+                  if (differentContent) assertFalse(f.files.slots.containsKey(two.slot()));
+                  else
+                    assertEquals(
+                        CanonicalReservation.Status.RETAINED,
+                        f.files.slots.get(one.slot()).status());
+                  assertEquals(1, f.files.associations.size());
+                  assertEquals(original, f.files.associations.values().iterator().next());
+                } else {
+                  var adopted = await(second);
+                  assertEquals(
+                      original.representation().encoded(), adopted.representation().encoded());
+                  assertEquals(
+                      original.representation().sourceReceipt(),
+                      adopted.representation().sourceReceipt());
+                  assertEquals(two.slot(), adopted.representation().slot());
+                  assertEquals(two, adopted.descriptor().association());
+                  assertEquals(2, f.files.associations.size());
+                }
+              }
+              assertEquals(1, f.gateway.acquisitions);
+            } finally {
+              releasePublication.countDown();
+            }
+          }
+        }
+      }
+    }
+  }
+
   static void holdIgnoringInterrupts(CountDownLatch release) {
     boolean interrupted = false;
     while (true) {
