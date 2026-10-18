@@ -122,3 +122,17 @@ java -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
 ```
 
 This checks confirmed retirement, interrupted waiting with restored interruption, and refusal to authorize cleanup while a worker remains alive. It requires no display. The native run uses programmatic keyboard events and scene checks; it does not certify physical keyboard or screen-reader operation.
+
+## Literal Item display-candidate search workflow
+
+`CaptureItemNameSearchWorkflow.java` is the eleventh native workflow. It uses the real retained Item/Sparse readers, pinned definitions, application services, CAS and SQLite indexes with the explicitly synthetic `LITERAL_SEARCH` fixture corpus. Compile **all tools and fixtures together** using the `javac` command above after `:bootstrap:installDist`; keep the distribution and compiled classes unchanged during capture.
+
+```bash
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureItemNameSearchWorkflow --isolated-display :191 --output build/ui-review/item-name-search
+```
+
+Immutable source `c17ec25` passed **109 assertions (92 first process + 17 restart), two JVMs and zero HTTP attempts**, producing **21 PNGs per font profile**. Both Linux Noto and CI-like DejaVu runs covered 100%/200% text scaling, literal search and continuation, inspection, Clear without a query, explicit Browse/exact ID, input rejection, cost/action visibility and offline restart.
+
+[Acceptance evidence and reproduction details](../../docs/design/item-name-search/README.md) define the clipboard and cancellation boundaries: paste checks the string exposed by the native clipboard API, which may already have undergone platform conversion; held cancellation/stale tests delay admission before the real search service and do not establish SQLite worker retirement. The same document records the synthetic proof scope and remaining platform/accessibility limits.
