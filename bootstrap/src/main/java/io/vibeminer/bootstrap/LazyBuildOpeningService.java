@@ -17,6 +17,11 @@ final class LazyBuildOpeningService implements BuildOpeningService {
     volatile OpenOperation delegate;
     boolean cancellation;
     volatile boolean binding;
+    volatile boolean admissionFailed;
+    volatile boolean ownerRetired;
+    volatile boolean actualDone;
+    BuildMetadataAdmission value;
+    Throwable failure;
   }
 
   LazyBuildOpeningService(LazyBootstrapService owner) {
@@ -53,7 +58,8 @@ final class LazyBuildOpeningService implements BuildOpeningService {
               try {
                 actual = Objects.requireNonNull(runtime.buildOpening().open(reference, locale));
               } catch (Throwable failure) {
-                job.result.completeExceptionally(classify(failure));
+                job.admissionFailed = true;
+                if (job.ownerRetired) job.result.completeExceptionally(classify(failure));
                 throw failure;
               }
               final boolean cancellationRequested;
@@ -64,13 +70,6 @@ final class LazyBuildOpeningService implements BuildOpeningService {
               // Delegate cancellation can synchronously complete and invoke arbitrary callbacks.
               // Publish the binding under the monitor, then call foreign code without the lock.
               if (cancellationRequested) actual.requestCancellation();
-              actual
-                  .completion()
-                  .whenComplete(
-                      (value, failure) -> {
-                        if (failure == null) job.result.complete(value);
-                        else job.result.completeExceptionally(unwrap(failure));
-                      });
               // This bridge is owned by dispatch, not the actual worker's completion. A
               // global-owner
               // cancellation requests cooperation, never fabricates retirement of the underlying
@@ -87,8 +86,12 @@ final class LazyBuildOpeningService implements BuildOpeningService {
                   .completion()
                   .whenComplete(
                       (value, failure) -> {
+                        job.value = value;
+                        job.failure = failure == null ? null : unwrap(failure);
+                        job.actualDone = true;
                         if (failure == null) bridge.complete(value);
                         else bridge.completeExceptionally(failure);
+                        publishActual(job);
                       });
               return bridge;
             },
@@ -97,10 +100,19 @@ final class LazyBuildOpeningService implements BuildOpeningService {
             (value, failure) -> {
               // Once bound, only the actual operation determines terminal completion/commit
               // outcome.
-              if (!job.binding && failure != null)
+              job.ownerRetired = true;
+              if (failure != null && (!job.binding || job.admissionFailed))
                 job.result.completeExceptionally(classify(failure));
+              else publishActual(job);
             });
     return operation(job);
+  }
+
+  private static void publishActual(Job job) {
+    if (job.actualDone && job.ownerRetired) {
+      if (job.failure == null) job.result.complete(job.value);
+      else job.result.completeExceptionally(job.failure);
+    }
   }
 
   private OpenOperation operation(Job job) {

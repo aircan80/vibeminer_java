@@ -77,11 +77,18 @@ class LazyBuildOpeningServiceTest {
   @Test
   void cancellationDuringBindingForwardsOnlyWhenDelegateExistsAndCommitWins() throws Exception {
     var fake = new Fake();
+    var initialize = new CountDownLatch(1);
     fake.releaseBind = new CountDownLatch(1);
-    try (var owner = new LazyBootstrapService(() -> resources(fake))) {
+    try (var owner =
+        new LazyBootstrapService(
+            () -> {
+              await(initialize);
+              return resources(fake);
+            })) {
       var facade = new LazyBuildOpeningService(owner);
       var ref = reference();
       var op = facade.open(ref, "enUS");
+      initialize.countDown();
       assertTrue(fake.bound.await(2, TimeUnit.SECONDS));
       op.requestCancellation();
       assertFalse(op.completion().toCompletableFuture().isDone());
@@ -92,6 +99,7 @@ class LazyBuildOpeningServiceTest {
       fake.result.complete(expected);
       assertSame(expected, op.completion().toCompletableFuture().get(2, TimeUnit.SECONDS));
     } finally {
+      initialize.countDown();
       fake.releaseBind.countDown();
     }
   }
@@ -243,12 +251,19 @@ class LazyBuildOpeningServiceTest {
   @Test
   void lateBindingCancellationInvokesDelegateOutsideItsMonitor() throws Exception {
     var fake = new Fake();
+    var initialize = new CountDownLatch(1);
     fake.releaseBind = new CountDownLatch(1);
     var reentered = new CompletableFuture<Void>();
     var first = new AtomicBoolean(true);
-    try (var owner = new LazyBootstrapService(() -> resources(fake));
+    try (var owner =
+            new LazyBootstrapService(
+                () -> {
+                  await(initialize);
+                  return resources(fake);
+                });
         var reentry = Executors.newSingleThreadExecutor()) {
       var operation = new LazyBuildOpeningService(owner).open(reference(), "enUS");
+      initialize.countDown();
       assertTrue(fake.bound.await(2, TimeUnit.SECONDS));
       fake.onCancel =
           () -> {
@@ -265,6 +280,7 @@ class LazyBuildOpeningServiceTest {
       reentered.get(2, TimeUnit.SECONDS);
       fake.result.completeExceptionally(new CancellationException());
     } finally {
+      initialize.countDown();
       fake.releaseBind.countDown();
     }
   }
@@ -284,6 +300,50 @@ class LazyBuildOpeningServiceTest {
       assertCode(
           BuildOpeningException.Code.UNSUPPORTED_METADATA,
           new LazyBuildOpeningService(owner).open(reference(), "enUS"));
+    }
+  }
+
+  @Test
+  void failedOpeningGetterRetiresOwnerSlotBeforeFailureCallbackReentry() throws Exception {
+    var factory = new CountDownLatch(1);
+    var gets = new AtomicInteger();
+    var fake = new Fake();
+    try (var owner =
+        new LazyBootstrapService(
+            () -> {
+              await(factory);
+              return new LazyBootstrapService.Resources() {
+                public BootstrapService service() {
+                  return null;
+                }
+
+                public BuildOpeningService buildOpening() {
+                  if (gets.incrementAndGet() == 64)
+                    throw new AssertionError("before actual operation");
+                  return fake;
+                }
+
+                public void close() {}
+              };
+            })) {
+      var facade = new LazyBuildOpeningService(owner);
+      var first = facade.open(reference(), "enUS");
+      for (int i = 0; i < 63; i++) facade.open(reference(), "enUS");
+      var callback = new CompletableFuture<Void>();
+      first
+          .completion()
+          .whenComplete(
+              (v, f) -> {
+                facade.open(reference(), "enUS");
+                callback.complete(null);
+              });
+      factory.countDown();
+      callback.get(2, TimeUnit.SECONDS);
+      assertEquals(64, fake.opens.get());
+      fake.result.completeExceptionally(new CancellationException());
+      facade.close();
+    } finally {
+      factory.countDown();
     }
   }
 

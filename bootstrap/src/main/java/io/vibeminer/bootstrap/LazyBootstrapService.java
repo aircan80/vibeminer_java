@@ -5,6 +5,7 @@ import io.vibeminer.domain.BuildSnapshot;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -17,12 +18,28 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.inventory.BuildInventoryPreparationService
+        inventoryPreparation() {
+      throw new io.vibeminer.application.inventory.BuildInventoryPreparationException(
+          io.vibeminer.application.inventory.BuildInventoryPreparationException.Code.UNSUPPORTED,
+          "This content runtime does not provide inventory preparation");
+    }
+
+    default io.vibeminer.application.buildoverview.BuildOverviewService buildOverview() {
+      throw new UnsupportedOperationException(
+          "This content runtime does not provide build overview");
+    }
+
+    default io.vibeminer.application.buildretention.BuildRetentionModeService retentionMode() {
+      throw new UnsupportedOperationException(
+          "This content runtime does not provide durable build modes");
+    }
+
     default io.vibeminer.application.buildopening.BuildOpeningService buildOpening() {
       throw new io.vibeminer.application.buildopening.BuildOpeningException(
           io.vibeminer.application.buildopening.BuildOpeningException.Code.UNSUPPORTED_METADATA,
           "This content runtime does not provide build metadata admission");
     }
-
 
     default io.vibeminer.application.itemexport.ItemEvidenceService itemEvidence() {
       throw new io.vibeminer.application.itemexport.ItemEvidenceException(
@@ -115,13 +132,39 @@ final class LazyBootstrapService implements BootstrapService {
           classify.apply(
               new BootstrapException(
                   BootstrapException.Reason.CAPACITY, "Too many pending content actions")));
-    var result = new CompletableFuture<T>();
+    var retired = new AtomicBoolean();
+    var result =
+        new CompletableFuture<T>() {
+          private void retire() {
+            if (retired.compareAndSet(false, true)) {
+              requests.remove(this);
+              capacity.release();
+            }
+          }
+
+          @Override
+          public boolean complete(T value) {
+            retire();
+            return super.complete(value);
+          }
+
+          @Override
+          public boolean completeExceptionally(Throwable failure) {
+            Objects.requireNonNull(failure);
+            retire();
+            return super.completeExceptionally(failure);
+          }
+
+          @Override
+          public boolean cancel(boolean interrupt) {
+            retire();
+            return super.cancel(interrupt);
+          }
+        };
     var operation = new AtomicReference<CompletableFuture<T>>();
     requests.add(result);
     result.whenComplete(
         (value, failure) -> {
-          requests.remove(result);
-          capacity.release();
           if (result.isCancelled()) {
             var running = operation.get();
             if (running != null) running.cancel(true);
