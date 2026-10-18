@@ -112,10 +112,21 @@ jobs:
         run: |
           mkdir -p build/native-diagnostics
           python3 - <<'PYDIAG'
-          import pathlib, shutil
+          import pathlib, shutil, subprocess, os
+          classpath = 'bootstrap/build/install/bootstrap/lib/*'
+          java = str(pathlib.Path(os.environ['JAVA_HOME']) / 'bin/java')
+          for name, options in [('default', ['-Dprism.verbose=true']), ('software', ['-Dprism.order=sw', '-Dprism.verbose=true'])]:
+              try:
+                  result = subprocess.run([java, '--enable-native-access=ALL-UNNAMED', *options,
+                      '-cp', classpath, 'io.vibeminer.bootstrap.Main', '--smoke-test'],
+                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+                  text = result.stdout.decode('utf-8', errors='replace') + f'\nExit: {result.returncode}\n'
+              except subprocess.TimeoutExpired as error:
+                  text = (error.stdout or b'').decode('utf-8', errors='replace') + '\nDiagnostic timed out\n'
+              pathlib.Path(f'build/native-diagnostics/full-jdk-{name}.log').write_text(text)
           output = pathlib.Path('build/native-diagnostics')
           reports = pathlib.Path.home() / 'Library/Logs/DiagnosticReports'
-          candidates = list(reports.glob('VibeMiner*')) + list(pathlib.Path('.').glob('hs_err_pid*.log'))
+          candidates = list(reports.glob('VibeMiner*')) + list(reports.glob('java*')) + list(pathlib.Path('.').glob('hs_err_pid*.log'))
           for source in candidates:
               if source.is_file() and source.stat().st_size <= 2_000_000:
                   shutil.copyfile(source, output / source.name)
