@@ -2,6 +2,9 @@ package io.vibeminer.desktop;
 
 import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.application.WorkspaceService;
+import io.vibeminer.application.ProductDiscoveryService;
+import io.vibeminer.domain.PublishedProduct;
+import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.Workspace;
 import io.vibeminer.domain.BuildSnapshot;
 import javafx.application.Application;
@@ -31,14 +34,19 @@ public final class AtlasApplication extends Application {
     private static DiscoveryService configuredService;
     private static boolean initialFixtureMode;
     private static WorkspaceService configuredWorkspaces;
+    private static ProductDiscoveryService configuredProducts;
     public static synchronized void configure(DiscoveryService service, boolean fixtureMode) {
         configure(service,null,fixtureMode);
     }
     public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, boolean fixtureMode) {
+        configure(service,workspaces,null,fixtureMode);
+    }
+    public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, ProductDiscoveryService products, boolean fixtureMode) {
         if (configuredService != null) throw new IllegalStateException("Desktop has already been configured");
         configuredService = Objects.requireNonNull(service);
         initialFixtureMode = fixtureMode;
         configuredWorkspaces = workspaces;
+        configuredProducts = products;
     }
 
     private Stage stage;
@@ -50,6 +58,9 @@ public final class AtlasApplication extends Application {
     private StackPane content;
     private DiscoveryPresentationModel model;
     private DiscoveryPresentationModel.State state;
+    private ProductPresentationModel productModel;
+    private ProductPresentationModel.State productState;
+    private String productFilter="";
     private WorkspacePresentationModel workspaceModel;
     private WorkspacePresentationModel.State workspaceState;
     private Workspace activeWorkspace;
@@ -63,7 +74,7 @@ public final class AtlasApplication extends Application {
     private String researchTopic = "All research areas";
     private String searchText = "";
     private String privateNote = "";
-    private String selectedProduct = "wow";
+    private String selectedProduct;
     private String selectedRegion = "us";
     private String selectedScale = "100%";
     private final ToggleGroup navigation = new ToggleGroup();
@@ -101,6 +112,7 @@ public final class AtlasApplication extends Application {
         });
         stage.setTitle("VibeMiner · Atlas research workbench"); stage.setMinWidth(940); stage.setMinHeight(650);
         stage.setScene(scene);
+        if(configuredProducts!=null){productModel=new ProductPresentationModel(configuredProducts,Platform::runLater,this::onProductState);productState=productModel.state();}
         if(configuredWorkspaces!=null){
             workspaceModel=new WorkspacePresentationModel(configuredWorkspaces,Platform::runLater,this::onWorkspaceState);
             workspaceState=workspaceModel.state();
@@ -229,18 +241,38 @@ public final class AtlasApplication extends Application {
     }
     private VBox archive() {
         VBox page=page("CDN SOURCES / BUILD ARCHIVE","Choose a build. Keep its identity.","Discovery lists published pointers. It does not guarantee that historical content remains available.");
-        ComboBox<String> product=new ComboBox<>(FXCollections.observableArrayList("wow","wowt")); product.setId("discovery-product");product.setValue(selectedProduct); product.valueProperty().addListener((o,a,b)->selectedProduct=b); product.setAccessibleText("Official product identifier");
+        ComboBox<String> product=new ComboBox<>();product.setId("discovery-product");product.setPrefWidth(240);product.setPromptText("Refresh products first");product.setAccessibleText("Discovered raw official product identifier");
         ComboBox<String> region=new ComboBox<>(FXCollections.observableArrayList("us","eu","kr","tw"));region.setId("discovery-region");region.setValue(selectedRegion);region.valueProperty().addListener((o,a,b)->selectedRegion=b);region.setAccessibleText("Discovery region");
-        Button refresh=button("Check official metadata",()->{leaveSavedWorkspace();model.refresh(product.getValue(),region.getValue());},"primary"); refresh.setDisable(state.busy());
-        Button fixtures=button("Open fictional fixtures",()->{leaveSavedWorkspace();model.showFixtures();},"quiet-button");
-        HBox actions=new HBox(10,field("PRODUCT ID",product),field("REGION",region),refresh,fixtures);actions.setAlignment(Pos.BOTTOM_LEFT);
-        VBox sources=panel(label("DEFAULT SOURCE · BLIZZARD CDN","eyebrow"),actions,
-                wrap("Official refresh is an explicit network action. Only version/configuration metadata is requested. No installation scanning, game-cache import or game content download occurs."));
-        if(workspaceModel!=null)page.getChildren().add(savedWorkspacesPanel());
+        Button refresh=button("Check official metadata",()->{leaveSavedWorkspace();model.refresh(product.getValue(),region.getValue());},"primary");refresh.setId("check-build-metadata");
+        Label pointerStatus=wrap("");
+        Runnable selectionChanged=()->{
+            selectedProduct=product.getValue();
+            boolean supported=productModel!=null?productModel.canRequestCurrent(selectedProduct):state.fixtureMode()&&selectedProduct!=null;
+            refresh.setDisable(state.busy()||!supported);
+            PublishedProduct selected=publishedProduct(selectedProduct);
+            pointerStatus.setText(selected==null?(productModel==null?"Fixture IDs only; official product discovery is unavailable in this test configuration.":"Choose a raw product ID. No game files are downloaded."):pointerSummary(selected)+" · Content and decoder support unverified.");
+        };
+        updateProductItems(product);product.valueProperty().addListener((o,a,b)->selectionChanged.run());selectionChanged.run();
+        product.setCellFactory(list->new ListCell<>(){protected void updateItem(String value,boolean empty){super.updateItem(value,empty);PublishedProduct p=publishedProduct(value);setText(empty?null:value+(p==null?"":" · "+pointerSummary(p)));setTooltip(empty?null:new Tooltip(getText()));}});
+        Label matchingCount=label(productCountText(),"secondary");
+        TextField filter=new TextField(productFilter);filter.setId("product-filter");filter.setPromptText("Filter discovered product IDs…");filter.setAccessibleText("Filter discovered raw product identifiers");filter.setPrefWidth(280);
+        filter.textProperty().addListener((o,a,b)->{productFilter=b;updateProductItems(product);matchingCount.setText(productCountText());selectionChanged.run();});
+        Button refreshProducts=button("Refresh products",()->productModel.refresh(),"quiet-button");refreshProducts.setId("refresh-products");refreshProducts.setDisable(productModel==null||productState.busy());
+        Button pointers=button("Inspect published pointers",()->{PublishedProduct p=publishedProduct(product.getValue());if(p!=null)productDetails(p);},"quiet-button");pointers.disableProperty().bind(product.valueProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(productModel==null)));
+        FlowPane catalogActions=new FlowPane(10,8,refreshProducts,filter,pointers);
+        VBox sources=panel(label("OFFICIAL PRODUCT SUMMARY / BLIZZARD CDN","eyebrow"),catalogActions);sources.setSpacing(8);sources.getStyleClass().add("discovery-sources");
+        if(productState!=null){
+            if(productState.busy())sources.getChildren().add(busyPanel("Checking published products…","This does not fetch game content or change your selected exact-build workspace.",()->productModel.stopWaiting()));
+            else if(!productState.error().isBlank())sources.getChildren().add(notice("Product discovery unavailable",productState.error()+" "+productState.message()));
+            sources.getChildren().add(matchingCount);
+        }
+        FlowPane actions=new FlowPane(10,8,field("PRODUCT ID",product),field("REGION",region),refresh,button("Open fictional fixtures",()->{leaveSavedWorkspace();model.showFixtures();},"quiet-button"));actions.setAlignment(Pos.BOTTOM_LEFT);
+        sources.getChildren().addAll(actions,pointerStatus);
+        if(workspaceModel!=null&&(!workspaceState.workspaces().isEmpty()||workspaceState.busy()||!workspaceState.error().isBlank()))page.getChildren().add(savedWorkspacesPanel());
         page.getChildren().add(sources);
         if(state.busy())page.getChildren().add(busyPanel("Checking published metadata…","You can navigate while this request runs. Stopping observation prevents late results from entering your workspace.",()->model.stopWaiting()));
         if(!state.error().isBlank())page.getChildren().add(notice("Discovery unavailable",state.error()));
-        if(state.fixtureMode())page.getChildren().add(notice("Fictional fixtures · not Blizzard findings","These builds and configuration IDs are deterministic test examples. They cannot be used as evidence about a real game."));
+        if(state.fixtureMode())page.getChildren().add(label("FICTIONAL FIXTURES · These builds and configuration IDs are test examples, not Blizzard findings.","fixture-inline"));
         TableView<BuildSnapshot> table=new TableView<>(FXCollections.observableArrayList(state.builds()));
         table.setId("build-table");
         table.setAccessibleText("Published build metadata. Select a build and press Enter to open its workspace.");
@@ -258,6 +290,37 @@ public final class AtlasApplication extends Application {
         Button inspect=button("Inspect identity",()->{BuildSnapshot b=table.getSelectionModel().getSelectedItem();if(b!=null)buildDetails(b);},"quiet-button");inspect.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull());
         page.getChildren().add(panel(label("PUBLISHED / FIXTURE BUILDS","eyebrow"),table,new HBox(10,open,inspect)));
         page.getChildren().add(note("ARCHIVE ACQUISITION · NOT IMPLEMENTED YET","This slice discovers metadata. Downloading historical content, pinning selected scopes and reference-safe cleanup will follow. Identical objects will be shared by build manifests; no duplicate per-build cache is planned. Storage byte totals are unknown until acquisition is implemented."));return page;
+    }
+    private void onProductState(ProductPresentationModel.State next){
+        productState=next;status.setText(next.error().isBlank()?next.message():next.error());
+        if(destination.equals("Archive")){
+            Node focused=stage.getScene().getFocusOwner();String focusId=focused==null?null:focused.getId();
+            render();if(focusId!=null)Platform.runLater(()->{Node restored=root.lookup("#"+focusId);if(restored!=null)restored.requestFocus();});
+        }else if(destination.equals("Activity"))render();
+    }
+    private String productCountText(){return productState==null||productState.catalogue()==null?"No product catalog loaded · Refresh products explicitly to begin.":productModel.matching(productFilter).size()+" matching raw IDs / "+productState.catalogue().products().size()+" published · captured "+productState.catalogue().evidence().capturedAt();}
+    private PublishedProduct publishedProduct(String id){return productModel==null||id==null?null:productModel.matching("").stream().filter(p->p.productId().equals(id)).findFirst().orElse(null);}
+    private void updateProductItems(ComboBox<String> picker){
+        List<String> ids=productModel!=null?productModel.matching(productFilter).stream().map(PublishedProduct::productId).toList():state.fixtureMode()?state.builds().stream().map(BuildSnapshot::productId).distinct().filter(id->id.contains(productFilter)).toList():List.of();
+        String prior=selectedProduct;
+        picker.getItems().setAll(ids);
+        if(prior!=null&&ids.contains(prior))picker.setValue(prior);
+        else if(productModel==null&&!ids.isEmpty())picker.setValue(ids.getFirst());
+        else{picker.setValue(null);selectedProduct=null;}
+        picker.setPlaceholder(wrap(productState==null||productState.catalogue()==null?"No product catalog loaded. Refresh products first.":"No matching raw product IDs. Clear the filter."));
+    }
+    private String pointerSummary(PublishedProduct p){
+        var labels=new java.util.ArrayList<String>();
+        if(p.hasCurrentVersions())labels.add("current versions");if(p.hasCdnMetadata())labels.add("CDN metadata");if(p.hasAdvertisedPreload())labels.add("preload advertised");
+        if(p.pointers().stream().anyMatch(pointer->pointer.kind()==ProductPointer.Kind.UNKNOWN))labels.add("unrecognized flags");
+        return String.join(" / ",labels);
+    }
+    private void productDetails(PublishedProduct p){
+        VBox body=new VBox(12,label(p.productId(),"section-heading"),wrap("Raw published product ID. Edition mapping and decoding capabilities are not established by the product name."));
+        for(var pointer:p.pointers())body.getChildren().add(identity(pointer.kind().name(),"Flag: "+(pointer.flag().isEmpty()?"(empty: current versions)":pointer.flag())+" · Publication sequence: "+pointer.sequence()));
+        body.getChildren().add(wrap("Preload is advertised metadata only; this interface does not request preload builds. A CDN pointer is not evidence of a downloadable complete build. Unknown flags are preserved without interpretation."));
+        if(productState!=null&&productState.catalogue()!=null){var evidence=productState.catalogue().evidence();body.getChildren().addAll(identity("SUMMARY SOURCE URL",evidence.sourceUrl()),identity("CAPTURED / SHA-256",evidence.capturedAt()+" / "+evidence.sha256()));}
+        dialog("Published pointers · "+p.productId(),body);
     }
     private void onWorkspaceState(WorkspacePresentationModel.State next){
         workspaceState=next;
@@ -384,8 +447,9 @@ public final class AtlasApplication extends Application {
     }
     private VBox activity(){
         VBox page=page("BACKGROUND ACTIVITY","Keep the work visible.","Network work runs outside the JavaFX application thread.");
+        if(productState!=null&&productState.busy())page.getChildren().add(busyPanel("Official product summary","Reading published metadata pointers. Transfer bytes are not reported by this operation.",()->productModel.stopWaiting()));
         if(state.busy())page.getChildren().add(busyPanel("Official metadata discovery","Waiting for the application discovery service. Progress bytes are unknown for this operation.",()->model.stopWaiting()));
-        else page.getChildren().add(panel(label("NO ACTIVE UI REQUEST","eyebrow"),label("A quiet workspace.","section-heading"),wrap("There are no acquisition, decoding or export jobs in this first slice. Refresh official metadata in Archive to exercise asynchronous discovery."),button("Open sources →",()->navigate("Archive"),"primary")));
+        else if(productState==null||!productState.busy())page.getChildren().add(panel(label("NO ACTIVE UI REQUEST","eyebrow"),label("A quiet workspace.","section-heading"),wrap("There are no acquisition, decoding or export jobs in this first slice. Refresh official metadata in Archive to exercise asynchronous discovery."),button("Open sources →",()->navigate("Archive"),"primary")));
         page.getChildren().add(note("HONEST CANCELLATION","The current discovery port cannot cancel its network request. “Stop waiting” only detaches this view and ignores its eventual response. Acquisition jobs will expose application-owned cancellation separately."));return page;
     }
     private VBox settings(){
@@ -425,5 +489,5 @@ public final class AtlasApplication extends Application {
     private static Region spacer(){Region r=new Region();HBox.setHgrow(r,Priority.ALWAYS);return r;}
     private static Button button(String title,Runnable action,String style){Button b=new Button(title);b.getStyleClass().add(style);b.setOnAction(e->action.run());return b;}
     private static TableColumn<BuildSnapshot,String> column(String title,Function<BuildSnapshot,String> value,double width){TableColumn<BuildSnapshot,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
-    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();}
+    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();}
 }

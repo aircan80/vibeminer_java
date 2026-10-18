@@ -11,6 +11,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.infrastructure.discovery.OfficialDiscoveryService;
+import io.vibeminer.infrastructure.discovery.OfficialProductDiscoveryService;
 import io.vibeminer.desktop.AtlasApplication;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
@@ -46,7 +47,7 @@ public final class Main {
         }, "vibeminer-shutdown"));
         var workspaceService = new DefaultWorkspaceService(new SqliteWorkspaceRepository(
             AppDataDirectory.resolve().resolve("catalog.sqlite")), workspaceExecutor, Clock.systemUTC());
-        AtlasApplication.configure(discovery, workspaceService, List.of(args).contains("--fixtures"));
+        AtlasApplication.configure(discovery, workspaceService, new OfficialProductDiscoveryService(), List.of(args).contains("--fixtures"));
         javafx.application.Application.launch(AtlasApplication.class, args);
     }
     private static void verifyMetadataRuntime(BuildSnapshot build) {

@@ -31,12 +31,19 @@ final class BoundedMetadataHttp implements MetadataTransport {
     @Override public CompletionStage<CapturedMetadata> fetch(URI uri) {
         if (!"https".equals(uri.getScheme()) || !"us.version.battle.net".equals(uri.getHost())
                 || uri.getPort() != -1 || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                || !uri.getPath().matches("/v2/products/[a-z][a-z0-9_-]{0,63}/(versions|cdns)")) {
+                || !(uri.getPath().equals("/v2/summary") || uri.getPath().matches("/v2/products/[a-z][a-z0-9_-]{0,63}/(versions|cdns)"))) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Metadata source is not approved"));
         }
         var request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10))
                 .header("Accept-Encoding", "identity").header("User-Agent", "VibeMiner/0.1 metadata-discovery").GET().build();
-        var exchange = client.sendAsync(request, info -> new LimitedBodySubscriber(BlizzardMetadataParser.MAX_DOCUMENT_BYTES));
+        var body = new java.util.concurrent.atomic.AtomicReference<LimitedBodySubscriber>();
+        var stopped = new java.util.concurrent.atomic.AtomicBoolean();
+        var exchange = client.sendAsync(request, info -> {
+            var subscriber = new LimitedBodySubscriber(BlizzardMetadataParser.MAX_DOCUMENT_BYTES);
+            body.set(subscriber);
+            if (stopped.get()) subscriber.cancel();
+            return subscriber;
+        });
         var result = exchange.thenApply(response -> {
                     if (response.statusCode() != 200) {
                         throw new java.util.concurrent.CompletionException(new IOException("Official metadata HTTP status " + response.statusCode()));
@@ -48,7 +55,12 @@ final class BoundedMetadataHttp implements MetadataTransport {
                     return new CapturedMetadata(uri, clock.instant(), response.body());
                 });
         result.whenComplete((metadata, failure) -> {
-            if (result.isCancelled()) exchange.cancel(true);
+            if (result.isCancelled()) {
+                stopped.set(true);
+                var subscriber = body.get();
+                if (subscriber != null) subscriber.cancel();
+                exchange.cancel(true);
+            }
         });
         return result;
     }
@@ -73,19 +85,17 @@ final class BoundedMetadataHttp implements MetadataTransport {
             if (maximum < 1 || deadline.isZero() || deadline.isNegative()) throw new IllegalArgumentException("Invalid response limits");
             this.maximum = maximum;
             var timeout = DEADLINES.schedule(() -> {
-                var current = subscription;
-                if (current != null) current.cancel();
-                result.completeExceptionally(new java.net.http.HttpTimeoutException("Metadata response body deadline exceeded"));
+                fail(new java.net.http.HttpTimeoutException("Metadata response body deadline exceeded"));
             }, deadline.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS);
             result.whenComplete((body, failure) -> timeout.cancel(false));
         }
         @Override public CompletionStage<byte[]> getBody() { return result; }
-        @Override public void onSubscribe(Flow.Subscription incoming) {
+        @Override public synchronized void onSubscribe(Flow.Subscription incoming) {
             if (subscription != null || result.isDone()) { incoming.cancel(); return; }
             subscription = incoming;
             incoming.request(1);
         }
-        @Override public void onNext(List<ByteBuffer> buffers) {
+        @Override public synchronized void onNext(List<ByteBuffer> buffers) {
             if (result.isDone()) return;
             for (var buffer : buffers) {
                 if (buffer.remaining() > maximum - bytes.size()) {
@@ -99,7 +109,15 @@ final class BoundedMetadataHttp implements MetadataTransport {
             }
             subscription.request(1);
         }
-        @Override public void onError(Throwable failure) { result.completeExceptionally(failure); }
-        @Override public void onComplete() { result.complete(bytes.toByteArray()); }
+        private synchronized void fail(Throwable failure) {
+            if (subscription != null) subscription.cancel();
+            result.completeExceptionally(failure);
+        }
+        public synchronized void cancel() {
+            if (subscription != null) subscription.cancel();
+            result.cancel(true);
+        }
+        @Override public synchronized void onError(Throwable failure) { result.completeExceptionally(failure); }
+        @Override public synchronized void onComplete() { result.complete(bytes.toByteArray()); }
     }
 }

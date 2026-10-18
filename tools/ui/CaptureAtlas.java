@@ -1,6 +1,14 @@
 import io.vibeminer.application.DiscoveryService;
 import io.vibeminer.application.FixtureDiscovery;
 import io.vibeminer.domain.BuildSnapshot;
+import io.vibeminer.domain.ProductCatalogue;
+import io.vibeminer.domain.ProductPointer;
+import io.vibeminer.domain.PublishedProduct;
+import io.vibeminer.domain.SourceDocument;
+import java.time.Instant;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import io.vibeminer.desktop.AtlasApplication;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -24,6 +32,8 @@ import java.util.concurrent.CompletionStage;
 public final class CaptureAtlas {
     static Path output;
     static volatile boolean complete;
+    static final AtomicInteger productCalls = new AtomicInteger();
+    static final AtomicInteger versionCalls = new AtomicInteger();
     public static void main(String[] args) {
         if(args.length != 4 || !"--isolated-display".equals(args[0]) || !"--output".equals(args[2])) {
             throw new IllegalArgumentException("Usage: CaptureAtlas --isolated-display :N --output DIRECTORY");
@@ -36,8 +46,8 @@ public final class CaptureAtlas {
         try {java.nio.file.Files.createDirectories(output);}catch(java.io.IOException failure){throw new RuntimeException(failure);}
         AtlasApplication.configure(new DiscoveryService() {
             public List<BuildSnapshot> fixtureBuilds(){return FixtureDiscovery.builds();}
-            public CompletionStage<List<BuildSnapshot>> refresh(String p,String r){return CompletableFuture.failedFuture(new IllegalStateException("Offline screenshot fixture"));}
-        },true);
+            public CompletionStage<List<BuildSnapshot>> refresh(String p,String r){versionCalls.incrementAndGet();return CompletableFuture.failedFuture(new IllegalStateException("Offline screenshot fixture"));}
+        },null,()->{productCalls.incrementAndGet();return CompletableFuture.completedFuture(productFixtures());},false);
         Thread deadline=new Thread(()->{
             try {Thread.sleep(30_000);}catch(InterruptedException stopped){return;}
             if(!complete){System.err.println("Atlas screenshot sequence timed out");System.exit(2);}
@@ -55,15 +65,71 @@ public final class CaptureAtlas {
         var windows=Window.getWindows().stream().filter(w->w instanceof Stage && w.isShowing()).toList();
         if(windows.isEmpty()){later(CaptureAtlas::begin);return;}
         Stage stage=(Stage)windows.getFirst();
-        stage.setX(0);stage.setY(0);stage.setWidth(1440);stage.setHeight(1100);
+        later(()->{stage.setX(0);stage.setY(0);stage.setWidth(1440);stage.setHeight(1100);prepareProducts(stage);});
+    }
+    static void captureBaselines(Stage stage){
         later(()->{capture(stage,"atlas-research-1440x1100.png",1440,1100);navigate(stage,"Archive");
             later(()->{capture(stage,"atlas-archive-1440x1100.png",1440,1100);stage.setWidth(1280);stage.setHeight(800);navigate(stage,"Research");
                 later(()->{capture(stage,"atlas-research-1280x800.png",1280,800);navigate(stage,"Archive");
-                    later(()->{capture(stage,"atlas-archive-1280x800.png",1280,800);reviewSelection(stage);});
+                    later(()->{capture(stage,"atlas-archive-1280x800.png",1280,800);assertFirstBuildRowVisible(stage);reviewSelection(stage);});
                 });
             });
         });
     }
+    static ProductCatalogue productFixtures(){
+        return new ProductCatalogue(List.of(
+                new PublishedProduct("wowt",List.of(new ProductPointer("","100"),new ProductPointer("cdn","101"))),
+                new PublishedProduct("qa_cdn_only",List.of(new ProductPointer("cdn","102"))),
+                new PublishedProduct("qa_preload_only",List.of(new ProductPointer("bgdl","103"))),
+                new PublishedProduct("qa_unknown_only",List.of(new ProductPointer("future","104")))),
+                new SourceDocument("https://example.invalid/vibeminer-fixture-summary",Instant.EPOCH,
+                        "Synthetic product-pointer fixtures; not Blizzard findings".getBytes(StandardCharsets.UTF_8)));
+    }
+    static void prepareProducts(Stage stage){
+        if(productCalls.get()!=0 || versionCalls.get()!=0) throw new IllegalStateException("Startup performed automatic discovery");
+        navigate(stage,"Archive");
+        ComboBox<?> products=(ComboBox<?>)byId(stage,"discovery-product");
+        if(!products.getItems().isEmpty() || !((Button)byId(stage,"check-build-metadata")).isDisabled()) throw new IllegalStateException("An empty official installation invented a selectable product");
+        button(stage,"Refresh products").fire();
+        await(()->((ComboBox<?>)byId(stage,"discovery-product")).getItems().size()==4,()->{
+            for(String id:List.of("qa_cdn_only","qa_preload_only","qa_unknown_only")){
+                setCombo(byId(stage,"discovery-product"),id);
+                if(!((Button)byId(stage,"check-build-metadata")).isDisabled()) throw new IllegalStateException("Non-current product enabled versions request: "+id);
+            }
+            TextField filter=(TextField)byId(stage,"product-filter");
+            for(char value:"qa_cdn".toCharArray()) filter.setText(filter.getText()+value);
+            if(!((ComboBox<?>)byId(stage,"discovery-product")).getItems().equals(List.of("qa_cdn_only"))) throw new IllegalStateException("Raw product filtering did not preserve typed query");
+            assertProductCount(stage,1);
+            filter.setText("no_such_product");
+            if(!((ComboBox<?>)byId(stage,"discovery-product")).getItems().isEmpty() || !filter.getText().equals("no_such_product")) throw new IllegalStateException("No-match filter lost its query or invented products");
+            assertProductCount(stage,0);
+            filter.setText("");
+            assertProductCount(stage,4);
+            setCombo(byId(stage,"discovery-product"),"wowt");
+            if(((Button)byId(stage,"check-build-metadata")).isDisabled()) throw new IllegalStateException("Current-version product cannot request metadata");
+            if(productCalls.get()!=1 || versionCalls.get()!=0) throw new IllegalStateException("Product browsing made implicit requests");
+            button(stage,"Open fictional fixtures").fire();
+            navigate(stage,"Research");
+            captureBaselines(stage);
+        });
+    }
+    static void assertFirstBuildRowVisible(Stage stage){
+        Node table=byId(stage,"build-table");
+        Node first=table.lookupAll(".table-row-cell").stream()
+                .filter(node->node instanceof TableRow<?> row && row.getIndex()==0 && !row.isEmpty())
+                .findFirst().orElseThrow(()->new IllegalStateException("First build row was not rendered"));
+        Node footer=stage.getScene().getRoot().lookup(".footer");
+        var rowBounds=first.localToScene(first.getBoundsInLocal());
+        var footerBounds=footer.localToScene(footer.getBoundsInLocal());
+        if(rowBounds.getMinY()<0 || rowBounds.getMaxY()>footerBounds.getMinY()) throw new IllegalStateException("First build row is below the initial Archive viewport");
+    }
+    static void assertProductCount(Stage stage,int expected){
+        stage.getScene().getRoot().applyCss();stage.getScene().getRoot().layout();
+        String prefix=expected+" matching raw IDs /";
+        if(stage.getScene().getRoot().lookupAll(".label").stream().noneMatch(node->node instanceof Label label && label.getText().startsWith(prefix))) throw new IllegalStateException("Visible product match count is stale: expected "+expected);
+    }
+    static Node byId(Stage stage,String id){stage.getScene().getRoot().applyCss();stage.getScene().getRoot().layout();Node node=stage.getScene().lookup("#"+id);if(node==null)throw new IllegalStateException("Missing control: "+id);return node;}
+    static void await(BooleanSupplier ready,Runnable next){if(ready.getAsBoolean())Platform.runLater(next);else later(()->await(ready,next));}
     static void reviewSelection(Stage stage){
         TableView<?> table=(TableView<?>)stage.getScene().lookup("#build-table");
         if(table==null || table.getItems().size()!=2) throw new IllegalStateException("Expected fixture build table");
@@ -92,12 +158,13 @@ public final class CaptureAtlas {
                 navigate(stage,"Research");
                 capture(stage,"atlas-research-200pct-1280x800.png",1280,800);
                 navigate(stage,"Archive");
-                setCombo(accessible(stage,"Official product identifier"),"wowt");
+                setCombo(byId(stage,"discovery-product"),"wowt");
                 setCombo(accessible(stage,"Discovery region"),"eu");
                 button(stage,"Check official metadata").fire();
                 later(()->{
-                    if(!"wowt".equals(((ComboBox<?>)accessible(stage,"Official product identifier")).getValue()) || !"eu".equals(((ComboBox<?>)accessible(stage,"Discovery region")).getValue())) throw new IllegalStateException("Discovery controls reset during asynchronous render");
-                    System.out.println("UI contracts OK: Enter dialog/focus, query retention, text-scale retention, asynchronous source selection");
+                    if(!"wowt".equals(((ComboBox<?>)byId(stage,"discovery-product")).getValue()) || !"eu".equals(((ComboBox<?>)accessible(stage,"Discovery region")).getValue())) throw new IllegalStateException("Discovery controls reset during asynchronous render");
+                    if(versionCalls.get()!=1 || productCalls.get()!=1) throw new IllegalStateException("Explicit refresh did not invoke exactly one product and one version request");
+                    System.out.println("UI contracts OK: explicit product discovery and capability guards, Enter dialog/focus, query retention, text-scale retention, actual asynchronous source request");
                     complete=true;Platform.exit();
                 });
             });

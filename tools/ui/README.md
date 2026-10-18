@@ -1,6 +1,8 @@
 # Atlas screenshot review tool
 
-`CaptureAtlas.java` launches the real JavaFX interface with synthetic discovery fixtures, opens Research and Archive, and writes baseline PNGs at 1440×1100 and 1280×800, plus selected-workspace and 200% text-scale images. It also asserts Enter opens the selected source dialog, closing it restores table focus, multi-character queries survive navigation, text-scale preference survives navigation, and source controls survive asynchronous failure. The key event is programmatic; this is not physical keyboard or assistive-technology testing.
+`CaptureAtlas.java` launches the real JavaFX interface with synthetic discovery fixtures, opens Research and Archive, and writes baseline PNGs at 1440×1100 and 1280×800, plus selected-workspace and 200% text-scale images. It first verifies an empty official product picker and zero automatic discovery calls. An injected synthetic catalog then tests explicit product refresh, current-version capability guards for CDN-only/preload-only/unknown pointers, typed filtering, visible match counts and no-result recovery. It verifies the build refresh actually invokes its injected service rather than silently clicking a disabled control.
+
+It also asserts Enter opens the selected source dialog, closing it restores table focus, multi-character queries survive navigation, text-scale preference survives navigation, and source controls survive asynchronous failure. The key event is programmatic; this is not physical keyboard or assistive-technology testing.
 
 It makes no network requests and captures only its own JavaFX scene, never a desktop screenshot. These images demonstrate rendering, not mining functionality, accessibility certification or installer validation.
 

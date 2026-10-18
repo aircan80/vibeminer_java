@@ -27,6 +27,10 @@ class DiscoveryPresentationModelTest {
         m.restore(old);pending.complete(List.of(build("wow","NEW",false)));
         assertEquals(old,m.state().selected());assertEquals(List.of(old),m.state().builds());assertTrue(m.state().fixtureMode());assertTrue(service.requests.isEmpty());
     }
+    @Test void publishedRawIdWithHyphenCanBeRequested(){
+        var service=new Service();var m=new DiscoveryPresentationModel(service,Runnable::run,s->{},false);
+        m.refresh("product-beta","us");assertEquals(1,service.requests.size());assertTrue(m.state().busy());
+    }
     @Test void firstLaunchHasNoInventedSelectedSource(){
         var m=new DiscoveryPresentationModel(new Service(),Runnable::run,s->{},true);
         assertNull(m.state().selected());assertTrue(m.state().builds().isEmpty());

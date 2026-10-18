@@ -36,7 +36,7 @@ public final class DiscoveryPresentationModel implements AutoCloseable {
     }
     public void refresh(String productId, String region) {
         if (closed) return;
-        if (productId == null || !productId.matches("[a-z0-9_]+") || region == null || region.isBlank()) {
+        if (productId == null || !productId.matches("[a-z][a-z0-9_-]{0,63}") || region == null || region.isBlank()) {
             generation++;
             publish(new State(state.builds(), state.selected(), false, state.message(),
                     "Choose a valid product identifier and region.", state.fixtureMode()));

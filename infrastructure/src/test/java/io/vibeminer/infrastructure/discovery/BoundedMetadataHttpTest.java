@@ -65,7 +65,10 @@ class BoundedMetadataHttpTest {
                 "https://evil.invalid/v2/products/wow/versions",
                 "https://us.version.battle.net:443/v2/products/wow/versions",
                 "https://us.version.battle.net/v2/products/wow/versions?x=1",
-                "https://us.version.battle.net/v2/products/../versions")) {
+                "https://us.version.battle.net/v2/products/../versions",
+                "https://us.version.battle.net/v2/summary/",
+                "https://us.version.battle.net/v2/summary?product=wow",
+                "https://us.version.battle.net/v2/summary/../products/wow/versions")) {
             assertThrows(CompletionException.class, () -> transport.fetch(URI.create(uri)).toCompletableFuture().join());
         }
         assertEquals(0, client.requests);
@@ -81,6 +84,13 @@ class BoundedMetadataHttpTest {
         assertTrue(client.pendingResponse.isCancelled());
     }
 
+    @Test void approvesOnlyExactSummaryRouteWithSameBoundedTransportPolicy() {
+        var client = new FakeClient(200, "identity");
+        var source = URI.create("https://us.version.battle.net/v2/summary");
+        var captured = new BoundedMetadataHttp(client, Clock.systemUTC()).fetch(source).toCompletableFuture().join();
+        assertEquals(source, captured.source()); assertEquals(1, client.requests);
+        assertEquals(Duration.ofSeconds(10), client.request.timeout().orElseThrow());
+    }
     @Test void verifiesStatusEncodingAndRequestDeadline() {
         var good = new FakeClient(200, "identity");
         assertArrayEquals(new byte[]{1, 2}, new BoundedMetadataHttp(good, Clock.systemUTC()).fetch(SOURCE).toCompletableFuture().join().bytes());
@@ -94,13 +104,48 @@ class BoundedMetadataHttpTest {
         assertThrows(CompletionException.class, () -> compressed.fetch(SOURCE).toCompletableFuture().join());
     }
 
+    @Test void cancellationBeforeHeadersCancelsLateBodyWithoutRequestingBytes() {
+        var client = new DelayedHeadersClient();
+        var result = new BoundedMetadataHttp(client, Clock.systemUTC()).fetch(SOURCE).toCompletableFuture();
+        result.cancel(true); client.releaseHeaders();
+        assertTrue(result.isCancelled()); assertTrue(client.bodyCancelled); assertEquals(0, client.demand);
+    }
+    @Test void cancellationAfterHeadersAlsoStopsSubscribedBody() {
+        var client = new DelayedHeadersClient();
+        var result = new BoundedMetadataHttp(client, Clock.systemUTC()).fetch(SOURCE).toCompletableFuture();
+        client.releaseHeaders(); assertEquals(1, client.demand);
+        result.cancel(true); assertTrue(client.bodyCancelled);
+    }
+    private static final class DelayedHeadersClient extends FakeClient {
+        private HttpResponse.BodyHandler<?> handler;
+        private final CompletableFuture<HttpResponse<Object>> future = new CompletableFuture<>();
+        private boolean bodyCancelled;
+        private int demand;
+        DelayedHeadersClient() { super(200, "identity"); }
+        @Override @SuppressWarnings("unchecked") public <T> CompletableFuture<HttpResponse<T>> sendAsync(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+            this.handler = handler;
+            return (CompletableFuture<HttpResponse<T>>) (CompletableFuture<?>) future;
+        }
+        void releaseHeaders() {
+            var subscriber = handler.apply(new HttpResponse.ResponseInfo() {
+                public int statusCode() { return 200; }
+                public HttpHeaders headers() { return HttpHeaders.of(Map.of(), (a,b) -> true); }
+                public HttpClient.Version version() { return HttpClient.Version.HTTP_1_1; }
+            });
+            subscriber.onSubscribe(new Flow.Subscription() {
+                public void request(long n) { demand++; }
+                public void cancel() { bodyCancelled = true; }
+            });
+        }
+    }
+
     private static final class TestSubscription implements Flow.Subscription {
         private volatile boolean cancelled;
         @Override public void request(long n) { }
         @Override public void cancel() { cancelled = true; }
     }
 
-    private static final class FakeClient extends HttpClient {
+    private static class FakeClient extends HttpClient {
         private final int status;
         private final String encoding;
         private final boolean pending;
