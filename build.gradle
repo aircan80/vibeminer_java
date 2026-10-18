@@ -1,0 +1,108 @@
+plugins { id 'base' }
+
+version = providers.gradleProperty('appVersion').getOrElse('0.1.0-dev')
+ext.javafxVersion = '25.0.2'
+def os = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def arch = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+def x64 = arch in ['amd64', 'x86_64']
+def arm64 = arch in ['aarch64', 'arm64']
+ext.hostTarget = os.contains('win') && x64 ? 'windows-x64' : os.contains('mac') && arm64 ? 'macos-arm64' : os.contains('mac') && x64 ? 'macos-x64' : os.contains('linux') && x64 ? 'linux-x64' : 'unsupported'
+ext.javafxClassifier = os.contains('win') ? 'win' : os.contains('mac') ? (hostTarget == 'macos-arm64' ? 'mac-aarch64' : 'mac') : 'linux'
+def selectedTarget = providers.gradleProperty('distributionTarget').getOrElse(hostTarget)
+def packageVersion = providers.gradleProperty('packageVersion').getOrElse('0.1.0')
+
+subprojects {
+    apply plugin: 'java-library'
+    group = 'io.vibeminer'
+    version = rootProject.version
+    repositories { mavenCentral() }
+    java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
+    tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8'; options.release = 25 }
+    dependencies {
+        testImplementation platform('org.junit:junit-bom:5.12.2')
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    tasks.withType(Test).configureEach { useJUnitPlatform() }
+}
+
+tasks.named('check') { dependsOn subprojects.collect { it.tasks.named('check') } }
+
+def bootstrapLibs = project(':bootstrap').layout.buildDirectory.dir('install/bootstrap/lib')
+def packageJdk = project(':bootstrap').javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+def imageRoot = layout.buildDirectory.dir("package-image/${selectedTarget}")
+def outputRoot = layout.buildDirectory.dir("distributions/${selectedTarget}")
+def imageDir = providers.provider { new File(imageRoot.get().asFile, os.contains('mac') ? 'VibeMiner.app' : 'VibeMiner') }
+
+tasks.register('packageImage') {
+    dependsOn ':bootstrap:installDist'
+    inputs.property('appVersion', version.toString())
+    inputs.property('packageVersion', packageVersion)
+    inputs.dir(bootstrapLibs)
+    outputs.dir(imageRoot)
+    doLast {
+        if (hostTarget == 'unsupported') throw new GradleException("Unsupported native packaging host: ${os}/${arch}")
+        if (selectedTarget != hostTarget) throw new GradleException("Native packaging requires matching host: ${hostTarget}, requested ${selectedTarget}")
+        if (!packageVersion.matches('[0-9]+\\.[0-9]+\\.[0-9]+')) throw new GradleException('packageVersion must be numeric major.minor.patch')
+        delete imageRoot
+        def javaHome = packageJdk.get().metadata.installationPath.asFile
+        def jpackage = new File(javaHome, "bin/jpackage${os.contains('win') ? '.exe' : ''}")
+        providers.exec {
+            commandLine jpackage.absolutePath, '--type', 'app-image', '--name', 'VibeMiner',
+                '--input', bootstrapLibs.get().asFile,
+                '--main-jar', "bootstrap-${version}.jar", '--main-class', 'io.vibeminer.bootstrap.Main',
+                '--app-version', packageVersion, '--vendor', 'VibeMiner', '--dest', imageRoot.get().asFile,
+                '--java-options', '--enable-native-access=ALL-UNNAMED',
+                '--add-modules', 'java.base,java.desktop,java.logging,java.net.http,java.sql,java.xml,jdk.unsupported,jdk.crypto.ec'
+        }.result.get().assertNormalExitValue()
+    }
+}
+
+tasks.register('packageDistribution') {
+    dependsOn 'packageImage'
+    inputs.property('appVersion', version.toString())
+    inputs.dir(imageRoot)
+    outputs.dir(outputRoot)
+    doLast {
+        delete outputRoot
+        outputRoot.get().asFile.mkdirs()
+        def archive = new File(outputRoot.get().asFile, "VibeMiner-${version}-${selectedTarget}.${os.contains('linux') ? 'tar.gz' : 'zip'}")
+        if (os.contains('linux')) {
+            providers.exec { commandLine 'tar', '-czf', archive, '-C', imageRoot.get().asFile, imageDir.get().name }.result.get().assertNormalExitValue()
+        } else if (os.contains('mac')) {
+            providers.exec { commandLine 'ditto', '-c', '-k', '--keepParent', imageDir.get(), archive }.result.get().assertNormalExitValue()
+        } else {
+            ant.zip(destfile: archive, basedir: imageRoot.get().asFile)
+        }
+        logger.lifecycle("Portable bundled distribution: ${archive}")
+    }
+}
+
+tasks.register('verifyDistribution') {
+    dependsOn 'packageDistribution'
+    doLast {
+        def verifyRoot = layout.buildDirectory.dir("verification/${selectedTarget}").get().asFile
+        delete verifyRoot
+        verifyRoot.mkdirs()
+        def archive = outputRoot.get().asFile.listFiles().find { it.name.endsWith(os.contains('linux') ? '.tar.gz' : '.zip') }
+        if (os.contains('linux')) {
+            providers.exec { commandLine 'tar', '-xzf', archive, '-C', verifyRoot }.result.get().assertNormalExitValue()
+        } else if (os.contains('mac')) {
+            providers.exec { commandLine 'ditto', '-x', '-k', archive, verifyRoot }.result.get().assertNormalExitValue()
+        } else {
+            ant.unzip(src: archive, dest: verifyRoot)
+        }
+        def root = new File(verifyRoot, imageDir.get().name)
+        def launcher = new File(root, os.contains('mac') ? 'Contents/MacOS/VibeMiner' : os.contains('win') ? 'VibeMiner.exe' : 'bin/VibeMiner')
+        def selfTest = providers.exec { commandLine launcher.absolutePath, '--self-test' }
+        selfTest.result.get().assertNormalExitValue()
+        def selfOutput = selfTest.standardOutput.asText.get()
+        if (!selfOutput.contains('VibeMiner self-test OK')) throw new GradleException("Bundled launch failed: ${selfOutput}")
+        logger.lifecycle(selfOutput.trim())
+        def uiTest = providers.exec { commandLine launcher.absolutePath, '--smoke-test' }
+        uiTest.result.get().assertNormalExitValue()
+        def uiOutput = uiTest.standardOutput.asText.get()
+        if (!uiOutput.contains('VibeMiner UI smoke OK')) throw new GradleException("Bundled JavaFX launch failed: ${uiOutput}")
+        logger.lifecycle(uiOutput.trim())
+    }
+}

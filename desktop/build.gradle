@@ -1,0 +1,7 @@
+dependencies {
+    implementation project(':application')
+    implementation project(':domain')
+    implementation "org.openjfx:javafx-controls:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
+    implementation "org.openjfx:javafx-graphics:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
+    implementation "org.openjfx:javafx-base:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
+}

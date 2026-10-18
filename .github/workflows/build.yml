@@ -1,0 +1,182 @@
+name: Build and package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish after all native packages pass
+        type: choice
+        options: [none, prerelease, release]
+        default: none
+      version:
+        description: Release version without v (for example 0.1.0-rc.1)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}-${{ github.event.inputs.publish || 'none' }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      app_available: ${{ steps.plan.outputs.app_available }}
+      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version }}
+      package_version: ${{ steps.plan.outputs.package_version }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test repository automation
+        run: python3 -m unittest discover -s tests -v
+      - name: Plan builds
+        id: plan
+        env:
+          PUBLISH_MODE: ${{ inputs.publish || 'none' }}
+          RELEASE_VERSION: ${{ inputs.version || '' }}
+        run: python3 tools/ci.py plan
+      - name: Require a trusted release commit and a new manual tag
+        if: steps.plan.outputs.publish != 'none'
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ "$GITHUB_REF" != refs/tags/* ]] && git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            echo 'Manual releases require a new version tag; existing tags will not be overwritten.' >&2
+            exit 1
+          fi
+
+  native:
+    needs: plan
+    if: needs.plan.outputs.app_available == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runner: windows-2022
+            java_arch: x64
+            python: python
+          - target: macos-arm64
+            runner: macos-15
+            java_arch: aarch64
+            python: python3
+          - target: macos-x64
+            runner: macos-15-intel
+            java_arch: x64
+            python: python3
+          - target: linux-x64
+            runner: ubuntu-24.04
+            java_arch: x64
+            python: python3
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    env:
+      APP_VERSION: ${{ needs.plan.outputs.version }}
+      PACKAGE_VERSION: ${{ needs.plan.outputs.package_version }}
+      DISTRIBUTION_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          architecture: ${{ matrix.java_arch }}
+      - name: Test and package with bundled runtime
+        run: |
+          command=(bash ./gradlew --no-daemon check packageDistribution verifyDistribution
+            "-PappVersion=$APP_VERSION" "-PpackageVersion=$PACKAGE_VERSION"
+            "-PdistributionTarget=$DISTRIBUTION_TARGET")
+          if [[ "$RUNNER_OS" == Linux ]]; then command=(xvfb-run -a "${command[@]}"); fi
+          "${command[@]}"
+      - name: Prepare verified artifacts
+        env:
+          PYTHON: ${{ matrix.python }}
+        run: |
+          "$PYTHON" tools/ci.py collect --source "build/distributions/$DISTRIBUTION_TARGET" \
+            --output dist-upload --target "$DISTRIBUTION_TARGET"
+      - name: Capture and check the Atlas interface
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build/ui-tool build/ui-review
+          javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/CaptureAtlas.java
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureAtlas \
+            --isolated-display "$DISPLAY" --output build/ui-review'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && runner.os == 'Linux'
+        with:
+          name: UI-review-${{ matrix.target }}-${{ needs.plan.outputs.version }}-${{ github.sha }}
+          path: build/ui-review/*.png
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: VibeMiner-${{ matrix.target }}-${{ needs.plan.outputs.version }}-${{ github.sha }}
+          path: dist-upload/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [plan, native]
+    if: github.event_name != 'pull_request' && needs.plan.outputs.publish != 'none' && needs.native.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      APP_VERSION: ${{ needs.plan.outputs.version }}
+      RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+      RELEASE_KIND: ${{ needs.plan.outputs.publish }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: VibeMiner-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify all platforms and source identity
+        run: python3 tools/ci.py verify-release --source release-assets --output release-files.txt
+      - name: Publish complete release
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          mapfile -t assets < release-files.txt
+          flags=(--draft --latest=false)
+          if [[ "$RELEASE_KIND" == prerelease ]]; then flags+=(--prerelease); fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then flags+=(--verify-tag); fi
+          cat > release-notes.md <<EOF
+          Native test packages for commit $GITHUB_SHA.
+
+          Includes a bundled Java runtime. Packages are unsigned and not notarized.
+          See BUILDING.md for platform coverage, build requirements and verification limits.
+          EOF
+          gh release create "$RELEASE_TAG" "${assets[@]}" --target "$GITHUB_SHA" \
+            --title "VibeMiner $APP_VERSION" --notes-file release-notes.md "${flags[@]}"
+          latest=false
+          if [[ "$RELEASE_KIND" == release ]]; then latest=true; fi
+          gh release edit "$RELEASE_TAG" --draft=false "--latest=$latest"

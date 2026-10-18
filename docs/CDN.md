@@ -51,4 +51,3 @@ Primary references already recorded in project planning: https://github.com/wowd
 ## Tests before implementation
 
 Fixture-first behavior tests: header order/unknown fields, missing required columns, duplicates, unknown product, region mismatch, same label/different configs, changed publication pointers and exact old snapshot reopening. Local scripted HTTP server tests cover truncated response, bad digest, excessive body, wrong Content-Range, 200-on-range, 416, redirects, Retry-After, cancellation and host fallback. Storage integration verifies corrupt bytes never become available, concurrent requests coalesce and offline hits perform zero HTTP. Fuzz/property tests for index counts/offset arithmetic and decompression size bounds follow supported parsers. All fixture bytes are synthetic and checked into normal test resources when implemented, never dependent on ignored local files.
-

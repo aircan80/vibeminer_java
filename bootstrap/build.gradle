@@ -1,0 +1,14 @@
+plugins { id 'application' }
+dependencies {
+    implementation project(':desktop')
+    implementation project(':infrastructure')
+    implementation project(':application')
+    implementation project(':domain')
+    implementation "org.openjfx:javafx-graphics:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
+    implementation "org.openjfx:javafx-base:${rootProject.javafxVersion}:${rootProject.javafxClassifier}"
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+}
+application {
+    mainClass = 'io.vibeminer.bootstrap.Main'
+    applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
+}
