@@ -1,5 +1,6 @@
 package io.vibeminer.desktop;
 
+import io.vibeminer.application.content.ContentClaimException;
 import io.vibeminer.application.lookup.*;
 import io.vibeminer.domain.BuildSnapshot;
 import java.util.Objects;
@@ -35,7 +36,22 @@ public final class FileLookupPresentationModel implements AutoCloseable {
       RootCandidate candidate,
       RootLookupResult result,
       String message,
-      FileLookupException.Code code) {
+      FileLookupException.Code code,
+      ContentClaimException.Code claimCode) {
+    public State(
+        BuildSnapshot build,
+        String locale,
+        String input,
+        Long fileDataId,
+        Stage stage,
+        RootPlan plan,
+        RootCandidate candidate,
+        RootLookupResult result,
+        String message,
+        FileLookupException.Code code) {
+      this(build, locale, input, fileDataId, stage, plan, candidate, result, message, code, null);
+    }
+
     public boolean busy() {
       return stage == Stage.CHECKING || stage == Stage.RETAINING || stage == Stage.LOOKING;
     }
@@ -204,7 +220,7 @@ public final class FileLookupPresentationModel implements AutoCloseable {
           String message =
               result.variants().isEmpty()
                   ? "No matching FileDataID in this exact, completely verified root. This is not a"
-                        + " filename or item search."
+                      + " filename or item search."
                   : result.variants().size()
                       + " membership variants found in the completely verified root. Names and game"
                       + " file contents are not acquired.";
@@ -352,6 +368,22 @@ public final class FileLookupPresentationModel implements AutoCloseable {
         i++) cause = cause.getCause();
     if (cause instanceof CancellationException) {
       cancel();
+      return;
+    }
+    if (cause instanceof ContentClaimException claim) {
+      publish(
+          new State(
+              state.build(),
+              state.locale(),
+              state.input(),
+              state.fileDataId(),
+              Stage.FAILED,
+              null,
+              null,
+              null,
+              MetadataClaimMessages.message(claim.code()),
+              null,
+              claim.code()));
       return;
     }
     FileLookupException.Code code =

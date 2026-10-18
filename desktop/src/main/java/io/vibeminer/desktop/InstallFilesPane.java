@@ -53,6 +53,7 @@ final class InstallFilesPane extends VBox {
         if(evidencePlan!=null)getChildren().add(sourceDetails(evidencePlan,state.inspection()));
     }
     private String failureHeading(){
+        if(state.claimCode()!=null)return MetadataClaimMessages.heading(state.claimCode());
         if(state.stage()==InstallPresentationModel.Stage.CANCELLED)return "Request cancelled";
         if(state.operation()==InstallPresentationModel.Stage.REOPENING){
             if(state.reason()==BootstrapException.Reason.INTEGRITY)return "Retained list failed verification";
