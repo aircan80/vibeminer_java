@@ -281,7 +281,7 @@ public final class AtlasApplication extends Application {
         if(state.selected()!=null&&installModel!=null){
             FlowPane views=new FlowPane(8,8,button("Builds & sources",()->{archiveInstallMode=false;render();},archiveInstallMode?"quiet-button":"primary"),button("Install files",()->{archiveInstallMode=true;render();},archiveInstallMode?"primary":"quiet-button"));
             views.setId("archive-views");page.getChildren().add(views);
-            if(archiveInstallMode){page.getChildren().add(new InstallFilesPane(installModel,installQuery,selectedInstallEntry,q->installQuery=q,key->selectedInstallEntry=key));return page;}
+            if(archiveInstallMode){page.getChildren().add(new InstallFilesPane(installModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,installQuery,selectedInstallEntry,q->installQuery=q,key->selectedInstallEntry=key));return page;}
         }
         ComboBox<String> product=new ComboBox<>();product.setId("discovery-product");product.setPrefWidth(240);product.setPromptText("Refresh products first");product.setAccessibleText("Discovered raw official product identifier");
         ComboBox<String> region=new ComboBox<>(FXCollections.observableArrayList("us","eu","kr","tw"));region.setId("discovery-region");region.setValue(selectedRegion);region.valueProperty().addListener((o,a,b)->selectedRegion=b);region.setAccessibleText("Discovery region");
@@ -333,7 +333,7 @@ public final class AtlasApplication extends Application {
         Button install=button("Install files…",()->{BuildSnapshot selected=table.getSelectionModel().getSelectedItem();if(selected!=null)openInstallFiles(selected);},"quiet-button");install.setId("inspect-install-files");install.disableProperty().bind(table.getSelectionModel().selectedItemProperty().isNull().or(new javafx.beans.property.SimpleBooleanProperty(installModel==null)));
         VBox buildResults=panel(label("OBSERVED BUILD METADATA · EXACT SOURCE PER ROW","eyebrow"),table,new FlowPane(10,8,open,inspect,install));
         if(state.builds().isEmpty())page.getChildren().add(buildResults);else page.getChildren().add(state.selected()!=null&&installModel!=null?2:1,buildResults);
-        page.getChildren().add(note("ARCHIVE ACQUISITION · NOT IMPLEMENTED YET","This slice discovers metadata. Downloading historical content, pinning selected scopes and reference-safe cleanup will follow. Identical objects will be shared by build manifests; no duplicate per-build cache is planned. Storage byte totals are unknown until acquisition is implemented."));return page;
+        page.getChildren().add(note("RETAINED SCOPE","Exact build metadata and verified install lists can be retained locally; identical bytes are shared. Full game-file catalogues, complete build archives and cleanup controls remain unavailable. Unmeasured storage totals stay unknown."));return page;
     }
     private void onProductState(ProductPresentationModel.State next){
         productState=next;status.setText(next.error().isBlank()?next.message():next.error());
@@ -510,7 +510,7 @@ public final class AtlasApplication extends Application {
             any=true;page.getChildren().add(busyPanel("Official metadata discovery","Waiting for the application discovery service. Progress bytes are unknown for this operation.",()->model.stopWaiting()));
         }
         if(!any)page.getChildren().add(panel(label("NO ACTIVE UI REQUEST","eyebrow"),label("A quiet workspace.","section-heading"),wrap("Choose a source in Archive, or inspect an exact build's installation file list. No unrelated acquisition or export jobs are started automatically."),button("Open archive →",()->navigate("Archive"),"primary")));
-        page.getChildren().add(note("CANCELLATION SCOPE","Metadata discovery's Stop waiting detaches its view. Install-list cancellation releases this consumer; another consumer sharing verified acquisition may continue."));return page;
+        page.getChildren().add(note("CANCELLATION SCOPE","Metadata discovery's Stop waiting detaches its view. Cancelling an install-list request stops only that request. Other requests using the same download may continue."));return page;
     }
     private VBox settings(){
         VBox page=page("WORKSPACE PREFERENCES","A careful local workspace.","No game installations, Battle.net folders or game-generated caches are read.");

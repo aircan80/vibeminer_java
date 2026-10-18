@@ -19,7 +19,8 @@ import java.util.function.Supplier;
 public final class InstallPresentationModel implements AutoCloseable {
     public enum Stage { NO_BUILD, UNCHECKED, CHECKING, PLANNED, DOWNLOADING, REOPENING, RETAINED, FAILED, CANCELLED }
     public record State(BuildSnapshot build,Stage stage,InstallPlan plan,InstallInspection inspection,
-                        String message,BootstrapException.Reason reason) {
+                        String message,BootstrapException.Reason reason,Stage operation) {
+        public State(BuildSnapshot build,Stage stage,InstallPlan plan,InstallInspection inspection,String message,BootstrapException.Reason reason){this(build,stage,plan,inspection,message,reason,stage);}
         public boolean busy(){return stage==Stage.CHECKING||stage==Stage.DOWNLOADING||stage==Stage.REOPENING;}
     }
     private final BootstrapService service;
@@ -62,12 +63,12 @@ public final class InstallPresentationModel implements AutoCloseable {
         return state.inspection().entries().stream().filter(e->e.name().toLowerCase(Locale.ROOT).contains(q)||e.tags().stream().anyMatch(t->t.name().toLowerCase(Locale.ROOT).contains(q))).toList();
     }
     public void cancel(){
-        if(closed||!state.busy())return;retire();publish(new State(state.build(),Stage.CANCELLED,state.plan(),state.inspection(),"Cancelled this view's request. Other consumers may continue; no unverified list was opened.",BootstrapException.Reason.CANCELLED));
+        if(closed||!state.busy())return;retire();publish(new State(state.build(),Stage.CANCELLED,state.plan(),state.inspection(),"This request was cancelled. Other requests using this download may continue; no unverified list was opened.",BootstrapException.Reason.CANCELLED));
     }
     private boolean ready(){return !closed&&state.build()!=null&&!state.busy();}
     private boolean sameBuild(BuildSnapshot b){return b!=null&&state.build()!=null&&b.snapshotId().equals(state.build().snapshotId());}
     private boolean samePlan(InstallPlan expected,InstallPlan actual){return actual!=null&&sameBuild(actual.build())&&expected.contentKey().equals(actual.contentKey())&&expected.encodingKey().equals(actual.encodingKey())&&expected.encodedBytes()==actual.encodedBytes()&&expected.decodedBytes()==actual.decodedBytes();}
-    private void scopeFailure(){publish(new State(state.build(),Stage.FAILED,null,state.inspection(),"The returned list does not match this exact source. No new result was opened.",BootstrapException.Reason.INTEGRITY));}
+    private void scopeFailure(){publish(new State(state.build(),Stage.FAILED,null,state.inspection(),"The returned metadata does not match this exact source. No new result was opened.",BootstrapException.Reason.INTEGRITY));}
     private <T> void run(Stage stage,InstallPlan plan,String message,Supplier<CompletionStage<T>> action,Consumer<T> success){
         long request=++generation;publish(new State(state.build(),stage,plan,state.inspection(),message,null));
         try{CompletionStage<T> result=action.get();pending=result.toCompletableFuture();result.whenComplete((value,error)->executor.execute(()->{
@@ -82,7 +83,7 @@ public final class InstallPresentationModel implements AutoCloseable {
             case UNSUPPORTED->"This build's install list is not supported.";
             case UNAVAILABLE->"The CDN list is unavailable for this exact source.";
             case LIMIT->"The list exceeds supported limits.";
-            case INTEGRITY->"The downloaded list did not pass verification.";
+            case INTEGRITY->state.stage()==Stage.REOPENING?"The locally retained list did not pass verification.":state.stage()==Stage.CHECKING?"The build configuration did not pass verification. No list was downloaded.":"The list failed verification and was not opened.";
             case MALFORMED->"The list format could not be read.";
             case MISSING_LOCAL->"No verified retained list exists for this exact build. Connect and check the list to acquire it.";
             case CANCELLED->"Cancelled; no unverified list was opened.";
@@ -91,7 +92,7 @@ public final class InstallPresentationModel implements AutoCloseable {
             case STORAGE->"App-owned storage could not be accessed.";
             case TRANSPORT->"The download could not finish. Check your connection and retry.";
         };
-        publish(new State(state.build(),reason==BootstrapException.Reason.CANCELLED?Stage.CANCELLED:Stage.FAILED,state.plan(),state.stage()==Stage.REOPENING?null:state.inspection(),message,reason));
+        publish(new State(state.build(),reason==BootstrapException.Reason.CANCELLED?Stage.CANCELLED:Stage.FAILED,state.plan(),state.stage()==Stage.REOPENING?null:state.inspection(),message,reason,state.stage()));
     }
     private void retire(){generation++;CompletableFuture<?> old=pending;pending=null;if(old!=null)old.cancel(true);}
     private void publish(State next){state=next;observer.accept(next);}

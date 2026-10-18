@@ -1,6 +1,7 @@
 package io.vibeminer.desktop;
 
 import io.vibeminer.application.bootstrap.InstallInspection;
+import io.vibeminer.application.bootstrap.BootstrapException;
 import io.vibeminer.application.bootstrap.InstallPlan;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
@@ -22,7 +23,7 @@ final class InstallFilesPane extends VBox {
     private final Consumer<String> selectionChanged;
     private String selectedKey;
 
-    InstallFilesPane(InstallPresentationModel model,String filter,String selectedKey,
+    InstallFilesPane(InstallPresentationModel model,double textScale,String filter,String selectedKey,
                      Consumer<String> filterChanged,Consumer<String> selectionChanged) {
         super(10);
         this.model=model;this.state=model.state();this.selectedKey=selectedKey;
@@ -32,7 +33,7 @@ final class InstallFilesPane extends VBox {
         getChildren().addAll(title,copy("List metadata only. Listed file contents and the full game asset catalogue are not downloaded."));
         if(state.build()==null){getChildren().add(notice("Choose an exact build first.","There is no install-list request or fictional result to display."));return;}
         if(state.stage()==InstallPresentationModel.Stage.FAILED||state.stage()==InstallPresentationModel.Stage.CANCELLED)
-            getChildren().add(notice(state.stage()==InstallPresentationModel.Stage.CANCELLED?"Request cancelled":"Install list unavailable",state.message()));
+            getChildren().add(notice(failureHeading(),state.message()));
         else if(state.stage()==InstallPresentationModel.Stage.UNCHECKED||state.stage()==InstallPresentationModel.Stage.PLANNED||state.stage()==InstallPresentationModel.Stage.RETAINED)getChildren().add(label(state.stage()==InstallPresentationModel.Stage.UNCHECKED?"NOT CHECKED":state.stage()==InstallPresentationModel.Stage.PLANNED?"PLAN READY":"VERIFIED RETAINED LIST","eyebrow"));
         else getChildren().add(copy(state.message()));
         if(state.busy()){
@@ -47,9 +48,19 @@ final class InstallFilesPane extends VBox {
             FlowPane actions=new FlowPane(10,8,checkButton(),reopenButton());getChildren().add(actions);
             getChildren().add(label("Check reads build configuration only. Downloading the list is a separate explicit action.","secondary"));
         }
-        if(state.inspection()!=null)getChildren().add(entryBrowser(state.inspection(),filter));
+        if(state.inspection()!=null)getChildren().add(entryBrowser(state.inspection(),filter,textScale));
         InstallPlan evidencePlan=state.plan()!=null?state.plan():state.inspection()!=null?state.inspection().plan():null;
         if(evidencePlan!=null)getChildren().add(sourceDetails(evidencePlan,state.inspection()));
+    }
+    private String failureHeading(){
+        if(state.stage()==InstallPresentationModel.Stage.CANCELLED)return "Request cancelled";
+        if(state.operation()==InstallPresentationModel.Stage.REOPENING){
+            if(state.reason()==BootstrapException.Reason.INTEGRITY)return "Retained list failed verification";
+            if(state.reason()==BootstrapException.Reason.MISSING_LOCAL)return "No retained list available";
+            return "Retained list could not be checked";
+        }
+        if(state.reason()==BootstrapException.Reason.INTEGRITY)return state.operation()==InstallPresentationModel.Stage.CHECKING?"Build configuration failed verification":"List verification failed";
+        return "Install list unavailable";
     }
     private String busyTitle(){return switch(state.stage()){
         case CHECKING->"Checking selected build…";
@@ -68,7 +79,7 @@ final class InstallFilesPane extends VBox {
         FlowPane actions=new FlowPane(10,8,download,checkButton(),reopenButton());
         card.getChildren().addAll(amounts,actions,label("List object only · Verified shared bytes can be reused · Configuration check is separate", "secondary"));return card;
     }
-    private VBox entryBrowser(InstallInspection inspection,String filter){
+    private VBox entryBrowser(InstallInspection inspection,String filter,double textScale){
         VBox box=new VBox(10);box.getStyleClass().add("panel");
         box.getChildren().add(label("VERIFIED RETAINED INSTALL ENTRIES","eyebrow"));
         TextField search=new TextField(filter);search.setId("install-entry-filter");search.setPromptText("Filter install entries by name or tag…");search.setAccessibleText("Filter verified install entries by name or tag");
@@ -77,12 +88,14 @@ final class InstallFilesPane extends VBox {
         table.getColumns().add(column("Name",InstallInspection.Entry::name,440));
         table.getColumns().add(column("Decoded size",e->bytes(e.decodedBytes()),150));
         table.getColumns().add(column("Tags",e->String.join(", ",e.tags().stream().map(InstallInspection.Tag::name).toList()),260));
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);table.setPrefHeight(245);
-        table.setPlaceholder(copy("No matches in this verified install list. Clear the filter to see its entries."));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        double rowHeight=Math.max(43,16*textScale+16),headerHeight=Math.max(42,13*textScale+22);table.setFixedCellSize(rowHeight);table.setMinHeight(Region.USE_PREF_SIZE);table.setMaxHeight(Region.USE_PREF_SIZE);
+        table.setPlaceholder(copy("No matching entries. Clear the filter."));
         VBox detail=new VBox(10);detail.setId("install-entry-detail");
         Runnable update=()->{
             List<InstallInspection.Entry> rows=model.matching(search.getText());
             table.setItems(FXCollections.observableArrayList(rows));
+            table.setPrefHeight(headerHeight+Math.min(Math.max(rows.size(),1),6)*rowHeight+2);
             count.setText(rows.size()+" of "+inspection.entries().size()+" verified entries");
             if(selectedKey!=null)rows.stream().filter(e->key(e).equals(selectedKey)).findFirst().ifPresent(e->table.getSelectionModel().select(e));
             showEntry(detail,table.getSelectionModel().getSelectedItem(),inspection);

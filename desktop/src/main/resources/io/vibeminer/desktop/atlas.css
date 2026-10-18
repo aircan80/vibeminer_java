@@ -89,5 +89,3 @@
 .install-operation-title { -fx-font-weight: bold; -fx-text-fill: #27796e; }
 .titled-pane > .title { -fx-background-color: #eef1e8; -fx-border-color: #dcded4; -fx-padding: 9 12; }
 .titled-pane > .content { -fx-background-color: #fffef9; -fx-border-color: #dcded4; -fx-padding: 14; }
-
-.install-files-pane .table-row-cell { -fx-cell-size: 3.0714em; }
