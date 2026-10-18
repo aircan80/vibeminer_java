@@ -197,4 +197,46 @@ class SelectedFileContractsTest {
                 io.vibeminer.domain.retention.ScopeKind.ENCODED_FILE,
                 requirements.subList(0, 2)));
   }
+
+  @Test
+  void archiveHintConflictIsPreservedAndUnknownGeometryIsExplicit() {
+    var proof =
+        new ArchiveMappingProof(
+            EKEY,
+            "1".repeat(64),
+            "2".repeat(64),
+            "3".repeat(64),
+            "archive-v1",
+            java.util.OptionalLong.of(12388),
+            4148);
+    assertEquals(12388, proof.advertisedIndexBytes().orElseThrow());
+    assertEquals(4148, proof.authenticatedIndexBytes());
+    assertTrue(proof.hasAuthenticatedIndexGeometry());
+    var legacy =
+        new ArchiveMappingProof(EKEY, "1".repeat(64), "2".repeat(64), "3".repeat(64), "archive-v1");
+    assertFalse(legacy.hasAuthenticatedIndexGeometry());
+    assertTrue(legacy.advertisedIndexBytes().isEmpty());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ArchiveMappingProof(
+                EKEY,
+                "1".repeat(64),
+                "2".repeat(64),
+                "3".repeat(64),
+                "archive-v1",
+                java.util.OptionalLong.of(0),
+                4148));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ArchiveMappingProof(
+                EKEY,
+                "1".repeat(64),
+                "2".repeat(64),
+                "3".repeat(64),
+                "archive-v1",
+                java.util.OptionalLong.of(12388),
+                0));
+  }
 }
