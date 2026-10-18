@@ -158,6 +158,60 @@ encryption, complete game download, live server behavior or future release
 timing. Any separately authorized live probe has its own exact identity,
 request/byte/time limits and evidence scope; it is never a normal CI dependency.
 
+## Chooser readiness observations (#99 / #104)
+
+The chooser presents a bounded asynchronous overlay of the latest completed
+readiness observation for each visible exact build context. This supplements the
+body-free library projection; it does not make that projection an authority for
+current physical readiness. Rows with an observation say **Last checked: Fully
+downloaded**, **Last checked: Partial** or **Last checked: Not ready**, with the
+assessment date/time and locale. Rows without a compatible observation say
+**Local readiness not checked**. The inspector explains that files may have
+changed since that assessment. Historical observations never authorize content
+use, establish present availability or replace current verification.
+
+Keep the single **Open Build** action. Selecting a row does not hash content,
+prepare metadata, download, issue a retention target or change download mode.
+Open performs its existing current metadata admission; payload readiness is
+assessed by the existing C overview coverage workflow. A successful final real
+coverage assessment records its observation for later chooser visits and process
+restarts. Reading that observation does not refresh its assessment timestamp.
+Ledger success counts, download preference and the existence of an admission
+alone cannot establish Fully downloaded or current Partial.
+
+Observation lookup and recording run outside the JavaFX application thread.
+Lookup is bounded to the requested page and uses app-owned SQL metadata, with no
+startup scan or hashing of every build. Match the exact reference/snapshot,
+locale, metadata policy and inventory scope/proof identity; do not combine
+regional references or substitute a different build. A changed context or policy
+must not inherit a previous Fully downloaded badge. Recording is an internal
+consequence of the actual assessment, not an API that treats caller-constructed
+observation values as proof.
+
+Acceptance requires deterministic tests and a real-storage restart journey:
+
+- Persist and reopen each of the three dated outcomes, with unchanged assessment
+  time and exact source/scope identity. Missing observations remain unassessed.
+- After a recorded Fully downloaded result, remove or corrupt retained bytes.
+  The dated chooser observation remains explicitly historical; the next actual
+  coverage assessment detects the missing/corrupt evidence and cannot return
+  current Fully downloaded. Merely opening metadata is not a full payload check.
+- A cancelled, failed or limit-exceeded assessment cannot publish fabricated
+  Fully downloaded or silently refresh an older observation. Lookup failure,
+  invalid stored data and incompatible scope are explicit unavailable/error
+  states, rather than proof of either completeness or physical absence.
+- Locale, reference, snapshot and policy changes do not reuse mismatched
+  observations. Delayed completions after a product, page or selection change
+  cannot repaint the newer context; cancellation does not retire actual work
+  before its resources are released.
+- Chooser loading, selection, paging and restart perform no HTTP, repair,
+  preparation, payload hashing or download-mode mutation. Instrumented thread
+  checks show no SQL or physical verification on the JavaFX application thread.
+- Native screenshots and keyboard checks show readable dated statuses, missing
+  and failed-observation states, stable selection and the single Open action at
+  the existing size/font/text-scale matrix. This section adds no new action and
+  makes no release or issue-completion claim.
+
 ## Delivery gates
 
 Each slice must be runnable and honest before the next: exact discovery/history
