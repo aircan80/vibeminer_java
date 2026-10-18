@@ -2,6 +2,7 @@ package io.vibeminer.infrastructure.item;
 
 import io.vibeminer.application.*;
 import io.vibeminer.application.item.*;
+import io.vibeminer.application.itemexport.ItemEvidenceSnapshotBackend;
 import io.vibeminer.application.itemnames.*;
 import io.vibeminer.application.lookup.*;
 import io.vibeminer.application.selectedfile.*;
@@ -70,6 +71,7 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
   private final List<SelectedFileAssociation> sparse = new ArrayList<>();
   private final ExecutorService jobs = Executors.newFixedThreadPool(2);
   private final DefaultItemNamesService actualService;
+  private final ItemEvidenceSnapshotBackend evidenceBackend;
   public final AtomicInteger prepares = new AtomicInteger(),
       pages = new AtomicInteger(),
       lookups = new AtomicInteger(),
@@ -196,10 +198,21 @@ public final class ItemNamesFixtureBackend implements AutoCloseable {
             };
           }
         };
+    evidenceBackend =
+        new SqliteItemEvidenceSnapshotBackend(
+            catalog, store.contentSession(), itemReader, nameReader, Clock.systemUTC());
     actualService =
         new DefaultItemNamesService(
             new SqliteItemNamesBackend(catalog, store.contentSession(), itemReader, nameReader),
             jobs);
+  }
+
+  /**
+   * Borrows this fixture's readers/session. Caller owns its export service/executor/writer and must
+   * retire those before closing the fixture; the backend itself owns no resources or threads.
+   */
+  public ItemEvidenceSnapshotBackend evidenceBackend() {
+    return evidenceBackend;
   }
 
   public ItemProjectionService itemService() {
