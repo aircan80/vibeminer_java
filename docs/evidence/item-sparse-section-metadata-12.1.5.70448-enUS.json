@@ -1,0 +1,1808 @@
+{
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "target": {
+    "fileDataId": 1572924,
+    "requestedLocale": "enUS",
+    "priorRootMask": 514,
+    "priorRootLocaleBit": 2,
+    "CKey": "bb0ecbdc2fd4988ddd3c1c5e95c34165",
+    "EKey": "cab35eb8601260c12a5917c1bdacfda5",
+    "wholeEncodedBytes": 7988612,
+    "declaredWholeDecodedBytes": 62715198,
+    "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5"
+  },
+  "priorProof": {
+    "sourceDocument": "docs/evidence/item-sparse-header-12.1.5.70448-enUS.json",
+    "completeRootCKey": "e84483ee756c69a7dc5fbff04af81316",
+    "rootENProofRevalidatedThisRun": false
+  },
+  "thisRunProof": {
+    "headerEKeyVerified": true,
+    "headerBytes": 90732,
+    "chunkIndex": 0,
+    "chunkMD5Verified": true,
+    "chunkEncodedBytes": 1950,
+    "chunkDecodedBytes": 5252
+  },
+  "metadata": {
+    "header": {
+      "schemaVersion": 5,
+      "schemaString": "WOWSTATIC_12_1_5_70077",
+      "recordCount": 175758,
+      "fieldCount": 67,
+      "recordSize": 328,
+      "stringTableSize": 0,
+      "tableHash": 2442913102,
+      "layoutHash": 471323007,
+      "minId": 25,
+      "maxId": 287078,
+      "flags": 5,
+      "idFieldIndex": 0,
+      "totalFieldCount": 67,
+      "packedDataOffset": 328,
+      "lookupColumnCount": 0,
+      "fieldStorageInfoSize": 1608,
+      "commonDataSize": 0,
+      "palletDataSize": 0,
+      "sectionCount": 49,
+      "localeRawValue": 1
+    },
+    "metadataBytesRead": 4040,
+    "declaredAuxiliaryDataEnd": 4040,
+    "sections": [
+      {
+        "ordinal": 0,
+        "encryptionKeyIdentifier": "0000000000000000",
+        "fileOffset": 5252,
+        "recordCount": 175503,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 60166704,
+        "idListSize": 702012,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 175503,
+        "copyTableCount": 122,
+        "declaredEndOffset": 62624722
+      },
+      {
+        "ordinal": 1,
+        "encryptionKeyIdentifier": "055c2c56039a6e5e",
+        "fileOffset": 62624722,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62625048,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62625062
+      },
+      {
+        "ordinal": 2,
+        "encryptionKeyIdentifier": "05fa08a8f5f1fea9",
+        "fileOffset": 62625062,
+        "recordCount": 10,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62628388,
+        "idListSize": 40,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 10,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62628528
+      },
+      {
+        "ordinal": 3,
+        "encryptionKeyIdentifier": "14f4b11d7b067aa2",
+        "fileOffset": 62628528,
+        "recordCount": 14,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62633392,
+        "idListSize": 56,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 14,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62633588
+      },
+      {
+        "ordinal": 4,
+        "encryptionKeyIdentifier": "2fef3aa89ffbbe7f",
+        "fileOffset": 62633588,
+        "recordCount": 2,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62634256,
+        "idListSize": 8,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 2,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62634284
+      },
+      {
+        "ordinal": 5,
+        "encryptionKeyIdentifier": "3d814bb73c938d86",
+        "fileOffset": 62634284,
+        "recordCount": 2,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62635096,
+        "idListSize": 8,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 2,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62635124
+      },
+      {
+        "ordinal": 6,
+        "encryptionKeyIdentifier": "46bca0b39e7864ff",
+        "fileOffset": 62635124,
+        "recordCount": 21,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62642020,
+        "idListSize": 84,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 21,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62642314
+      },
+      {
+        "ordinal": 7,
+        "encryptionKeyIdentifier": "4f1cf1a7fbb50aef",
+        "fileOffset": 62642314,
+        "recordCount": 5,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62643944,
+        "idListSize": 20,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 5,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62644014
+      },
+      {
+        "ordinal": 8,
+        "encryptionKeyIdentifier": "570ed145f83e8b7b",
+        "fileOffset": 62644014,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62644340,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62644354
+      },
+      {
+        "ordinal": 9,
+        "encryptionKeyIdentifier": "59da7f744d5ccf8e",
+        "fileOffset": 62644354,
+        "recordCount": 2,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62645112,
+        "idListSize": 8,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 2,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62645140
+      },
+      {
+        "ordinal": 10,
+        "encryptionKeyIdentifier": "59ea247e0185ee0d",
+        "fileOffset": 62645140,
+        "recordCount": 24,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62653320,
+        "idListSize": 96,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 24,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62653656
+      },
+      {
+        "ordinal": 11,
+        "encryptionKeyIdentifier": "62bf37a70e6d54f6",
+        "fileOffset": 62653656,
+        "recordCount": 9,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62656688,
+        "idListSize": 36,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 9,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62656814
+      },
+      {
+        "ordinal": 12,
+        "encryptionKeyIdentifier": "633a889cf88a2db0",
+        "fileOffset": 62656814,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62657244,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62657258
+      },
+      {
+        "ordinal": 13,
+        "encryptionKeyIdentifier": "7bdd464d413af047",
+        "fileOffset": 62657258,
+        "recordCount": 2,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62658004,
+        "idListSize": 8,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 2,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62658032
+      },
+      {
+        "ordinal": 14,
+        "encryptionKeyIdentifier": "7bf5face236254cd",
+        "fileOffset": 62658032,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62658388,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62658402
+      },
+      {
+        "ordinal": 15,
+        "encryptionKeyIdentifier": "7d750600b7516941",
+        "fileOffset": 62658402,
+        "recordCount": 10,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62661772,
+        "idListSize": 40,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 10,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62661912
+      },
+      {
+        "ordinal": 16,
+        "encryptionKeyIdentifier": "7f283dc60447885b",
+        "fileOffset": 62661912,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62662244,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62662258
+      },
+      {
+        "ordinal": 17,
+        "encryptionKeyIdentifier": "8033cef7fde556c9",
+        "fileOffset": 62662258,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62662612,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62662626
+      },
+      {
+        "ordinal": 18,
+        "encryptionKeyIdentifier": "8821702552130673",
+        "fileOffset": 62662626,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62662996,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62663010
+      },
+      {
+        "ordinal": 19,
+        "encryptionKeyIdentifier": "8ee361a0dd12a657",
+        "fileOffset": 62663010,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62663368,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62663382
+      },
+      {
+        "ordinal": 20,
+        "encryptionKeyIdentifier": "979cf71a22917498",
+        "fileOffset": 62663382,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62663744,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62663758
+      },
+      {
+        "ordinal": 21,
+        "encryptionKeyIdentifier": "9b183853f48a4263",
+        "fileOffset": 62663758,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62664124,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62664138
+      },
+      {
+        "ordinal": 22,
+        "encryptionKeyIdentifier": "9d96ebe2096ae3ee",
+        "fileOffset": 62664138,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62664564,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62664578
+      },
+      {
+        "ordinal": 23,
+        "encryptionKeyIdentifier": "a1513d5a172e3475",
+        "fileOffset": 62664578,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62664904,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62664918
+      },
+      {
+        "ordinal": 24,
+        "encryptionKeyIdentifier": "a250ec5c5e8c7b11",
+        "fileOffset": 62664918,
+        "recordCount": 40,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62678320,
+        "idListSize": 160,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 40,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62678880
+      },
+      {
+        "ordinal": 25,
+        "encryptionKeyIdentifier": "a4a6d29c8db45bb2",
+        "fileOffset": 62678880,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62679236,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62679250
+      },
+      {
+        "ordinal": 26,
+        "encryptionKeyIdentifier": "a907fa61ebdeeade",
+        "fileOffset": 62679250,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62679572,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62679586
+      },
+      {
+        "ordinal": 27,
+        "encryptionKeyIdentifier": "b3353f1504f9fa6c",
+        "fileOffset": 62679586,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62679908,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62679922
+      },
+      {
+        "ordinal": 28,
+        "encryptionKeyIdentifier": "b54f974de5243d80",
+        "fileOffset": 62679922,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62680248,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62680262
+      },
+      {
+        "ordinal": 29,
+        "encryptionKeyIdentifier": "b6be7b4ab73dd862",
+        "fileOffset": 62680262,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62680644,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62680658
+      },
+      {
+        "ordinal": 30,
+        "encryptionKeyIdentifier": "b728ec2c7d03eaa5",
+        "fileOffset": 62680658,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62680988,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62681002
+      },
+      {
+        "ordinal": 31,
+        "encryptionKeyIdentifier": "b7457365877699fc",
+        "fileOffset": 62681002,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62681364,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62681378
+      },
+      {
+        "ordinal": 32,
+        "encryptionKeyIdentifier": "bbae9630be1c18e3",
+        "fileOffset": 62681378,
+        "recordCount": 8,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62684044,
+        "idListSize": 32,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 8,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62684156
+      },
+      {
+        "ordinal": 33,
+        "encryptionKeyIdentifier": "bbd411bea4522afe",
+        "fileOffset": 62684156,
+        "recordCount": 4,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62685636,
+        "idListSize": 16,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 4,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62685692
+      },
+      {
+        "ordinal": 34,
+        "encryptionKeyIdentifier": "bf5a860131bb05f2",
+        "fileOffset": 62685692,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62686112,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62686126
+      },
+      {
+        "ordinal": 35,
+        "encryptionKeyIdentifier": "c3656bf7ec13f356",
+        "fileOffset": 62686126,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62686456,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62686470
+      },
+      {
+        "ordinal": 36,
+        "encryptionKeyIdentifier": "c605b7dc45cc1dac",
+        "fileOffset": 62686470,
+        "recordCount": 3,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62687456,
+        "idListSize": 12,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 3,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62687498
+      },
+      {
+        "ordinal": 37,
+        "encryptionKeyIdentifier": "ca58efd382342ee5",
+        "fileOffset": 62687498,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62687820,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62687834
+      },
+      {
+        "ordinal": 38,
+        "encryptionKeyIdentifier": "cf9022a9913b1b4d",
+        "fileOffset": 62687834,
+        "recordCount": 12,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62691804,
+        "idListSize": 48,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 12,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62691972
+      },
+      {
+        "ordinal": 39,
+        "encryptionKeyIdentifier": "d138a92654d2b366",
+        "fileOffset": 62691972,
+        "recordCount": 2,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62692700,
+        "idListSize": 8,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 2,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62692728
+      },
+      {
+        "ordinal": 40,
+        "encryptionKeyIdentifier": "d85bb012349cec40",
+        "fileOffset": 62692728,
+        "recordCount": 4,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62694188,
+        "idListSize": 16,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 4,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62694244
+      },
+      {
+        "ordinal": 41,
+        "encryptionKeyIdentifier": "dac5aa105d0c1b67",
+        "fileOffset": 62694244,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62694600,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62694614
+      },
+      {
+        "ordinal": 42,
+        "encryptionKeyIdentifier": "e2c8a2697707f59c",
+        "fileOffset": 62694614,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62694936,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62694950
+      },
+      {
+        "ordinal": 43,
+        "encryptionKeyIdentifier": "e3e29771c59289da",
+        "fileOffset": 62694950,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62695288,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62695302
+      },
+      {
+        "ordinal": 44,
+        "encryptionKeyIdentifier": "eb00b02ac6add077",
+        "fileOffset": 62695302,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62695624,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62695638
+      },
+      {
+        "ordinal": 45,
+        "encryptionKeyIdentifier": "f0155f33099659a3",
+        "fileOffset": 62695638,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62696024,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62696038
+      },
+      {
+        "ordinal": 46,
+        "encryptionKeyIdentifier": "f9e242fae22e8307",
+        "fileOffset": 62696038,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62696364,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62696378
+      },
+      {
+        "ordinal": 47,
+        "encryptionKeyIdentifier": "fbbf041f980ce0dc",
+        "fileOffset": 62696378,
+        "recordCount": 52,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62714128,
+        "idListSize": 208,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 52,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62714856
+      },
+      {
+        "ordinal": 48,
+        "encryptionKeyIdentifier": "fc852d42866ce038",
+        "fileOffset": 62714856,
+        "recordCount": 1,
+        "stringTableSize": 0,
+        "offsetRecordsEndOffset": 62715184,
+        "idListSize": 4,
+        "relationshipDataSize": 0,
+        "offsetMapIdCount": 1,
+        "copyTableCount": 0,
+        "declaredEndOffset": 62715198
+      }
+    ],
+    "fields": [
+      {
+        "ordinal": 0,
+        "bits": 0,
+        "offset": 0
+      },
+      {
+        "ordinal": 1,
+        "bits": 0,
+        "offset": 4
+      },
+      {
+        "ordinal": 2,
+        "bits": 0,
+        "offset": 8
+      },
+      {
+        "ordinal": 3,
+        "bits": 0,
+        "offset": 12
+      },
+      {
+        "ordinal": 4,
+        "bits": 0,
+        "offset": 16
+      },
+      {
+        "ordinal": 5,
+        "bits": 0,
+        "offset": 20
+      },
+      {
+        "ordinal": 6,
+        "bits": 0,
+        "offset": 24
+      },
+      {
+        "ordinal": 7,
+        "bits": 0,
+        "offset": 28
+      },
+      {
+        "ordinal": 8,
+        "bits": 0,
+        "offset": 32
+      },
+      {
+        "ordinal": 9,
+        "bits": 0,
+        "offset": 36
+      },
+      {
+        "ordinal": 10,
+        "bits": 0,
+        "offset": 40
+      },
+      {
+        "ordinal": 11,
+        "bits": 0,
+        "offset": 44
+      },
+      {
+        "ordinal": 12,
+        "bits": 0,
+        "offset": 48
+      },
+      {
+        "ordinal": 13,
+        "bits": 0,
+        "offset": 52
+      },
+      {
+        "ordinal": 14,
+        "bits": 0,
+        "offset": 56
+      },
+      {
+        "ordinal": 15,
+        "bits": 0,
+        "offset": 96
+      },
+      {
+        "ordinal": 16,
+        "bits": 0,
+        "offset": 136
+      },
+      {
+        "ordinal": 17,
+        "bits": 0,
+        "offset": 176
+      },
+      {
+        "ordinal": 18,
+        "bits": 0,
+        "offset": 180
+      },
+      {
+        "ordinal": 19,
+        "bits": 0,
+        "offset": 184
+      },
+      {
+        "ordinal": 20,
+        "bits": 0,
+        "offset": 188
+      },
+      {
+        "ordinal": 21,
+        "bits": 0,
+        "offset": 192
+      },
+      {
+        "ordinal": 22,
+        "bits": 0,
+        "offset": 200
+      },
+      {
+        "ordinal": 23,
+        "bits": 0,
+        "offset": 204
+      },
+      {
+        "ordinal": 24,
+        "bits": 0,
+        "offset": 208
+      },
+      {
+        "ordinal": 25,
+        "bits": 0,
+        "offset": 212
+      },
+      {
+        "ordinal": 26,
+        "bits": 0,
+        "offset": 216
+      },
+      {
+        "ordinal": 27,
+        "bits": 0,
+        "offset": 220
+      },
+      {
+        "ordinal": 28,
+        "bits": 0,
+        "offset": 240
+      },
+      {
+        "ordinal": 29,
+        "bits": 0,
+        "offset": 244
+      },
+      {
+        "ordinal": 30,
+        "bits": 0,
+        "offset": 248
+      },
+      {
+        "ordinal": 31,
+        "bits": 0,
+        "offset": 252
+      },
+      {
+        "ordinal": 32,
+        "bits": 0,
+        "offset": 256
+      },
+      {
+        "ordinal": 33,
+        "bits": 0,
+        "offset": 260
+      },
+      {
+        "ordinal": 34,
+        "bits": 0,
+        "offset": 264
+      },
+      {
+        "ordinal": 35,
+        "bits": 16,
+        "offset": 268
+      },
+      {
+        "ordinal": 36,
+        "bits": 16,
+        "offset": 270
+      },
+      {
+        "ordinal": 37,
+        "bits": 16,
+        "offset": 272
+      },
+      {
+        "ordinal": 38,
+        "bits": 16,
+        "offset": 274
+      },
+      {
+        "ordinal": 39,
+        "bits": 16,
+        "offset": 276
+      },
+      {
+        "ordinal": 40,
+        "bits": 16,
+        "offset": 278
+      },
+      {
+        "ordinal": 41,
+        "bits": 16,
+        "offset": 280
+      },
+      {
+        "ordinal": 42,
+        "bits": 16,
+        "offset": 282
+      },
+      {
+        "ordinal": 43,
+        "bits": 16,
+        "offset": 286
+      },
+      {
+        "ordinal": 44,
+        "bits": 16,
+        "offset": 288
+      },
+      {
+        "ordinal": 45,
+        "bits": 16,
+        "offset": 290
+      },
+      {
+        "ordinal": 46,
+        "bits": 16,
+        "offset": 292
+      },
+      {
+        "ordinal": 47,
+        "bits": 16,
+        "offset": 294
+      },
+      {
+        "ordinal": 48,
+        "bits": 16,
+        "offset": 296
+      },
+      {
+        "ordinal": 49,
+        "bits": 16,
+        "offset": 298
+      },
+      {
+        "ordinal": 50,
+        "bits": 16,
+        "offset": 300
+      },
+      {
+        "ordinal": 51,
+        "bits": 16,
+        "offset": 302
+      },
+      {
+        "ordinal": 52,
+        "bits": 24,
+        "offset": 304
+      },
+      {
+        "ordinal": 53,
+        "bits": 24,
+        "offset": 305
+      },
+      {
+        "ordinal": 54,
+        "bits": 24,
+        "offset": 306
+      },
+      {
+        "ordinal": 55,
+        "bits": 24,
+        "offset": 307
+      },
+      {
+        "ordinal": 56,
+        "bits": 24,
+        "offset": 310
+      },
+      {
+        "ordinal": 57,
+        "bits": 24,
+        "offset": 311
+      },
+      {
+        "ordinal": 58,
+        "bits": 24,
+        "offset": 312
+      },
+      {
+        "ordinal": 59,
+        "bits": 24,
+        "offset": 313
+      },
+      {
+        "ordinal": 60,
+        "bits": 24,
+        "offset": 314
+      },
+      {
+        "ordinal": 61,
+        "bits": 24,
+        "offset": 315
+      },
+      {
+        "ordinal": 62,
+        "bits": 24,
+        "offset": 316
+      },
+      {
+        "ordinal": 63,
+        "bits": 24,
+        "offset": 317
+      },
+      {
+        "ordinal": 64,
+        "bits": 24,
+        "offset": 318
+      },
+      {
+        "ordinal": 65,
+        "bits": 24,
+        "offset": 319
+      },
+      {
+        "ordinal": 66,
+        "bits": 24,
+        "offset": 320
+      }
+    ],
+    "storage": [
+      {
+        "ordinal": 0,
+        "recordOffset": 0,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 1,
+        "recordOffset": 32,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 2,
+        "recordOffset": 64,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 3,
+        "recordOffset": 96,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 4,
+        "recordOffset": 128,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 5,
+        "recordOffset": 160,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 6,
+        "recordOffset": 192,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 7,
+        "recordOffset": 224,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 8,
+        "recordOffset": 256,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 9,
+        "recordOffset": 288,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 10,
+        "recordOffset": 320,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 11,
+        "recordOffset": 352,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 12,
+        "recordOffset": 384,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 13,
+        "recordOffset": 416,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 14,
+        "recordOffset": 448,
+        "size": 320,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 15,
+        "recordOffset": 768,
+        "size": 320,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 16,
+        "recordOffset": 1088,
+        "size": 320,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 17,
+        "recordOffset": 1408,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 18,
+        "recordOffset": 1440,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 19,
+        "recordOffset": 1472,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 20,
+        "recordOffset": 1504,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 21,
+        "recordOffset": 1536,
+        "size": 64,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 22,
+        "recordOffset": 1600,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 23,
+        "recordOffset": 1632,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 24,
+        "recordOffset": 1664,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 25,
+        "recordOffset": 1696,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 26,
+        "recordOffset": 1728,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 27,
+        "recordOffset": 1760,
+        "size": 160,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 28,
+        "recordOffset": 1920,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 29,
+        "recordOffset": 1952,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 30,
+        "recordOffset": 1984,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 31,
+        "recordOffset": 2016,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 32,
+        "recordOffset": 2048,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 33,
+        "recordOffset": 2080,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 34,
+        "recordOffset": 2112,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 35,
+        "recordOffset": 2144,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 36,
+        "recordOffset": 2160,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 37,
+        "recordOffset": 2176,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 38,
+        "recordOffset": 2192,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 39,
+        "recordOffset": 2208,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 40,
+        "recordOffset": 2224,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 41,
+        "recordOffset": 2240,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 42,
+        "recordOffset": 2256,
+        "size": 32,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 43,
+        "recordOffset": 2288,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 44,
+        "recordOffset": 2304,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 45,
+        "recordOffset": 2320,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 46,
+        "recordOffset": 2336,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 47,
+        "recordOffset": 2352,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 48,
+        "recordOffset": 2368,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 49,
+        "recordOffset": 2384,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 50,
+        "recordOffset": 2400,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 51,
+        "recordOffset": 2416,
+        "size": 16,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 52,
+        "recordOffset": 2432,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 53,
+        "recordOffset": 2440,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 54,
+        "recordOffset": 2448,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 55,
+        "recordOffset": 2456,
+        "size": 24,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 56,
+        "recordOffset": 2480,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 57,
+        "recordOffset": 2488,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 58,
+        "recordOffset": 2496,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 59,
+        "recordOffset": 2504,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 60,
+        "recordOffset": 2512,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 61,
+        "recordOffset": 2520,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 62,
+        "recordOffset": 2528,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 63,
+        "recordOffset": 2536,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 64,
+        "recordOffset": 2544,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 65,
+        "recordOffset": 2552,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      },
+      {
+        "ordinal": 66,
+        "recordOffset": 2560,
+        "size": 8,
+        "additionalDataSize": 0,
+        "rawKind": 0,
+        "kind": "NONE",
+        "parameter1": 0,
+        "parameter2": 0,
+        "parameter3": 0
+      }
+    ]
+  },
+  "declarationCounts": {
+    "sections": 49,
+    "fields": 67,
+    "storageDescriptors": 67,
+    "nonzeroSectionKeyDeclarations": 48,
+    "distinctNonzeroSectionKeyIdentifiers": 48,
+    "physicalRecordCountSum": 175758,
+    "offsetMapIdCountSum": 175758,
+    "copyTableCountSum": 122,
+    "rawStorageKindCounts": {
+      "0": 67
+    }
+  },
+  "cost": {
+    "requests": 2,
+    "completedResponseBodyBytes": 92682,
+    "decodedWorkBytes": 5252,
+    "HTTPAndTLSOverheadExcluded": true
+  },
+  "coverage": {
+    "sectionKeysAndStorageValuesAreDeclarations": true,
+    "sectionReadability": "UNKNOWN",
+    "fullTableCKeyVerified": false,
+    "tableBodyValidated": false,
+    "rowsDecoded": false,
+    "schemaSemanticsVerified": false,
+    "rootENRefreshed": false,
+    "HEADRequested": false,
+    "additionalChunksRequested": false,
+    "noPayloadWrites": true
+  },
+  "sourceEvidenceLines": [
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=0 count=90732 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:45:29.466041290Z rangeSHA256=f72fdba3727f2e0d4cdc8ea052e97563c729e9dcfcdf84ed74fa052c09d59110",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=90732 count=1950 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:45:29.489606908Z rangeSHA256=72b525e82fdcc646e2f0a28241b3db54f8e0daddd00b424c090b543d5fe03b7f"
+  ],
+  "diagnosticSourceCommit": "0d88680"
+}
