@@ -14,7 +14,7 @@ import static io.vibeminer.application.catalog.CatalogException.Code.*;
 
 /** Single schema/migration owner and connection factory for app-owned metadata and object references. */
 public final class SqliteCatalog {
-    public static final int SCHEMA_VERSION = 7;
+    public static final int SCHEMA_VERSION = 8;
     private final Path database;
 
     public SqliteCatalog(Path database) { this.database = database.toAbsolutePath().normalize(); }
@@ -62,8 +62,9 @@ public final class SqliteCatalog {
                 statement.execute("CREATE TABLE IF NOT EXISTS build_object_memberships(snapshot_id TEXT NOT NULL REFERENCES snapshots(id),role TEXT NOT NULL,namespace TEXT NOT NULL,source_key TEXT NOT NULL,verifier_semantics TEXT NOT NULL,source_url TEXT NOT NULL,verified_at TEXT NOT NULL,PRIMARY KEY(snapshot_id,role),FOREIGN KEY(namespace,source_key,verifier_semantics) REFERENCES source_aliases(namespace,source_key,verifier_semantics))");
                 io.vibeminer.infrastructure.retention.RetentionSql.migrate(connection, version);
                 io.vibeminer.infrastructure.selectedfile.SelectedFileSchema.migrate(connection);
-                try { io.vibeminer.infrastructure.content.CanonicalContentSchema.migrate(connection); }
+                try { if(version<7) io.vibeminer.infrastructure.content.CanonicalContentSchema.migrate(connection); }
                 catch (IllegalArgumentException invalid) { throw new CatalogException(CORRUPT_METADATA,"Legacy content reconciliation contains invalid facts",invalid); }
+                io.vibeminer.infrastructure.item.ItemProjectionSchema.migrate(connection);
                 statement.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                 statement.execute("COMMIT");
             } catch (SQLException | RuntimeException failure) {
