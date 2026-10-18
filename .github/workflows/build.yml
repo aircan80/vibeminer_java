@@ -145,6 +145,13 @@ jobs:
         run: |
           "$PYTHON" tools/ci.py collect --source "build/distributions/$DISTRIBUTION_TARGET" \
             --output dist-upload --target "$DISTRIBUTION_TARGET"
+      - name: Check exact-file protocol composition offline
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build/protocol-tools
+          PROTOCOL_CP='infrastructure/build/classes/java/main:protocol-tact/build/classes/java/main:protocol-db2/build/classes/java/main:format-wow/build/classes/java/main:application/build/classes/java/main:domain/build/classes/java/main'
+          javac -cp "$PROTOCOL_CP" -d build/protocol-tools tools/protocol/*.java
+          java -cp "build/protocol-tools:$PROTOCOL_CP" ItemCohortProbe --self-test
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
         run: |
