@@ -155,6 +155,7 @@ jobs:
           java -cp "build/protocol-tools:$PROTOCOL_CP" ArchivedItemHeaderProbe --self-test
           java -cp "build/protocol-tools:$PROTOCOL_CP" SparseItemHeaderProbe --self-test
           java -cp "build/protocol-tools:$PROTOCOL_CP" ItemSectionMetadataProbe --self-test
+          java -cp "build/protocol-tools:$PROTOCOL_CP" SparseSectionMetadataProbe --self-test
           java --enable-native-access=ALL-UNNAMED -cp "build/protocol-tools:$PROTOCOL_CP:bootstrap/build/install/bootstrap/lib/*" io.vibeminer.infrastructure.lookup.RootLookupServiceProbe --self-test
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
