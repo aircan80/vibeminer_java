@@ -136,6 +136,28 @@ public final class ItemPresentationModel implements AutoCloseable {
         && a.contentKey().equals("1df6b6dbae36878cea020a62b15b9bd6");
   }
 
+  public void invalidateMetadataDependency(
+      String snapshotId, io.vibeminer.application.content.ContentClaimException.Code reason) {
+    if (closed
+        || source == null
+        || !source.snapshotId().equals(snapshotId)
+        || reason != io.vibeminer.application.content.ContentClaimException.Code.MISSING_LOCAL
+            && reason
+                != io.vibeminer.application.content.ContentClaimException.Code.INTEGRITY_FAILURE)
+      return;
+    retire();
+    clearReady();
+    stage = Stage.FAILED;
+    code =
+        reason == io.vibeminer.application.content.ContentClaimException.Code.MISSING_LOCAL
+            ? ItemProjectionException.Code.MISSING_LOCAL
+            : ItemProjectionException.Code.CORRUPT;
+    message =
+        "Required root/configuration evidence needs re-verification for this exact Item context."
+            + " Current rows are cleared; no repair or acquisition starts automatically.";
+    emit();
+  }
+
   public void prepare() {
     if (closed || state().busy() || !eligible()) return;
     clearReady();

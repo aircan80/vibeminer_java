@@ -73,6 +73,33 @@ public final class FileLookupPresentationModel implements AutoCloseable {
           null,
           "Choose an exact build to look up root membership metadata.",
           null);
+  private io.vibeminer.domain.VerifiedSourceAlias historicalRoot;
+
+  public java.util.Optional<io.vibeminer.domain.VerifiedSourceAlias> historicalRoot() {
+    return java.util.Optional.ofNullable(historicalRoot);
+  }
+
+  public void invalidateRetainedEvidence(ContentClaimException.Code code) {
+    if (closed
+        || code != ContentClaimException.Code.MISSING_LOCAL
+            && code != ContentClaimException.Code.INTEGRITY_FAILURE) return;
+    retire();
+    if (state.result() != null) historicalRoot = state.result().root();
+    publish(
+        new State(
+            state.build(),
+            state.locale(),
+            state.input(),
+            state.fileDataId(),
+            Stage.FAILED,
+            state.plan(),
+            state.candidate(),
+            null,
+            MetadataClaimMessages.message(code),
+            null,
+            code));
+  }
+
   private CompletableFuture<?> pending;
   private long generation;
   private boolean closed;
@@ -92,6 +119,7 @@ public final class FileLookupPresentationModel implements AutoCloseable {
     if (closed) return;
     if (sameBuild(build) && Objects.equals(locale, state.locale())) return;
     retire();
+    historicalRoot = null;
     publish(
         new State(
             build,

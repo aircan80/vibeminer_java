@@ -17,6 +17,12 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.content.MetadataReuseService metadataReuse() {
+      throw new io.vibeminer.application.content.ContentClaimException(
+          io.vibeminer.application.content.ContentClaimException.Code.UNSUPPORTED_REUSE,
+          "This content runtime does not provide metadata reuse");
+    }
+
     default io.vibeminer.application.item.ItemProjectionService itemProjection() {
       throw new io.vibeminer.application.item.ItemProjectionException(
           io.vibeminer.application.item.ItemProjectionException.Code.UNSUPPORTED,

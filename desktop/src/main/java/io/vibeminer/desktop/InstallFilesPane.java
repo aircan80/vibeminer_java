@@ -22,9 +22,14 @@ final class InstallFilesPane extends VBox {
     private final Consumer<String> filterChanged;
     private final Consumer<String> selectionChanged;
     private String selectedKey;
+    private MetadataReusePane metadataReusePane;
+    void refreshMetadataReuseState(){if(metadataReusePane!=null)metadataReusePane.refreshState();}
 
     InstallFilesPane(InstallPresentationModel model,double textScale,String filter,String selectedKey,
                      Consumer<String> filterChanged,Consumer<String> selectionChanged) {
+        this(model,textScale,filter,selectedKey,filterChanged,selectionChanged,null);
+    }
+    InstallFilesPane(InstallPresentationModel model,double textScale,String filter,String selectedKey,Consumer<String> filterChanged,Consumer<String> selectionChanged,MetadataReusePresentationModel reuseModel){
         super(10);
         this.model=model;this.state=model.state();this.selectedKey=selectedKey;
         this.filterChanged=filterChanged;this.selectionChanged=selectionChanged;
@@ -42,7 +47,7 @@ final class InstallFilesPane extends VBox {
             FlowPane busy=new FlowPane(12,8,progress,label(busyTitle(),"install-operation-title"),cancel);busy.setAlignment(Pos.CENTER_LEFT);getChildren().add(busy);
         }else if(state.stage()==InstallPresentationModel.Stage.RETAINED){
             getChildren().add(new FlowPane(10,8,reopenButton(),checkButton()));
-            getChildren().add(label("Retained list: "+bytes(state.plan().encodedBytes())+" encoded / "+bytes(state.plan().decodedBytes())+" decoded", "secondary"));
+            getChildren().add(label("Retained list: "+bytes(state.inspection().object().length())+(state.inspection().association().isPresent()?" actual encoded / ":" encoded / ")+bytes(state.inspection().association().isPresent()?state.inspection().association().get().actualRepresentation().decodedAttestation().orElseThrow().actualDecodedBytes():state.plan().decodedBytes())+" decoded", "secondary"));
         }else if(state.plan()!=null)getChildren().add(planCard(state.plan()));
         else {
             FlowPane actions=new FlowPane(10,8,checkButton(),reopenButton());getChildren().add(actions);
@@ -51,6 +56,8 @@ final class InstallFilesPane extends VBox {
         if(state.inspection()!=null)getChildren().add(entryBrowser(state.inspection(),filter,textScale));
         InstallPlan evidencePlan=state.plan()!=null?state.plan():state.inspection()!=null?state.inspection().plan():null;
         if(evidencePlan!=null)getChildren().add(sourceDetails(evidencePlan,state.inspection()));
+        if(state.inspection()==null&&model.historicalInspection().isPresent()){var historical=model.historicalInspection().get();var pane=new TitledPane("Historical installation-list receipt · not current verification",sourceDetails(historical.plan(),historical));pane.setExpanded(false);getChildren().add(pane);}
+        if(reuseModel!=null){metadataReusePane=new MetadataReusePane(reuseModel,model::reopen);getChildren().add(metadataReusePane);}
     }
     private String failureHeading(){
         if(state.claimCode()!=null)return MetadataClaimMessages.heading(state.claimCode());
@@ -124,10 +131,11 @@ final class InstallFilesPane extends VBox {
                 field("PINNED BUILD / CDN CONFIGURATION",plan.build().buildConfig()+" / "+plan.build().cdnConfig()),
                 field("CONFIGURATION CAPTURE SOURCE",plan.configuration().sourceUrl()),
                 field("CONFIGURATION CAPTURE / SHA-256",plan.configuration().capturedAt()+" / "+plan.configuration().sha256()),
-                field("LIST CONTENT / ENCODING IDENTITY",plan.contentKey()+" / "+plan.encodingKey()),
+                field(inspection!=null&&inspection.association().isPresent()?"DECLARED LIST CONTENT / ENCODING IDENTITY":"LIST CONTENT / ENCODING IDENTITY",plan.contentKey()+" / "+plan.encodingKey()),
                 field("PLANNED ENCODED / DECODED LIST SIZE",bytes(plan.encodedBytes())+" / "+bytes(plan.decodedBytes())));
+        if(inspection!=null&&inspection.association().isPresent()){var association=inspection.association().get();body.getChildren().addAll(field("BUILD DECLARATION · NOT ACTUAL RETAINED ENCODING",association.declaration().preferredEncodingKey().orElse("Not declared")+" / encoded size "+(association.declaration().declaredEncodedBytes().isPresent()?bytes(association.declaration().declaredEncodedBytes().getAsLong()):"Unknown")),field("ACTUAL RETAINED REPRESENTATION",association.actualRepresentation().actualEncodingKey()+" / "+bytes(inspection.object().length())+" encoded"),field("ASSOCIATION RECORDED AT",association.associatedAt().toString()),copy("The declared build encoding and actual retained encoding stay separate. Reuse does not invent a new transfer or source alias."));}
         if(inspection!=null)body.getChildren().addAll(
-                field("RETAINED LIST CONTENT / ENCODING IDENTITY",inspection.plan().contentKey()+" / "+inspection.plan().encodingKey()),
+                field(inspection.association().isPresent()?"RETAINED LIST CONTENT / ACTUAL ENCODING IDENTITY":"RETAINED LIST CONTENT / ENCODING IDENTITY",inspection.plan().contentKey()+" / "+inspection.association().map(a->a.actualRepresentation().actualEncodingKey()).orElse(inspection.plan().encodingKey())),
                 field("ACTUAL LIST VERIFICATION SOURCE",inspection.verification().sourceUrl()),
                 field("VERIFIED AT / VERIFIER REVISION",inspection.verification().verifiedAt()+" / "+inspection.verification().verifierSemantics()),
                 field("PHYSICAL OBJECT SHA-256 / LENGTH",inspection.object().digest().value()+" / "+bytes(inspection.object().length())),

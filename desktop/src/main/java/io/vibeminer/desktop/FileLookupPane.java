@@ -26,6 +26,7 @@ final class FileLookupPane extends VBox {
   private final SelectedFilePresentationModel selectedModel;
   private SelectedFileCandidatesPane candidatesPane;
   private final SelectedFileRetentionPresentationModel retentionModel;
+  private MetadataReusePane metadataReusePane;
 
   FileLookupPane(
       FileLookupPresentationModel model,
@@ -51,6 +52,17 @@ final class FileLookupPane extends VBox {
       Consumer<String> selectionChanged,
       SelectedFilePresentationModel selectedModel,
       SelectedFileRetentionPresentationModel retentionModel) {
+    this(model, scale, selectedKey, selectionChanged, selectedModel, retentionModel, null);
+  }
+
+  FileLookupPane(
+      FileLookupPresentationModel model,
+      double scale,
+      String selectedKey,
+      Consumer<String> selectionChanged,
+      SelectedFilePresentationModel selectedModel,
+      SelectedFileRetentionPresentationModel retentionModel,
+      MetadataReusePresentationModel metadataReuseModel) {
     super(10);
     this.retentionModel = retentionModel;
     this.selectedModel = selectedModel;
@@ -110,6 +122,14 @@ final class FileLookupPane extends VBox {
                 "secondary"));
     getChildren().add(body);
     refreshState();
+    if (metadataReuseModel != null) {
+      metadataReusePane = new MetadataReusePane(metadataReuseModel, model::lookupOffline);
+      getChildren().add(metadataReusePane);
+    }
+  }
+
+  void refreshMetadataReuseState() {
+    if (metadataReusePane != null) metadataReusePane.refreshState();
   }
 
   void refreshRetentionState() {
@@ -207,7 +227,8 @@ final class FileLookupPane extends VBox {
     if (state.plan() != null && !state.busy() && state.result() == null)
       body.getChildren().add(planCard());
     if (state.result() != null) body.getChildren().add(results());
-    if (state.plan() != null || state.result() != null) body.getChildren().add(evidence());
+    if (state.plan() != null || state.result() != null || model.historicalRoot().isPresent())
+      body.getChildren().add(evidence());
   }
 
   private VBox planCard() {
@@ -464,6 +485,12 @@ final class FileLookupPane extends VBox {
       body.getChildren()
           .add(proof("ACTUAL CONFIGURATION VERIFICATION", state.plan().configuration()));
     }
+    if (state.result() == null && model.historicalRoot().isPresent())
+      body.getChildren()
+          .add(
+              proof(
+                  "HISTORICAL ROOT RECEIPT · NOT CURRENT VERIFICATION",
+                  model.historicalRoot().get()));
     if (state.result() != null) {
       body.getChildren().add(proof("ACTUAL RETAINED ROOT VERIFICATION", state.result().root()));
       body.getChildren()

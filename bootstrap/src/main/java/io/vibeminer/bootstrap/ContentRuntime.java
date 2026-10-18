@@ -3,6 +3,9 @@ package io.vibeminer.bootstrap;
 import io.vibeminer.application.ObjectStore;
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.bootstrap.DefaultBootstrapService;
+import io.vibeminer.application.content.DefaultMetadataReuseService;
+import io.vibeminer.application.content.MetadataReuseGateway;
+import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.DefaultItemProjectionService;
 import io.vibeminer.application.item.ItemProjectionBackend;
 import io.vibeminer.application.item.ItemProjectionService;
@@ -16,9 +19,11 @@ import io.vibeminer.infrastructure.acquisition.PinnedCdnTransport;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
 import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
+import io.vibeminer.infrastructure.content.SqliteMetadataAssociationRepository;
 import io.vibeminer.infrastructure.item.RetainedItemProjectionSourceReader;
 import io.vibeminer.infrastructure.item.SqliteItemProjectionBackend;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
+import io.vibeminer.infrastructure.lookup.OfficialMetadataReuseGateway;
 import io.vibeminer.infrastructure.lookup.OfficialSelectedFileGateway;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.retention.SqliteRetentionRepository;
@@ -41,6 +46,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final ExecutorService acquisition;
   private final ExecutorService itemWorkers;
   private final ItemProjectionService itemProjection;
+  private final ExecutorService metadataWorkers;
+  private final MetadataReuseService metadataReuse;
+  private final OfficialMetadataReuseGateway metadataGateway;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -59,7 +67,10 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       SelectedFileService selectedFiles,
       OfficialSelectedFileGateway selectedGateway,
       ExecutorService itemWorkers,
-      ItemProjectionService itemProjection) {
+      ItemProjectionService itemProjection,
+      ExecutorService metadataWorkers,
+      MetadataReuseService metadataReuse,
+      OfficialMetadataReuseGateway metadataGateway) {
     this.store = store;
     this.client = client;
     this.orchestration = orchestration;
@@ -71,6 +82,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     this.selectedGateway = selectedGateway;
     this.itemWorkers = itemWorkers;
     this.itemProjection = itemProjection;
+    this.metadataWorkers = metadataWorkers;
+    this.metadataReuse = metadataReuse;
+    this.metadataGateway = metadataGateway;
   }
 
   static ContentRuntime open(Path dataDirectory) {
@@ -93,12 +107,23 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       Path dataDirectory,
       Supplier<HttpClient> clientFactory,
       BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator) {
+    return open(dataDirectory, clientFactory, itemDecorator, (store, gateway) -> gateway);
+  }
+
+  /** Local replay decorator for actual worker/lease lifecycle tests; production is identity. */
+  static ContentRuntime open(
+      Path dataDirectory,
+      Supplier<HttpClient> clientFactory,
+      BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator,
+      BiFunction<ObjectStore, MetadataReuseGateway, MetadataReuseGateway> metadataDecorator) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
     var storeSession = store.contentSession();
     HttpClient client = null;
+    OfficialMetadataReuseGateway metadataGateway = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     var itemWorkers = workers("vibeminer-item-projection", 2);
+    var metadataWorkers = workers("vibeminer-metadata-reuse", 2);
     try {
       var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
       SqliteCanonicalContentRepository.recoverAtStartup(sharedCatalog, storeSession);
@@ -108,9 +133,30 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       var catalog = new SqliteBuildObjectCatalog(sharedCatalog, store);
       var retention = new SqliteRetentionRepository(sharedCatalog);
       var gateway = new OfficialBootstrapArtifactGateway(store, transport, Clock.systemUTC());
+      var metadataAssociations =
+          new SqliteMetadataAssociationRepository(sharedCatalog, store, storeSession);
+      metadataGateway = new OfficialMetadataReuseGateway(store);
+      var localMetadata =
+          java.util.Objects.requireNonNull(metadataDecorator.apply(store, metadataGateway));
+      var metadataReuse =
+          new DefaultMetadataReuseService(
+              localMetadata,
+              catalog,
+              contentClaims,
+              metadataAssociations,
+              metadataWorkers,
+              Clock.systemUTC());
       var service =
           new DefaultBootstrapService(
-              gateway, catalog, store, orchestration, acquisition, retention, contentClaims);
+              gateway,
+              catalog,
+              store,
+              orchestration,
+              acquisition,
+              retention,
+              contentClaims,
+              metadataAssociations,
+              localMetadata);
       var rangeTransport =
           new PinnedCdnRangeTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var lookupGateway =
@@ -146,12 +192,17 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           selectedFiles,
           selectedGateway,
           itemWorkers,
-          itemProjection);
+          itemProjection,
+          metadataWorkers,
+          metadataReuse,
+          metadataGateway);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
       acquisition.shutdownNow();
       itemWorkers.shutdownNow();
+      metadataWorkers.shutdownNow();
       if (client != null) client.shutdownNow();
+      if (metadataGateway != null) metadataGateway.close();
       try {
         store.close();
       } catch (RuntimeException suppressed) {
@@ -182,8 +233,14 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   @Override
+  public MetadataReuseService metadataReuse() {
+    return metadataReuse;
+  }
+
+  @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    metadataReuse.close();
     itemProjection.close();
     service.close();
     lookup.close();
@@ -191,6 +248,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     orchestration.shutdownNow();
     acquisition.shutdownNow();
     itemWorkers.shutdownNow();
+    metadataWorkers.shutdownNow();
     client.shutdownNow();
     var interrupted = new AtomicBoolean(Thread.interrupted());
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -198,9 +256,11 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       var jobsStopped = await(orchestration, deadline, interrupted);
       var transfersStopped = await(acquisition, deadline, interrupted);
       var itemsStopped = await(itemWorkers, deadline, interrupted);
-      if (!jobsStopped || !transfersStopped || !itemsStopped)
+      var metadataStopped = await(metadataWorkers, deadline, interrupted);
+      if (!jobsStopped || !transfersStopped || !itemsStopped || !metadataStopped)
         throw new IllegalStateException(
             "Content workers have not stopped; active storage remains protected");
+      metadataGateway.close();
       lookupGateway.close();
       selectedGateway.close();
       store.close();

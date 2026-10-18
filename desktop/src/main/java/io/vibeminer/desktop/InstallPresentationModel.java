@@ -79,6 +79,30 @@ public final class InstallPresentationModel implements AutoCloseable {
           null,
           "Choose an exact build to inspect its installation file list.",
           null);
+  private InstallInspection historicalInspection;
+
+  public java.util.Optional<InstallInspection> historicalInspection() {
+    return java.util.Optional.ofNullable(historicalInspection);
+  }
+
+  public void invalidateRetainedEvidence(ContentClaimException.Code code) {
+    if (closed
+        || code != ContentClaimException.Code.MISSING_LOCAL
+            && code != ContentClaimException.Code.INTEGRITY_FAILURE) return;
+    retire();
+    if (state.inspection() != null) historicalInspection = state.inspection();
+    publish(
+        new State(
+            state.build(),
+            Stage.FAILED,
+            state.plan(),
+            null,
+            MetadataClaimMessages.message(code),
+            null,
+            state.stage(),
+            code));
+  }
+
   private CompletableFuture<?> pending;
   private long generation;
   private boolean closed;
@@ -100,6 +124,7 @@ public final class InstallPresentationModel implements AutoCloseable {
         && build != null
         && state.build().snapshotId().equals(build.snapshotId())) return;
     retire();
+    historicalInspection = null;
     publish(
         new State(
             build,
@@ -109,7 +134,7 @@ public final class InstallPresentationModel implements AutoCloseable {
             build == null
                 ? "Choose an exact build to inspect its installation file list."
                 : "Not checked. Configuration and retained-list actions are explicit; no network"
-                      + " request has been made.",
+                    + " request has been made.",
             null));
   }
 
@@ -311,7 +336,7 @@ public final class InstallPresentationModel implements AutoCloseable {
                       ? "The locally retained list did not pass verification."
                       : state.stage() == Stage.CHECKING
                           ? "The build configuration did not pass verification. No list was"
-                                + " downloaded."
+                              + " downloaded."
                           : "The list failed verification and was not opened.";
               case MALFORMED -> "The list format could not be read.";
               case MISSING_LOCAL ->

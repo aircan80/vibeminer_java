@@ -475,4 +475,23 @@ class ItemPresentationModelTest {
     assertEquals(ItemProjectionException.Code.CORRUPT, m.state().code());
     assertNull(m.state().page());
   }
+
+  @Test
+  void confirmedRootDependencyFailureRevokesOnlyMatchingItemSnapshot() {
+    var f = new Fake();
+    var m = model(f);
+    ready(m, f);
+    var original = m.state().handle();
+    m.invalidateMetadataDependency(
+        "0".repeat(64), io.vibeminer.application.content.ContentClaimException.Code.MISSING_LOCAL);
+    assertSame(original, m.state().handle());
+    m.invalidateMetadataDependency(
+        original.snapshotId(),
+        io.vibeminer.application.content.ContentClaimException.Code.MISSING_LOCAL);
+    assertNull(m.state().handle());
+    assertNull(m.state().page());
+    assertNotNull(m.state().source());
+    assertTrue(m.state().message().contains("root/configuration evidence needs re-verification"));
+    assertEquals(0, f.pages + f.lookups);
+  }
 }
