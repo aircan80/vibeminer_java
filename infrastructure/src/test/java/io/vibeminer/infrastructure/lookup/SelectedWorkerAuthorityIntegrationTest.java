@@ -57,6 +57,10 @@ class SelectedWorkerAuthorityIntegrationTest {
                   SelectedFileGateway.class.getClassLoader(),
                   new Class<?>[] {SelectedFileGateway.class},
                   (proxy, method, arguments) -> {
+                    // Bind the trusted issuer adapter to this actual producer instrumentation.
+                    // Delegating the default to the underlying gateway would capture it instead.
+                    if (method.getName().equals("authorizeEncodedSource"))
+                      return InvocationHandler.invokeDefault(proxy, method, arguments);
                     if (method.getName().equals("acquireEncoded") && calls.incrementAndGet() == 1) {
                       entered.countDown();
                       hold(release);
