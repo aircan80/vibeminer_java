@@ -1,0 +1,18 @@
+.build-overview { -fx-background-color: #f5f3ed; -fx-padding: 26 28 30 28; -fx-spacing: 18; }
+.build-overview .overview-heading { -fx-font-size: 2.1429em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.build-overview .overview-eyebrow { -fx-font-size: 0.7143em; -fx-font-weight: bold; -fx-text-fill: #657870; }
+.build-overview .overview-field-value { -fx-font-size: 0.8571em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.build-overview .overview-subtitle { -fx-font-size: 0.9286em; -fx-text-fill: #657870; }
+.build-overview .overview-help { -fx-font-size: 0.7857em; -fx-text-fill: #657870; }
+.build-overview .overview-panel { -fx-background-color: #fffefa; -fx-padding: 21; -fx-background-radius: 9; -fx-border-color: #dce2d9; -fx-border-radius: 9; }
+.build-overview .overview-panel-heading { -fx-font-size: 1.2857em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.build-overview .overview-fact { -fx-background-color: #fffefa; -fx-padding: 18; -fx-background-radius: 9; -fx-border-color: #dce2d9; -fx-border-radius: 9; }
+.build-overview .overview-fact-value { -fx-font-size: 1.8571em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.build-overview .overview-measurement-row { -fx-padding: 11 0; -fx-border-color: transparent transparent #dce2d9 transparent; }
+.build-overview .overview-measurement { -fx-font-size: 0.9286em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.build-overview .overview-job { -fx-background-color: #edf4eb; -fx-padding: 15; -fx-background-radius: 7; -fx-border-color: #d5e2d2; -fx-border-radius: 7; }
+.build-overview .overview-job-title { -fx-font-weight: bold; -fx-text-fill: #176e66; }
+.build-overview .overview-problem { -fx-font-size: 0.9286em; -fx-text-fill: #85602a; }
+.build-overview .toggle-button:selected { -fx-background-color: #e4f1e9; -fx-border-color: #176e66; -fx-text-fill: #176e66; }
+.build-overview .overview-body { -fx-background-color: transparent; -fx-padding: 0; }
+.build-overview .overview-body > .split-pane-divider { -fx-background-color: #f5f3ed; -fx-padding: 0 9; }
