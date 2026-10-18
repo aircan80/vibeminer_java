@@ -68,12 +68,10 @@ class SqliteBuildInventoryTest {
 
   class Fixture implements AutoCloseable {
     final SqliteCatalog sql = new SqliteCatalog(directory.resolve("catalog.sqlite"));
-    final FileObjectStore store = new FileObjectStore(directory.resolve("objects"));
-    final SqliteBuildObjectCatalog objects = new SqliteBuildObjectCatalog(sql, store);
-    final SqliteCanonicalContentRepository canonical =
-        new SqliteCanonicalContentRepository(sql, store);
-    final BuildMetadataAdmissionRepository admissions =
-        new BuildMetadataAdmissionRepository(sql, store);
+    final FileObjectStore store;
+    final SqliteBuildObjectCatalog objects;
+    final SqliteCanonicalContentRepository canonical;
+    final BuildMetadataAdmissionRepository admissions;
     final BuildMetadataAdmissionFacts facts;
     final SqliteBuildInventory inventory;
     final String payloadC, payloadE;
@@ -107,6 +105,29 @@ class SqliteBuildInventoryTest {
         boolean officialSourceRow,
         boolean metadataMember)
         throws Exception {
+      this(
+          malformedRoot,
+          missingMapping,
+          prefixCollision,
+          zeroEncoded,
+          officialSourceRow,
+          metadataMember,
+          FileObjectStore::new);
+    }
+
+    Fixture(
+        boolean malformedRoot,
+        boolean missingMapping,
+        boolean prefixCollision,
+        boolean zeroEncoded,
+        boolean officialSourceRow,
+        boolean metadataMember,
+        java.util.function.Function<Path, FileObjectStore> storeFactory)
+        throws Exception {
+      store = storeFactory.apply(directory.resolve("objects"));
+      objects = new SqliteBuildObjectCatalog(sql, store);
+      canonical = new SqliteCanonicalContentRepository(sql, store);
+      admissions = new BuildMetadataAdmissionRepository(sql, store);
       try (var c = sql.connect()) {
         BuildMetadataAdmissionSql.migrate(c);
         EncodingLookupSchema.migrate(c);
