@@ -22,28 +22,48 @@ import static org.junit.jupiter.api.Assertions.*;
 class CoalescingAcquisitionServiceTest {
     private static final ResolvedSourceIdentity SOURCE = new ResolvedSourceIdentity("wow:encoded-object", "full-immutable-key", "test:whole-stream-sha256:v1");
 
+    @Test void concurrentCrossHostConsumersAndLocalReuseReceiveTheActualOriginalAcquisitionProof() {
+        var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
+        var acquiredAt = java.time.Instant.parse("2026-10-18T00:00:00Z");
+        var actualUrl = "https://us.cdn.blizzard.com/test/shared-object";
+        var secondAdvertisedUrl = "https://kr.cdn.blizzard.com/test/shared-object";
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> {
+            calls.incrementAndGet();
+            return new VerifiedSourceAlias(source, store.add("shared"), new SourceVerificationEvidence(source.verificationSemantics(), actualUrl, acquiredAt));
+        }, executor)) {
+            var first = service.acquire(SOURCE); var second = service.acquire(SOURCE); executor.runNext();
+            var original = first.completion().toCompletableFuture().join();
+            assertEquals(original, second.completion().toCompletableFuture().join());
+            assertEquals(actualUrl, original.evidence().sourceUrl());
+            assertNotEquals(secondAdvertisedUrl, original.evidence().sourceUrl());
+            var cached = service.acquire(SOURCE); executor.runNext();
+            assertEquals(original, cached.completion().toCompletableFuture().join());
+            assertEquals(acquiredAt, original.evidence().verifiedAt()); assertEquals(1, calls.get());
+        }
+    }
+
     @Test void concurrentWaitersShareOneAcquisitionAndCancelIndependently() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
         try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> {
-            calls.incrementAndGet(); cancellation.throwIfCancellationRequested(); return store.add("shared");
+            calls.incrementAndGet(); cancellation.throwIfCancellationRequested(); return verified(source, store.add("shared"));
         }, executor)) {
             var first = service.acquire(SOURCE); var second = service.acquire(SOURCE);
             assertEquals(1, executor.tasks.size());
             first.cancel(); executor.runNext();
             assertTrue(first.completion().toCompletableFuture().isCancelled());
-            assertEquals(store.add("shared"), second.completion().toCompletableFuture().join());
+            assertEquals(store.add("shared"), second.completion().toCompletableFuture().join().object());
             assertEquals(1, calls.get()); assertEquals(1, store.objects.size());
         }
     }
 
     @Test void lastCancellationBeforeExecutionSkipsTransferAndAllowsLaterRetry() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return store.add("data"); }, executor)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return verified(source, store.add("data")); }, executor)) {
             var first = service.acquire(SOURCE); var second = service.acquire(SOURCE);
             first.cancel(); second.completion().toCompletableFuture().cancel(true);
             executor.runNext(); assertEquals(0, calls.get());
             var retry = service.acquire(SOURCE); executor.runNext();
-            assertEquals(store.add("data"), retry.completion().toCompletableFuture().join());
+            assertEquals(store.add("data"), retry.completion().toCompletableFuture().join().object());
             assertEquals(1, calls.get());
         }
     }
@@ -69,7 +89,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void verifiedLocalReuseDoesNotReacquireButMissingLocalContentDoes() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return store.add("data"); }, executor)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return verified(source, store.add("data")); }, executor)) {
             var initial = service.acquire(SOURCE); executor.runNext(); var object = initial.completion().toCompletableFuture().join();
             var cached = service.acquire(SOURCE); executor.runNext(); assertEquals(object, cached.completion().toCompletableFuture().join());
             assertEquals(1, calls.get());
@@ -83,7 +103,7 @@ class CoalescingAcquisitionServiceTest {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
         try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> {
             if (calls.incrementAndGet() == 1) throw new AcquisitionException(AcquisitionException.Code.SOURCE_FAILURE, "Synthetic verifier rejected source");
-            return store.add("data");
+            return verified(source, store.add("data"));
         }, executor)) {
             var first = service.acquire(SOURCE); executor.runNext(); assertFailed(first, AcquisitionException.Code.SOURCE_FAILURE);
             var retry = service.acquire(SOURCE); executor.runNext(); retry.completion().toCompletableFuture().join();
@@ -93,7 +113,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void namespacesAndVerifierSemanticsArePartOfSharingIdentity() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return store.add("data"); }, executor)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return verified(source, store.add("data")); }, executor)) {
             var first = service.acquire(SOURCE);
             var differentVerifier = service.acquire(new ResolvedSourceIdentity(SOURCE.namespace(), SOURCE.immutableSourceKey(), "test:blte-header-md5:v1"));
             var differentProduct = service.acquire(new ResolvedSourceIdentity("wowf:encoded-object", SOURCE.immutableSourceKey(), SOURCE.verificationSemantics()));
@@ -105,7 +125,17 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void acquirerCannotReturnAnObjectMissingFromVerifiedLocalStore() {
         var executor = new ManualExecutor(); var store = new FakeStore();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> new StoredObject(new ObjectDigest("0".repeat(64)), 3), executor)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> verified(source, new StoredObject(new ObjectDigest("0".repeat(64)), 3)), executor)) {
+            var request = service.acquire(SOURCE); executor.runNext(); assertFailed(request, AcquisitionException.Code.INVALID_VERIFIED_OBJECT);
+        }
+    }
+
+    @Test void receiptForAnotherImmutableSourceCannotSatisfyTheRequestedSource() {
+        var executor = new ManualExecutor(); var store = new FakeStore();
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> {
+            var other = new ResolvedSourceIdentity(source.namespace(), "different-object", source.verificationSemantics());
+            return verified(other, store.add("data"));
+        }, executor)) {
             var request = service.acquire(SOURCE); executor.runNext(); assertFailed(request, AcquisitionException.Code.INVALID_VERIFIED_OBJECT);
         }
     }
@@ -114,7 +144,7 @@ class CoalescingAcquisitionServiceTest {
         var executor = new ManualExecutor(); var store = new FakeStore();
         try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> {
             var object = store.add("data");
-            return new StoredObject(object.digest(), object.length() + 1);
+            return verified(source, new StoredObject(object.digest(), object.length() + 1));
         }, executor)) {
             var request = service.acquire(SOURCE); executor.runNext(); assertFailed(request, AcquisitionException.Code.INVALID_VERIFIED_OBJECT);
         }
@@ -122,7 +152,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void capacityIncludesCancelledTasksUntilTheirQueuedWorkActuallyRetires() {
         var executor = new ManualExecutor(); var store = new FakeStore();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> store.add("data"), executor, 1, 1, 2)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> verified(source, store.add("data")), executor, 1, 1, 2)) {
             var first = service.acquire(SOURCE);
             assertFailed(service.acquire(SOURCE), AcquisitionException.Code.CAPACITY_EXCEEDED);
             first.cancel();
@@ -134,7 +164,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void closeCancelsSubscribersAndLeavesInjectedStoreAndExecutorOwnedByCaller() {
         var executor = new ManualExecutor(); var store = new FakeStore();
-        var service = new CoalescingAcquisitionService(store, (source, cancellation) -> store.add("data"), executor);
+        var service = new CoalescingAcquisitionService(store, (source, cancellation) -> verified(source, store.add("data")), executor);
         var request = service.acquire(SOURCE); service.close(); service.close();
         assertTrue(request.completion().toCompletableFuture().isCancelled());
         assertFailed(service.acquire(SOURCE), AcquisitionException.Code.CLOSED);
@@ -147,7 +177,7 @@ class CoalescingAcquisitionServiceTest {
             if (submissions.incrementAndGet() == 1) throw new java.util.concurrent.RejectedExecutionException("synthetic queue full");
             command.run();
         };
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> store.add("data"), executor, 1, 2, 2)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> verified(source, store.add("data")), executor, 1, 2, 2)) {
             assertFailed(service.acquire(SOURCE), AcquisitionException.Code.CAPACITY_EXCEEDED);
             assertNotNull(service.acquire(SOURCE).completion().toCompletableFuture().join());
         }
@@ -155,7 +185,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void successfulSourceAliasesRemainBoundedAndEvictedMappingsMustVerifyAgain() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return store.add(source.immutableSourceKey()); }, executor, 2, 2, 1)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return verified(source, store.add(source.immutableSourceKey())); }, executor, 2, 2, 1)) {
             var other = new ResolvedSourceIdentity(SOURCE.namespace(), "different-full-key", SOURCE.verificationSemantics());
             for (var source : java.util.List.of(SOURCE, other, SOURCE)) {
                 var request = service.acquire(source); executor.runNext(); request.completion().toCompletableFuture().join();
@@ -166,7 +196,7 @@ class CoalescingAcquisitionServiceTest {
 
     @Test void corruptLocalAliasFailsClosedWithoutCallingTheSourceAgain() {
         var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
-        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return store.add("data"); }, executor)) {
+        try (var service = new CoalescingAcquisitionService(store, (source, cancellation) -> { calls.incrementAndGet(); return verified(source, store.add("data")); }, executor)) {
             var first = service.acquire(SOURCE); executor.runNext(); first.completion().toCompletableFuture().join();
             store.corrupt = true;
             var cached = service.acquire(SOURCE); executor.runNext();
@@ -181,6 +211,10 @@ class CoalescingAcquisitionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "key", ""));
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "key\nother", "verifier"));
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "x".repeat(4097), "verifier"));
+    }
+
+    private static VerifiedSourceAlias verified(ResolvedSourceIdentity source, StoredObject object) {
+        return new VerifiedSourceAlias(source, object, new SourceVerificationEvidence(source.verificationSemantics(), "https://synthetic.example.invalid/object", java.time.Instant.EPOCH));
     }
 
     private static void assertFailed(AcquisitionRequest request, AcquisitionException.Code code) {

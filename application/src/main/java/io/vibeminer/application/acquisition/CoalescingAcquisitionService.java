@@ -1,7 +1,8 @@
 package io.vibeminer.application.acquisition;
 
 import io.vibeminer.application.ObjectStore;
-import io.vibeminer.domain.StoredObject;
+import io.vibeminer.domain.VerifiedSourceAlias;
+import io.vibeminer.domain.ResolvedSourceIdentity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -31,7 +32,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     private final int maximumAliases;
     private final Map<ResolvedSourceIdentity, Flight> inFlight = new HashMap<>();
     private final Set<Flight> active = new HashSet<>();
-    private final LinkedHashMap<ResolvedSourceIdentity, StoredObject> aliases = new LinkedHashMap<>(16, .75f, true);
+    private final LinkedHashMap<ResolvedSourceIdentity, VerifiedSourceAlias> aliases = new LinkedHashMap<>(16, .75f, true);
     private boolean closed;
 
     public CoalescingAcquisitionService(ObjectStore store, VerifiedSourceAcquirer acquirer, Executor executor) {
@@ -57,7 +58,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         Objects.requireNonNull(identity, "identity");
         Flight flight;
         boolean start = false;
-        var result = new CompletableFuture<StoredObject>();
+        var result = new CompletableFuture<VerifiedSourceAlias>();
         synchronized (coordinator) {
             if (closed) return failed(CLOSED, "Acquisition service is closed");
             flight = inFlight.get(identity);
@@ -87,17 +88,17 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
 
     private void run(Flight flight) {
         synchronized (coordinator) { flight.worker = Thread.currentThread(); }
-        StoredObject result = null;
+        VerifiedSourceAlias result = null;
         Throwable failure = null;
         try {
             flight.checkCancellation();
-            StoredObject cached;
+            VerifiedSourceAlias cached;
             synchronized (coordinator) { cached = aliases.get(flight.identity); }
             if (cached != null) {
                 try {
-                    var verified = store.verify(cached.digest(), flight.cancelled::get);
+                    var verified = store.verify(cached.object().digest(), flight.cancelled::get);
                     if (verified.isPresent()) {
-                        if (!verified.get().equals(cached)) throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Stored object metadata changed during reuse");
+                        if (!verified.get().equals(cached.object())) throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Stored object metadata changed during reuse");
                         result = cached;
                     } else {
                         synchronized (coordinator) { aliases.remove(flight.identity, cached); }
@@ -110,9 +111,11 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             if (result == null) {
                 flight.checkCancellation();
                 var acquired = acquirer.acquire(flight.identity, flight.cancelled::get);
-                if (acquired == null) throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Source verifier returned no stored object");
-                var verified = store.verify(acquired.digest(), flight.cancelled::get);
-                if (verified.isEmpty() || !verified.get().equals(acquired)) {
+                if (acquired == null || !acquired.source().equals(flight.identity)) {
+                    throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Source verifier returned no matching acquisition receipt");
+                }
+                var verified = store.verify(acquired.object().digest(), flight.cancelled::get);
+                if (verified.isEmpty() || !verified.get().equals(acquired.object())) {
                     throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Source verifier did not return a complete verified local object");
                 }
                 result = acquired;
@@ -126,7 +129,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         if (failure instanceof Error error) throw error;
     }
 
-    private void detach(Flight flight, CompletableFuture<StoredObject> consumer) {
+    private void detach(Flight flight, CompletableFuture<VerifiedSourceAlias> consumer) {
         synchronized (coordinator) {
             if (!flight.consumers.remove(consumer) || !flight.consumers.isEmpty()) return;
             cancelLocked(flight);
@@ -140,8 +143,8 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         if (flight.worker != null) flight.worker.interrupt();
     }
 
-    private void finish(Flight flight, StoredObject object, Throwable failure) {
-        List<CompletableFuture<StoredObject>> consumers;
+    private void finish(Flight flight, VerifiedSourceAlias object, Throwable failure) {
+        List<CompletableFuture<VerifiedSourceAlias>> consumers;
         synchronized (coordinator) {
             if (!active.remove(flight)) return;
             inFlight.remove(flight.identity, flight);
@@ -160,7 +163,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     }
 
     @Override public void close() {
-        List<CompletableFuture<StoredObject>> consumers = new ArrayList<>();
+        List<CompletableFuture<VerifiedSourceAlias>> consumers = new ArrayList<>();
         synchronized (coordinator) {
             if (closed) return;
             closed = true;
@@ -179,7 +182,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     private static final class Flight {
         private final ResolvedSourceIdentity identity;
         private final AtomicBoolean cancelled = new AtomicBoolean();
-        private final List<CompletableFuture<StoredObject>> consumers = new ArrayList<>();
+        private final List<CompletableFuture<VerifiedSourceAlias>> consumers = new ArrayList<>();
         private Thread worker;
         private Flight(ResolvedSourceIdentity identity) { this.identity = identity; }
         private void checkCancellation() {

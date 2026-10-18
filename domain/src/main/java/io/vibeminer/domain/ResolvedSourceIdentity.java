@@ -1,4 +1,4 @@
-package io.vibeminer.application.acquisition;
+package io.vibeminer.domain;
 
 /**
  * Immutable resolved object identity, including its protocol namespace and full source key.
