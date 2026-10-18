@@ -71,6 +71,18 @@ class ItemEvidenceExportPresentationModelTest {
     assertNull(m.state().code());
   }
 
+  @Test
+  void invalidationMessageDoesNotInventAUserContextChangeOrPhysicalCause() {
+    var f = new Fake();
+    var m = model(f);
+    verified(m, f);
+    m.invalidateContext();
+    assertTrue(m.state().message().startsWith("Evidence is no longer ready."));
+    assertFalse(m.state().message().contains("Source context changed"));
+    assertNull(m.state().snapshot());
+    assertEquals(0, f.saves);
+  }
+
   static final String PATH =
       Path.of(System.getProperty("java.io.tmpdir"), "item-evidence.json")
           .toAbsolutePath()

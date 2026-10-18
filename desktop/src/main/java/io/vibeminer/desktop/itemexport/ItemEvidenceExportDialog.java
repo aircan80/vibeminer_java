@@ -13,6 +13,7 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
   private final ItemEvidenceExportPresentationModel model;
   private final ItemEvidenceDestinationChooser chooser;
   private final Label context = label("", "export-context");
+  private final Label buildContext = label("", "export-build-context");
   private final Label status = label("", "export-status");
   private final Label preview = label("", "export-preview");
   private final Label destination = label("No destination chosen", "export-destination");
@@ -131,7 +132,11 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
     ScrollPane scroll = new ScrollPane(body);
     scroll.setFitToWidth(true);
     scroll.setId("export-body-scroll");
-    VBox content = new VBox(12, context, scroll);
+    context.setMinHeight(Region.USE_PREF_SIZE);
+    buildContext.setMinHeight(Region.USE_PREF_SIZE);
+    VBox pinned = new VBox(4, context, buildContext);
+    pinned.setMinHeight(Region.USE_PREF_SIZE);
+    VBox content = new VBox(12, pinned, scroll);
     VBox.setVgrow(scroll, Priority.ALWAYS);
     getDialogPane().setContent(content);
     getDialogPane().getButtonTypes().add(ButtonType.CANCEL);
@@ -179,26 +184,21 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
     if (selection == null) return;
     var build = selection.item().evidence().association().descriptor().association().build();
     context.setText(
-        build.productId()
-            + " / "
-            + build.editionLabel()
-            + " / "
-            + build.channel()
-            + " / "
-            + build.region()
-            + " / "
-            + build.versionLabel()
-            + "\nItem record ID "
+        "Item ID "
             + selection.recordId()
             + " · "
             + selection.item().locale()
-            + "\nExact snapshot "
-            + selection.item().snapshotId()
             + " · "
-            + (selection.names().isPresent()
-                ? "Item + prepared name evidence"
-                : "Item evidence only")
-            + (s.contextActive() ? "" : " · Previous context; not attached to current inspector"));
+            + (selection.names().isPresent() ? "Item + names" : "Item only")
+            + (s.contextActive() ? "" : " · Previous context"));
+    buildContext.setText(
+        build.productId()
+            + " / "
+            + build.region()
+            + " / "
+            + build.channel()
+            + " / "
+            + build.versionLabel());
     status.setText(s.message());
     status.setAccessibleText(s.message());
     item.setDisable(s.busy() || !s.contextActive());
@@ -269,7 +269,25 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
       if (p.name().isEmpty()) content.append("\nNames NOT INCLUDED");
       preview.setText(content.toString());
       proof.setText(
-          "Current export verification interval: "
+          "Exact source: "
+              + build.editionLabel()
+              + " / "
+              + build.productId()
+              + " / "
+              + build.region()
+              + " / "
+              + build.channel()
+              + " / "
+              + build.versionLabel()
+              + "\nSnapshot: "
+              + build.snapshotId()
+              + "\nBuild configuration: "
+              + build.buildConfig()
+              + "\nCDN configuration: "
+              + build.cdnConfig()
+              + "\nLocale: "
+              + selection.item().locale()
+              + "\nCurrent export verification interval: "
               + p.verificationStartedAt()
               + " → "
               + p.verificationCompletedAt()
@@ -305,7 +323,27 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
               + "\n"
               + "Historical source receipts remain historical; export verification does not upgrade"
               + " decoded proof.");
-    } else proof.clear();
+    } else
+      proof.setText(
+          "Exact source: "
+              + build.editionLabel()
+              + " / "
+              + build.productId()
+              + " / "
+              + build.region()
+              + " / "
+              + build.channel()
+              + " / "
+              + build.versionLabel()
+              + "\nSnapshot: "
+              + build.snapshotId()
+              + "\nBuild configuration: "
+              + build.buildConfig()
+              + "\nCDN configuration: "
+              + build.cdnConfig()
+              + "\nLocale: "
+              + selection.item().locale()
+              + "\nNo current verified export snapshot.");
     receipt.setText(
         s.receipt() == null
             ? ""

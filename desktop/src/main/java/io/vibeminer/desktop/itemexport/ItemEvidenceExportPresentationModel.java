@@ -367,8 +367,8 @@ public final class ItemEvidenceExportPresentationModel implements AutoCloseable 
     stage = Stage.INVALIDATED;
     code = ItemEvidenceException.Code.STALE_SELECTION;
     message =
-        "Source context changed. Reopen export from the current inspected row; no output was"
-            + " requested.";
+        "Evidence is no longer ready. Reopen export from the current inspected row; no output"
+            + " was requested.";
     if (!closed) emit();
   }
 
