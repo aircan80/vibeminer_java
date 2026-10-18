@@ -1,0 +1,24 @@
+WoWDBDefs schema definitions — attribution and provenance
+
+Provider: WoWDBDefs contributors
+Repository: https://github.com/wowdev/WoWDBDefs
+Revision: b9a63096cdd99b26967f17f9515377ae62cadfd7
+
+Item.dbd and ItemSparse.dbd are redistributed UNMODIFIED, including original line endings.
+Definitions/data: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
+License: https://creativecommons.org/licenses/by-sa/4.0/
+The complete unmodified upstream LICENSE.md is included alongside this notice.
+Upstream designated code is separately BSD-3-Clause; no upstream parser code is included here.
+VibeMiner's independently written parser code does not change the definitions' license.
+No endorsement by WoWDBDefs contributors or Blizzard is implied. These community definitions
+are schema candidates; agreement with a table header does not validate rows or field semantics.
+
+Sources (exact immutable revision):
+https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/Item.dbd
+https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/ItemSparse.dbd
+https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/LICENSE.md
+
+SHA-256 / bytes:
+Item.dbd 076ea4c7e80c891b399cc77f285c807071080c0fed95701e447f7c98024ae120 / 34931
+ItemSparse.dbd 8664c3b5862dfe4c3a4322941b48b032c57b90412c070deb2028f3e448cf674a / 75858
+LICENSE.md bab6b1d3130b236c5af360ee7bfa00d8757329d054323441ed6a5eb367cd1f32 / 17689
