@@ -1,0 +1,856 @@
+{
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "fileDataId": 1572924,
+  "requestedLocale": "enUS",
+  "rootLocaleMask": 514,
+  "rawDB2Locale": 1,
+  "target": {
+    "CKey": "bb0ecbdc2fd4988ddd3c1c5e95c34165",
+    "EKey": "cab35eb8601260c12a5917c1bdacfda5",
+    "wholeEncodedBytes": 7988612,
+    "declaredWholeDecodedBytes": 62715198,
+    "sourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5"
+  },
+  "priorProof": {
+    "headerEvidence": "docs/evidence/item-sparse-header-12.1.5.70448-enUS.json",
+    "sectionEvidence": "docs/evidence/item-sparse-section-metadata-12.1.5.70448-enUS.json",
+    "rootENRefreshedThisRun": false
+  },
+  "freshProof": {
+    "BLTEHeaderEKeyVerified": true,
+    "headerBytes": 90732,
+    "completeSelectedChunkMD5AndSupportedDecodeVerified": true,
+    "chunks": [
+      {
+        "index": 0,
+        "encodedBytes": 1950,
+        "decodedBytes": 5252,
+        "decodedOffset": 0
+      },
+      {
+        "index": 3673,
+        "encodedBytes": 91026,
+        "decodedBytes": 262144,
+        "decodedOffset": 60166704
+      },
+      {
+        "index": 3674,
+        "encodedBytes": 90966,
+        "decodedBytes": 262144,
+        "decodedOffset": 60428848
+      },
+      {
+        "index": 3675,
+        "encodedBytes": 108665,
+        "decodedBytes": 262144,
+        "decodedOffset": 60690992
+      },
+      {
+        "index": 3676,
+        "encodedBytes": 142709,
+        "decodedBytes": 262144,
+        "decodedOffset": 60953136
+      },
+      {
+        "index": 3677,
+        "encodedBytes": 142493,
+        "decodedBytes": 262144,
+        "decodedOffset": 61215280
+      },
+      {
+        "index": 3678,
+        "encodedBytes": 146828,
+        "decodedBytes": 262144,
+        "decodedOffset": 61477424
+      },
+      {
+        "index": 3679,
+        "encodedBytes": 130753,
+        "decodedBytes": 262144,
+        "decodedOffset": 61739568
+      },
+      {
+        "index": 3680,
+        "encodedBytes": 91015,
+        "decodedBytes": 262144,
+        "decodedOffset": 62001712
+      },
+      {
+        "index": 3681,
+        "encodedBytes": 90977,
+        "decodedBytes": 262144,
+        "decodedOffset": 62263856
+      },
+      {
+        "index": 3682,
+        "encodedBytes": 34511,
+        "decodedBytes": 98722,
+        "decodedOffset": 62526000
+      }
+    ],
+    "freshZeroKeySection0CoordinatesVerified": true
+  },
+  "fullSuffix": {
+    "sectionIndex": 0,
+    "recordStart": 5252,
+    "recordEndExclusive": 60166704,
+    "suffixStart": 60166704,
+    "suffixEndExclusive": 62624722,
+    "suffixBytes": 2458018,
+    "SHA256": "574f694754adcab0b1a0d6c5ad81726747796d79b3e158fa903f18398623f525",
+    "allEntriesParsedAndChecked": true,
+    "orderedRawFieldDigestsMatchedAuthenticatedRegions": true,
+    "coherence": {
+      "records": 175503,
+      "maps": 175503,
+      "copies": 122,
+      "idListsEqual": true,
+      "idSetsEqual": true,
+      "recordIdsStrictlyIncreasing": true,
+      "mapIdsStrictlyIncreasing": true,
+      "duplicateRecordIds": 0,
+      "duplicateMapIds": 0,
+      "zeroRecordIds": 0,
+      "zeroMapIds": 0,
+      "zeroSizeMaps": 0,
+      "outOfBoundsMaps": 0,
+      "nonContiguousTransitions": 0,
+      "sizeSum": 60161452,
+      "declaredRecordSpan": 60161452,
+      "firstRawOffset": 5252,
+      "lastRawEnd": 60166704,
+      "absoluteBoundsCoherent": true,
+      "physicalOrderContiguous": true,
+      "sizeCoverageMatches": true,
+      "absoluteCoordinateCandidateCoherent": true,
+      "duplicateCopyTargets": 0,
+      "copyTargetsInPhysicalIds": 0,
+      "copySourcesOutsidePhysicalIds": 0,
+      "selfCopies": 0,
+      "recordIdsSHA256": "51d6cd937a1bb32ad89b5d2f85ba2357f085698456a190240247d6b54f70100a",
+      "mapIdsSHA256": "51d6cd937a1bb32ad89b5d2f85ba2357f085698456a190240247d6b54f70100a",
+      "mapsSHA256": "28973cb979a77fdc1d6a9e44915f21bbd924163eb41a785ad301f02dd748af99",
+      "copiesSHA256": "290cbe696e5cf1272221c1501fb9d29c4e178b8435362b255079ee40f6d041c6"
+    },
+    "boundarySamples": [
+      {
+        "ordinal": 0,
+        "recordId": 25,
+        "mapId": 25,
+        "rawOffset": 5252,
+        "size": 324
+      },
+      {
+        "ordinal": 1,
+        "recordId": 35,
+        "mapId": 35,
+        "rawOffset": 5576,
+        "size": 316
+      },
+      {
+        "ordinal": 2,
+        "recordId": 36,
+        "mapId": 36,
+        "rawOffset": 5892,
+        "size": 316
+      },
+      {
+        "ordinal": 3,
+        "recordId": 37,
+        "mapId": 37,
+        "rawOffset": 6208,
+        "size": 316
+      },
+      {
+        "ordinal": 175499,
+        "recordId": 286213,
+        "mapId": 286213,
+        "rawOffset": 60165196,
+        "size": 328
+      },
+      {
+        "ordinal": 175500,
+        "recordId": 286558,
+        "mapId": 286558,
+        "rawOffset": 60165524,
+        "size": 372
+      },
+      {
+        "ordinal": 175501,
+        "recordId": 286643,
+        "mapId": 286643,
+        "rawOffset": 60165896,
+        "size": 424
+      },
+      {
+        "ordinal": 175502,
+        "recordId": 287078,
+        "mapId": 287078,
+        "rawOffset": 60166320,
+        "size": 384
+      }
+    ],
+    "allRawCopyDeclarations": [
+      {
+        "ordinal": 0,
+        "targetId": 45790,
+        "sourceId": 43417
+      },
+      {
+        "ordinal": 1,
+        "targetId": 45805,
+        "sourceId": 43545
+      },
+      {
+        "ordinal": 2,
+        "targetId": 54463,
+        "sourceId": 53107
+      },
+      {
+        "ordinal": 3,
+        "targetId": 71421,
+        "sourceId": 71011
+      },
+      {
+        "ordinal": 4,
+        "targetId": 71428,
+        "sourceId": 70735
+      },
+      {
+        "ordinal": 5,
+        "targetId": 71568,
+        "sourceId": 71152
+      },
+      {
+        "ordinal": 6,
+        "targetId": 71592,
+        "sourceId": 71218
+      },
+      {
+        "ordinal": 7,
+        "targetId": 71593,
+        "sourceId": 71154
+      },
+      {
+        "ordinal": 8,
+        "targetId": 78636,
+        "sourceId": 77085
+      },
+      {
+        "ordinal": 9,
+        "targetId": 78638,
+        "sourceId": 77087
+      },
+      {
+        "ordinal": 10,
+        "targetId": 82892,
+        "sourceId": 66022
+      },
+      {
+        "ordinal": 11,
+        "targetId": 82893,
+        "sourceId": 66031
+      },
+      {
+        "ordinal": 12,
+        "targetId": 82894,
+        "sourceId": 66045
+      },
+      {
+        "ordinal": 13,
+        "targetId": 82895,
+        "sourceId": 66040
+      },
+      {
+        "ordinal": 14,
+        "targetId": 90365,
+        "sourceId": 90313
+      },
+      {
+        "ordinal": 15,
+        "targetId": 90366,
+        "sourceId": 90314
+      },
+      {
+        "ordinal": 16,
+        "targetId": 90367,
+        "sourceId": 90315
+      },
+      {
+        "ordinal": 17,
+        "targetId": 90368,
+        "sourceId": 90316
+      },
+      {
+        "ordinal": 18,
+        "targetId": 90369,
+        "sourceId": 90317
+      },
+      {
+        "ordinal": 19,
+        "targetId": 90370,
+        "sourceId": 90318
+      },
+      {
+        "ordinal": 20,
+        "targetId": 90371,
+        "sourceId": 90319
+      },
+      {
+        "ordinal": 21,
+        "targetId": 90372,
+        "sourceId": 90320
+      },
+      {
+        "ordinal": 22,
+        "targetId": 90373,
+        "sourceId": 90321
+      },
+      {
+        "ordinal": 23,
+        "targetId": 97733,
+        "sourceId": 97724
+      },
+      {
+        "ordinal": 24,
+        "targetId": 97734,
+        "sourceId": 97725
+      },
+      {
+        "ordinal": 25,
+        "targetId": 97735,
+        "sourceId": 97726
+      },
+      {
+        "ordinal": 26,
+        "targetId": 97736,
+        "sourceId": 97727
+      },
+      {
+        "ordinal": 27,
+        "targetId": 97737,
+        "sourceId": 97728
+      },
+      {
+        "ordinal": 28,
+        "targetId": 97738,
+        "sourceId": 97722
+      },
+      {
+        "ordinal": 29,
+        "targetId": 97739,
+        "sourceId": 97723
+      },
+      {
+        "ordinal": 30,
+        "targetId": 97740,
+        "sourceId": 97687
+      },
+      {
+        "ordinal": 31,
+        "targetId": 97741,
+        "sourceId": 97668
+      },
+      {
+        "ordinal": 32,
+        "targetId": 97742,
+        "sourceId": 97679
+      },
+      {
+        "ordinal": 33,
+        "targetId": 97743,
+        "sourceId": 97644
+      },
+      {
+        "ordinal": 34,
+        "targetId": 97744,
+        "sourceId": 97652
+      },
+      {
+        "ordinal": 35,
+        "targetId": 97746,
+        "sourceId": 97635
+      },
+      {
+        "ordinal": 36,
+        "targetId": 97747,
+        "sourceId": 97688
+      },
+      {
+        "ordinal": 37,
+        "targetId": 97748,
+        "sourceId": 97696
+      },
+      {
+        "ordinal": 38,
+        "targetId": 97749,
+        "sourceId": 97693
+      },
+      {
+        "ordinal": 39,
+        "targetId": 97751,
+        "sourceId": 97690
+      },
+      {
+        "ordinal": 40,
+        "targetId": 97752,
+        "sourceId": 97689
+      },
+      {
+        "ordinal": 41,
+        "targetId": 97753,
+        "sourceId": 97691
+      },
+      {
+        "ordinal": 42,
+        "targetId": 97754,
+        "sourceId": 97688
+      },
+      {
+        "ordinal": 43,
+        "targetId": 97755,
+        "sourceId": 97696
+      },
+      {
+        "ordinal": 44,
+        "targetId": 97756,
+        "sourceId": 97693
+      },
+      {
+        "ordinal": 45,
+        "targetId": 97757,
+        "sourceId": 97692
+      },
+      {
+        "ordinal": 46,
+        "targetId": 97758,
+        "sourceId": 97690
+      },
+      {
+        "ordinal": 47,
+        "targetId": 97759,
+        "sourceId": 97689
+      },
+      {
+        "ordinal": 48,
+        "targetId": 97760,
+        "sourceId": 97691
+      },
+      {
+        "ordinal": 49,
+        "targetId": 97761,
+        "sourceId": 97672
+      },
+      {
+        "ordinal": 50,
+        "targetId": 97762,
+        "sourceId": 97680
+      },
+      {
+        "ordinal": 51,
+        "targetId": 97763,
+        "sourceId": 97645
+      },
+      {
+        "ordinal": 52,
+        "targetId": 97764,
+        "sourceId": 97654
+      },
+      {
+        "ordinal": 53,
+        "targetId": 97765,
+        "sourceId": 97661
+      },
+      {
+        "ordinal": 54,
+        "targetId": 97766,
+        "sourceId": 97632
+      },
+      {
+        "ordinal": 55,
+        "targetId": 97767,
+        "sourceId": 97637
+      },
+      {
+        "ordinal": 56,
+        "targetId": 97768,
+        "sourceId": 97631
+      },
+      {
+        "ordinal": 57,
+        "targetId": 97769,
+        "sourceId": 97630
+      },
+      {
+        "ordinal": 58,
+        "targetId": 97770,
+        "sourceId": 97629
+      },
+      {
+        "ordinal": 59,
+        "targetId": 97771,
+        "sourceId": 97628
+      },
+      {
+        "ordinal": 60,
+        "targetId": 97772,
+        "sourceId": 97627
+      },
+      {
+        "ordinal": 61,
+        "targetId": 97773,
+        "sourceId": 97626
+      },
+      {
+        "ordinal": 62,
+        "targetId": 97775,
+        "sourceId": 97650
+      },
+      {
+        "ordinal": 63,
+        "targetId": 97777,
+        "sourceId": 97634
+      },
+      {
+        "ordinal": 64,
+        "targetId": 97778,
+        "sourceId": 97640
+      },
+      {
+        "ordinal": 65,
+        "targetId": 97779,
+        "sourceId": 97684
+      },
+      {
+        "ordinal": 66,
+        "targetId": 97780,
+        "sourceId": 97665
+      },
+      {
+        "ordinal": 67,
+        "targetId": 97781,
+        "sourceId": 97676
+      },
+      {
+        "ordinal": 68,
+        "targetId": 97782,
+        "sourceId": 97634
+      },
+      {
+        "ordinal": 69,
+        "targetId": 97783,
+        "sourceId": 97640
+      },
+      {
+        "ordinal": 70,
+        "targetId": 97784,
+        "sourceId": 97650
+      },
+      {
+        "ordinal": 71,
+        "targetId": 97785,
+        "sourceId": 97656
+      },
+      {
+        "ordinal": 72,
+        "targetId": 97786,
+        "sourceId": 97665
+      },
+      {
+        "ordinal": 73,
+        "targetId": 97787,
+        "sourceId": 97676
+      },
+      {
+        "ordinal": 74,
+        "targetId": 97788,
+        "sourceId": 97684
+      },
+      {
+        "ordinal": 75,
+        "targetId": 98312,
+        "sourceId": 98262
+      },
+      {
+        "ordinal": 76,
+        "targetId": 98313,
+        "sourceId": 98263
+      },
+      {
+        "ordinal": 77,
+        "targetId": 98314,
+        "sourceId": 98265
+      },
+      {
+        "ordinal": 78,
+        "targetId": 98315,
+        "sourceId": 98266
+      },
+      {
+        "ordinal": 79,
+        "targetId": 98316,
+        "sourceId": 98273
+      },
+      {
+        "ordinal": 80,
+        "targetId": 98318,
+        "sourceId": 98278
+      },
+      {
+        "ordinal": 81,
+        "targetId": 98319,
+        "sourceId": 98261
+      },
+      {
+        "ordinal": 82,
+        "targetId": 98320,
+        "sourceId": 98268
+      },
+      {
+        "ordinal": 83,
+        "targetId": 98321,
+        "sourceId": 98270
+      },
+      {
+        "ordinal": 84,
+        "targetId": 99713,
+        "sourceId": 99693
+      },
+      {
+        "ordinal": 85,
+        "targetId": 99714,
+        "sourceId": 99696
+      },
+      {
+        "ordinal": 86,
+        "targetId": 99715,
+        "sourceId": 99686
+      },
+      {
+        "ordinal": 87,
+        "targetId": 99716,
+        "sourceId": 99691
+      },
+      {
+        "ordinal": 88,
+        "targetId": 99717,
+        "sourceId": 99685
+      },
+      {
+        "ordinal": 89,
+        "targetId": 99718,
+        "sourceId": 99690
+      },
+      {
+        "ordinal": 90,
+        "targetId": 99719,
+        "sourceId": 99695
+      },
+      {
+        "ordinal": 91,
+        "targetId": 99720,
+        "sourceId": 99682
+      },
+      {
+        "ordinal": 92,
+        "targetId": 99721,
+        "sourceId": 99687
+      },
+      {
+        "ordinal": 93,
+        "targetId": 99722,
+        "sourceId": 99692
+      },
+      {
+        "ordinal": 94,
+        "targetId": 99723,
+        "sourceId": 99683
+      },
+      {
+        "ordinal": 95,
+        "targetId": 99724,
+        "sourceId": 99689
+      },
+      {
+        "ordinal": 96,
+        "targetId": 99725,
+        "sourceId": 99694
+      },
+      {
+        "ordinal": 97,
+        "targetId": 99726,
+        "sourceId": 99684
+      },
+      {
+        "ordinal": 98,
+        "targetId": 105866,
+        "sourceId": 105857
+      },
+      {
+        "ordinal": 99,
+        "targetId": 105867,
+        "sourceId": 105858
+      },
+      {
+        "ordinal": 100,
+        "targetId": 105868,
+        "sourceId": 105859
+      },
+      {
+        "ordinal": 101,
+        "targetId": 108194,
+        "sourceId": 108162
+      },
+      {
+        "ordinal": 102,
+        "targetId": 108196,
+        "sourceId": 108164
+      },
+      {
+        "ordinal": 103,
+        "targetId": 108197,
+        "sourceId": 108165
+      },
+      {
+        "ordinal": 104,
+        "targetId": 108198,
+        "sourceId": 108166
+      },
+      {
+        "ordinal": 105,
+        "targetId": 108199,
+        "sourceId": 108167
+      },
+      {
+        "ordinal": 106,
+        "targetId": 108210,
+        "sourceId": 108178
+      },
+      {
+        "ordinal": 107,
+        "targetId": 108212,
+        "sourceId": 108180
+      },
+      {
+        "ordinal": 108,
+        "targetId": 108213,
+        "sourceId": 108181
+      },
+      {
+        "ordinal": 109,
+        "targetId": 108214,
+        "sourceId": 108182
+      },
+      {
+        "ordinal": 110,
+        "targetId": 108215,
+        "sourceId": 108183
+      },
+      {
+        "ordinal": 111,
+        "targetId": 108218,
+        "sourceId": 108186
+      },
+      {
+        "ordinal": 112,
+        "targetId": 108220,
+        "sourceId": 108188
+      },
+      {
+        "ordinal": 113,
+        "targetId": 108221,
+        "sourceId": 108189
+      },
+      {
+        "ordinal": 114,
+        "targetId": 108222,
+        "sourceId": 108190
+      },
+      {
+        "ordinal": 115,
+        "targetId": 108223,
+        "sourceId": 108191
+      },
+      {
+        "ordinal": 116,
+        "targetId": 110832,
+        "sourceId": 84652
+      },
+      {
+        "ordinal": 117,
+        "targetId": 120222,
+        "sourceId": 119318
+      },
+      {
+        "ordinal": 118,
+        "targetId": 120223,
+        "sourceId": 119319
+      },
+      {
+        "ordinal": 119,
+        "targetId": 182580,
+        "sourceId": 182467
+      },
+      {
+        "ordinal": 120,
+        "targetId": 227781,
+        "sourceId": 227668
+      },
+      {
+        "ordinal": 121,
+        "targetId": 242720,
+        "sourceId": 242607
+      }
+    ]
+  },
+  "cost": {
+    "requests": 12,
+    "completedResponseBodyBytes": 1162625,
+    "decodedWorkBytes": 2463270,
+    "elapsedNanos": 698819990,
+    "HTTPAndTLSOverheadExcluded": true
+  },
+  "coverage": {
+    "coordinateCandidate": "absolute decoded-file positions coherent for every selected raw map; no repair",
+    "rawOffsetOriginProductionParserCapability": "RAW_OFFSET_ORIGIN_UNVERIFIED",
+    "rawIDMapCopyListsPreservedInMemoryWithoutRepair": true,
+    "allEntryValidationNotSamplesOnly": true,
+    "fullTableCKeyVerified": false,
+    "recordBodiesInspected": false,
+    "rowsDecoded": false,
+    "namesDecoded": false,
+    "schemaSemanticsVerified": false,
+    "sectionReadability": "UNKNOWN",
+    "adjacentBoundaryBytesNotInspected": true,
+    "payloadWrites": false
+  },
+  "sourceEvidenceLines": [
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=0 count=90732 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:41.921093922Z rangeSHA256=f72fdba3727f2e0d4cdc8ea052e97563c729e9dcfcdf84ed74fa052c09d59110",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=90732 count=1950 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:41.943286664Z rangeSHA256=72b525e82fdcc646e2f0a28241b3db54f8e0daddd00b424c090b543d5fe03b7f",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=6905761 count=91026 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:41.973147443Z rangeSHA256=27dc0a0eb616eba1fbf1347a792340ecdce10238efe0e75ff705088fc6c24183",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=6996787 count=90966 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:41.990800938Z rangeSHA256=69f5b5145f00c4d8e8eeb753fec24d2f100c7da81dd353fd3d077305e91afc8a",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7087753 count=108665 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.006899438Z rangeSHA256=25628747e8970a2f0b4c99b41f4db8ed925c600c30cdcb0dad8626e9971ecc6c",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7196418 count=142709 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.025178587Z rangeSHA256=ac3b4e81503e12c45364e339346e249cadf332aaef6816cce60caf95e0a0192e",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7339127 count=142493 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.046444450Z rangeSHA256=964744d11716f1a2a3ac8816da0b0b49ee03a14108937a342f526f4ed2bbfecb",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7481620 count=146828 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.066909903Z rangeSHA256=1c85e84eedb64c25211c7b33e24482456831cf7f88841d4158db4d130b3ab9d4",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7628448 count=130753 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.084994587Z rangeSHA256=dbba58dbc283a63a48290ab56953624d8ecd1c61e9a5ca527fc1bfc7f1dda9d7",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7759201 count=91015 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.100478954Z rangeSHA256=e147331df1b17cf24d3892ca3c6d1bf13403a9959be2feefb865719f5e116975",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7850216 count=90977 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.114843162Z rangeSHA256=4be6645d91af03eeecf7bab8a25d7b3a2d86d59b5a3d77dd4096b8481b95e245",
+    "TRANSFER exact range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 start=7941193 count=34511 pinnedWhole=7988612",
+    "RECEIVED range source=https://us.cdn.blizzard.com/tpr/wow/data/ca/b3/cab35eb8601260c12a5917c1bdacfda5 at=2026-10-18T06:58:42.128570650Z rangeSHA256=a3ca5c67183ff94c8b14d18d2b40db1b965cb04c93e87d4d948db57ca3f4757a"
+  ],
+  "diagnosticSourceCommit": "0e0c59e"
+}
