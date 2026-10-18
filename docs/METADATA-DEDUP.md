@@ -1,14 +1,17 @@
 # Canonical root and install metadata
 
-**Status: approved requirement; scoped implementation pending in [#80](https://github.com/aircan80/vibeminer/issues/80) under #17.** This contract extends the no-duplicate-content policy to retained root and install manifests. It complements [shared storage](STORAGE.md) and [selected-file acquisition](FILE-ACQUISITION.md). It introduces no deletion, automatic representation replacement or new game support.
+**Status: initial shared metadata/selected-file guard and actual worker ownership are integrated and active in source `6fac722` (#80/#84).** Source checkpoint `6fac722` enables the integrated canonical guard and actual-publisher ownership in the lazy content runtime. Its clean full check passed 855 Java cases with zero failures/errors/skips, plus Linux development package 17 and bundled self-storage/UI launch. [Four-platform CI 39113600719](https://github.com/aircan80/vibeminer/actions/runs/39113600719) subsequently completed successfully at that exact revision. All six native UI harnesses and all nine offline protocol entrypoints passed: seven suites reported 638 assertions, the supervisor reported 52, and the real layered-root fixture used 28 requests/two physical objects before fresh-instance zero-HTTP reopening. All 17 candidate/retention PNG comparisons matched references exactly (AE 0). These synthetic/native checks do not establish additional Item UI or repair capability.
 
-## Observed implementation gap
+Different declared encoding B is explicitly refused rather than strongly reusing actual A; representation-aware A-versus-B reuse (#85) and newly consented same-A metadata repair (#83) remain undelivered. Existing exact-descriptor legacy reads preserve their original proof despite a blocking canonical conflict. No deletion, GC, replacement or complete archive claim follows. See [publisher ownership/startup fencing](PUBLISHER-OWNERSHIP.md) for actual worker authority. Strong reuse below remains a target contract, not a delivered capability. Alpha.3 remains unchanged.
+
+
+## Original gap and current guard boundary
 
 Physical CAS deduplication is correct: identical SHA-256 bytes are stored once across build memberships and retention policies. Different valid BLTE encodings of the same decoded content can have different physical SHA values.
 
 The current install source identity includes CKey, EKey, decoded length and encoded length. Its application service coalesces and reuses that complete tuple. Retained install inspection also requires the tuple and encoded length from the selected build plan. The root source identity likewise contains CKey, EKey and both lengths; root acquisition shares the full tuple. Immutable per-build roles prevent changing an attached manifest but do not prevent another build retaining an alternate encoding of the same CKey.
 
-Consequently, equal decoded content with different encoding tuples can produce two retained physical objects. This is a control-flow and identity gap, not a claim that an actual duplicate has been measured. A source alias or matching filename is not sufficient evidence of decoded equality.
+Without the integrated guard, equal decoded content with different encoding tuples could produce two retained physical objects. The active initial guard blocks new alternate-encoding publication across its supported producers; historical conflicting representations remain preserved and require explicit reconciliation. This is not a claim that historical duplicates were deleted or strong cross-representation reuse was implemented. A source alias or matching filename is not sufficient evidence of decoded equality.
 
 ## Uniform content-selection rule
 
@@ -80,7 +83,7 @@ These checks are separate from full-build archive, general cache eviction and de
 
 ## Actual publisher ownership follow-up (#84)
 
-The approved [publisher ownership and startup-fencing contract](PUBLISHER-OWNERSHIP.md) distinguishes durable reservation intent from an actual worker permit. Core API/session/helper foundations exist, but joint SQL, selected-flight and runtime integration remains pending and is not enabled; no recovery or completed cross-workflow guard claim follows yet. The separate same-representation repair restriction under #83 remains unchanged.
+The approved [publisher ownership and startup-fencing contract](PUBLISHER-OWNERSHIP.md) distinguishes durable reservation intent from an actual worker permit. SQL, selected-flight and runtime integration are active at the checkpoint above, with actual runnable ownership and explicit startup fencing; strong A-versus-B reuse and repair remain separate pending work. The separate same-representation repair restriction under #83 remains unchanged.
 
 ## Approved first guard architecture (#80)
 
@@ -99,4 +102,4 @@ A prospective metadata receipt is ledger evidence, not permission to publish a c
 
 The first domain TDD slice covers private-state invariants rather than acquisition: exact key/EKey/length/object agreement; historical versus decoded versus structural capability; optional facts and unsigned/checkable lengths; same-object monotonic attestation upgrade; unsupported proof projection; immutable source evidence; and no accidental promotion of declarations into verified capability. Storage tests then cover strict tagged-codec compatibility, same-header preservation, root/install and selected-file mutual exclusion, legacy conflict blocking, original pins and every prospective-SHA recovery boundary.
 
-Implementation partitions are domain values, a narrow application canonical-content port, shared SQLite/codec delegation, existing install/root application policy, verifier publication observers, and composition injection. These are concrete responsibilities, not new frameworks. The guard is not enabled until every supported content producer participates; a partially wired metadata-only guard cannot uphold cross-workflow exclusion. Representation-aware reuse remains a later increment of #80; the first safe guard can explicitly refuse alternate encoding B.
+Implementation partitions are domain values, a narrow application canonical-content port, shared SQLite/codec delegation, existing install/root application policy, verifier publication observers, and composition injection. These are concrete responsibilities, not new frameworks. The initial runtime guard is enabled only through the integrated producer graph at the checkpoint above; future producers must participate before activation. A partially wired metadata-only guard cannot uphold cross-workflow exclusion. Representation-aware reuse remains a later increment of #80; the first safe guard can explicitly refuse alternate encoding B.

@@ -2,7 +2,7 @@
 
 These versioned documents are the formal project specifications. A clean checkout contains the material needed to continue development; GitHub Issues records current delivery status.
 
-Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) remains `2382261`. Later source `47b2b43` delivers explicit selected encoded-file retention controls and exact-variant offline reopening, with 722 passing Java cases, Linux bundled-runtime checks, six native UI harnesses and nine offline protocol entrypoints. Seventeen candidate/retention images matched references exactly. Its [four-platform run](https://github.com/aircan80/vibeminer/actions/runs/39111231067) passed Windows x64, macOS ARM64, macOS Intel and Linux x64. [One bounded production-service receipt](evidence/selected-file-service-12.1.5.70448.json) proves encoded retention and fresh-instance offline reopen, without selected Item decoded-CKey verification. Root/install canonical integration (#80) and physical-row projection (#81) remain in progress; names, general search and GC remain unfinished.
+Released [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) remains `2382261`. Later `6fac722` passed 855 Java cases, Linux bundled-runtime smoke and [all four native targets](https://github.com/aircan80/vibeminer/actions/runs/39113600719). Its metadata/file publisher guard is active; strong A-versus-B reuse (#85), same-A metadata repair (#83), Item backend/index/UI, general research search and GC remain unfinished. Complete encoded verification remains distinct from decoded-content proof. All six native UI harnesses and nine offline protocol entrypoints passed, and all 17 candidate/retention PNG comparisons were exact (AE 0).
 
 
 - [Implementation plan and milestones](PLAN.md)
@@ -10,6 +10,7 @@ Released baseline: [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/
 - [CDN discovery and acquisition](CDN.md)
 - [Recorded official metadata evidence](PROTOCOL-EVIDENCE.md)
 - [Shared storage and historical archives](STORAGE.md)
+- [Publisher ownership and startup fencing](PUBLISHER-OWNERSHIP.md)
 - [Canonical root/install metadata and deduplication guard](METADATA-DEDUP.md)
 - [Encoded-file retention proof boundary](ENCODED-RETENTION.md)
 - [Approved selected encoded-file acquisition design](FILE-ACQUISITION.md)
