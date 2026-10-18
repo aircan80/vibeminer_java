@@ -28,11 +28,15 @@ public final class CaptureMetadataRepairWorkflow {
   private static int assertions;
   private static volatile boolean finished;
   private static boolean restart;
+  private static boolean probeMode;
+  private static int consentSample;
   private static volatile MetadataRepairPlan lastPlan;
   private static volatile MetadataRepairResult lastResult;
   private static final List<UUID> auditIds = new ArrayList<>();
 
-  public static void main(String[] args) throws Exception {
+  public static void main(String[] incoming) throws Exception {
+    boolean probe = incoming.length == 5 && incoming[0].equals("--probe-install-consent");
+    final String[] args = probe ? Arrays.copyOfRange(incoming, 1, incoming.length) : incoming;
     if (args.length == 4 && args[0].equals("--isolated-display") && args[2].equals("--output")) {
       requireDisplay(args[1]);
       Path output = Path.of(args[3]).toAbsolutePath();
@@ -41,7 +45,7 @@ public final class CaptureMetadataRepairWorkflow {
       Process active = null;
       int total = 0;
       try {
-        for (String phase : List.of("prepare", "restart")) {
+        for (String phase : probe ? List.of("probe") : List.of("prepare", "restart")) {
           active =
               new ProcessBuilder(
                       Path.of(System.getProperty("java.home"), "bin", "java").toString(),
@@ -64,7 +68,9 @@ public final class CaptureMetadataRepairWorkflow {
         System.out.println(
             "Metadata repair UI OK; "
                 + total
-                + " assertions; two JVMs; actual acquisition proofs/services/CAS/SQLite; authored"
+                + " assertions; "
+                + (probe ? "single-JVM install consent probe" : "two JVMs")
+                + "; actual acquisition proofs/services/CAS/SQLite; authored"
                 + " bytes; zero HTTP");
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
@@ -84,6 +90,7 @@ public final class CaptureMetadataRepairWorkflow {
         "Usage: --isolated-display :N --output DIRECTORY");
     requireDisplay(args[2]);
     restart = args[1].equals("restart");
+    probeMode = args[1].equals("probe");
     CaptureAtlas.output = Path.of(args[3]);
     Path temp = Path.of(args[4]);
     Thread.setDefaultUncaughtExceptionHandler(
@@ -169,7 +176,8 @@ public final class CaptureMetadataRepairWorkflow {
                           == 0,
                       "Startup performed metadata operations");
                   workspace(0, "enUS");
-                  if (restart) restartJourney();
+                  if (probeMode) installConsentProbe();
+                  else if (restart) restartJourney();
                   else firstJourney();
                   check(
                       !restart
@@ -231,6 +239,31 @@ public final class CaptureMetadataRepairWorkflow {
 
       public void close() {}
     };
+  }
+
+  /**
+   * Focused layout journey: real ROOT setup supplies the same persistent coverage as the full run.
+   */
+  private static void installConsentProbe() throws Exception {
+    var source = fixture.ordinaryRoot();
+    fixture.remove(Kind.ROOT);
+    var rootPlan = fixture.repairs().prepareRoot(source).toCompletableFuture().join();
+    fixture.repairs().execute(rootPlan).toCompletableFuture().join();
+    rootView();
+    click("file-reopen-evidence");
+    waitNode("file-variant-table");
+    check(labels().contains("Root map verified"), "Probe did not establish actual ROOT coverage");
+    installView();
+    click("install-check");
+    waitNode("install-repair-check");
+    fixture.corrupt(Kind.INSTALL);
+    click("install-repair-check");
+    waitNode("install-repair-download");
+    consent("install");
+    shot("probe-install-consent-100pct.png", "install-repair-consent");
+    scale("200%", false);
+    consent("install");
+    shot("probe-install-consent-200pct.png", "install-repair-consent");
   }
 
   private static void firstJourney() throws Exception {
@@ -544,15 +577,43 @@ public final class CaptureMetadataRepairWorkflow {
 
   private static void consent(String kind) throws Exception {
     String prefix = kind + "-repair-";
+    int sample = ++consentSample;
     fx(
         () -> {
           reveal(node(prefix + "consent"));
           return null;
         });
     pause();
-    check(
-        fx(() -> inside(node(prefix + "cost")) && inside(node(prefix + "download"))),
-        "Positive cost and separate repair action do not fit together");
+    String initial = consentGeometry(prefix, "initial");
+    boolean initialFit =
+        fx(() -> inside(node(prefix + "cost")) && inside(node(prefix + "download")));
+    if (!initialFit)
+      fx(
+          () -> {
+            CaptureAtlas.capture(
+                stage, "repair-consent-failure-" + sample + "-" + kind + "-initial.png", 1280, 800);
+            return null;
+          });
+    awaitPulses(2);
+    fx(
+        () -> {
+          reveal(node(prefix + "consent"));
+          return null;
+        });
+    awaitPulses(2);
+    String settled = consentGeometry(prefix, "settled-after-four-pulses");
+    boolean fit = fx(() -> inside(node(prefix + "cost")) && inside(node(prefix + "download")));
+    Files.writeString(
+        CaptureAtlas.output.resolve("repair-consent-" + sample + "-" + kind + "-geometry.txt"),
+        initial + "\n" + settled);
+    if (!fit)
+      fx(
+          () -> {
+            CaptureAtlas.capture(
+                stage, "repair-consent-failure-" + sample + "-" + kind + "-settled.png", 1280, 800);
+            return null;
+          });
+    check(fit, "Positive cost and separate repair action do not fit together\n" + settled);
     check(
         fx(
             () ->
@@ -561,6 +622,75 @@ public final class CaptureMetadataRepairWorkflow {
                     .contains(Long.toString(lastPlan.cost().encodedTransferBytes()))),
         "Consent lost actual positive transfer bytes");
     check(optional(prefix + "open") == null, "Repair proposal exposed ready offline open");
+  }
+
+  private static String consentGeometry(String prefix, String phase) throws Exception {
+    return fx(
+        () -> {
+          layout();
+          var root = stage.getScene().getRoot();
+          Node viewport = root.lookup(".workspace-scroll .viewport");
+          var cost = (Label) node(prefix + "cost");
+          var button = (Button) node(prefix + "download");
+          var scroll = (ScrollPane) root.lookup(".workspace-scroll");
+          Node context = root.lookup(".context-strip");
+          return "phase="
+              + phase
+              + "\nscene="
+              + stage.getScene().getWidth()
+              + "x"
+              + stage.getScene().getHeight()
+              + " outputScale="
+              + stage.getOutputScaleX()
+              + ","
+              + stage.getOutputScaleY()
+              + "\nviewport="
+              + viewport.localToScene(viewport.getBoundsInLocal())
+              + "\ncontext="
+              + context.localToScene(context.getBoundsInLocal())
+              + "\ncost="
+              + cost.localToScene(cost.getBoundsInLocal())
+              + " prefHeight="
+              + cost.prefHeight(cost.getWidth())
+              + " font="
+              + cost.getFont()
+              + " wrap="
+              + cost.isWrapText()
+              + "\nbutton="
+              + button.localToScene(button.getBoundsInLocal())
+              + " prefHeight="
+              + button.prefHeight(button.getWidth())
+              + " font="
+              + button.getFont()
+              + "\nconsent="
+              + node(prefix + "consent").localToScene(node(prefix + "consent").getBoundsInLocal())
+              + "\nscrollV="
+              + scroll.getVvalue()
+              + " content="
+              + scroll.getContent().getLayoutBounds()
+              + "\nrootInlineStyle="
+              + root.getStyle()
+              + "\ncostText="
+              + cost.getText()
+              + "\n";
+        });
+  }
+
+  private static void awaitPulses(int count) throws Exception {
+    var done = new CompletableFuture<Void>();
+    Platform.runLater(
+        () ->
+            new javafx.animation.AnimationTimer() {
+              int frames;
+
+              public void handle(long now) {
+                if (++frames >= count) {
+                  stop();
+                  done.complete(null);
+                }
+              }
+            }.start());
+    done.get(5, TimeUnit.SECONDS);
   }
 
   private static void completed(String kind, int previousGets) throws Exception {
