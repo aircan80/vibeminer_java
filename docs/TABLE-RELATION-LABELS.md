@@ -70,3 +70,5 @@ No all-table auto-label promise, cross-build join, implicit target download, loc
 ## Future locale exploration
 
 [Locale switching #114](https://github.com/aircan80/vibeminer/issues/114) is future scope: a build Home selector may change the active research locale while keeping the exact build. Table labels and other localized projections must refresh with context fencing and complete cache identity. Shared verified content remains deduplicated; unavailable translations are explicit. Switching research locale does not silently alter the authorized bulk-retention scope or grant full-build download consent. This does not expand milestone 5 or the initial label implementation.
+
+Per-view asynchronous progress is tracked in [#115](https://github.com/aircan80/vibeminer/issues/115). Visible label batches must not block JavaFX or trigger a request per cell. Progress and results belong to the exact active consumer context; unavailable targets and partial lookup coverage retain explicit states.

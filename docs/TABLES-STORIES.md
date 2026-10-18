@@ -108,3 +108,13 @@ Maps #112/#113/#109 qualification; depends accepted preceding slices.
 Research T2/T4/T6 now; freeze source/admission, provider/query, relationship-domain and display-policy contracts. Complete milestone 5 before production navigation/table changes. Then deliver T1 with narrow T2/T3, T4/T5, and T6/T7/T8 in reviewable tested increments.
 
 Units establish identity, schema selection, exact numeric joins and failure states. Real SQLite/content-provider integration establishes query/coverage behavior. Native screenshot/usability checks establish presentation. Independent mining review establishes honest interpretation. A completed sub-slice cannot close broader arbitrary-table or complete-WoW decoding acceptance. Higher-level Items/Spells, future monitoring, GC and broad comparison remain excluded.
+
+## T9 — Open data asynchronously with request progress
+
+Maps [#115](https://github.com/aircan80/vibeminer/issues/115); shares acquisition/priority behavior with #96. Applies to #113, #109 and later data areas.
+
+- Blocking acquisition, verified local reads, parsing, indexing and queries run outside JavaFX. Publish bounded, coalesced immutable progress updates and fence them by exact build/locale/request generation.
+- Show locating, downloading, verifying and decoding/indexing stages. Byte percentages require a trustworthy request denominator; unknown totals use indeterminate progress. Download completion is not table readiness. Keep per-view progress separate from build-wide Retained percentage.
+- Interactive requests attach to/promote shared transfers while bulk retention continues. No second cache/download path. Cached reopening performs no gratuitous download or fake animation.
+- Detaching/canceling one view preserves other consumers and actual worker/publication ownership. Loading, partial admitted data, unavailable/keyed/unsupported, canceled, offline and retry states are distinct. Partial target coverage cannot prove uniqueness or exhaustive absence.
+- TDD uses controlled slow transfers, known/unknown lengths, cached zero-network reopen, shared-flight priority, context changes and error stages; real JavaFX checks cover responsiveness, keyboard and progress screenshots.
