@@ -97,3 +97,28 @@ The first child checks explicit candidate selection and keyboard inspection, a s
 The second child starts with only a retained root variant and no candidate session. Its explicit offline action must call the exact-variant service API without candidate, locator, search or retention calls. Simulated missing membership, missing bytes and corrupt bytes remain distinct; verification failure clears the ready header and preserves a usable keyboard retry action. The harness removes its temporary directory after both children finish. It never opens the normal user catalog.
 
 Screenshots deliberately scroll to the inspected scope, cost, action or evidence. The child deadline is 120 seconds and the supervisor allows 150 seconds per child. Success prints `Selected retention UI OK` and explicitly identifies the fake selected service. Programmatic keyboard/scene checks establish Linux fixture presentation behavior; they do not certify live sources, production selected-file integrity, other platforms, assistive technology, decoded content or filenames.
+
+## Retained Item physical-row workflow
+
+`CaptureItemProjectionWorkflow.java` and `fixtures/ItemProjectionFixtureBackend.java` run two application JVMs with authored 61-row WDC5/BLTE data, the actual retained Item reader, pinned schema, application service, CAS and SQLite projection. Root/EN authentication and root-membership presentation are explicit synthetic proof-port fixtures. They do not establish official TACT authentication, use actual game records or send HTTP. No game installation or normal user catalog is opened.
+
+Compile all helpers as above, then run:
+
+```bash
+DISPLAY=:191 java --enable-native-access=ALL-UNNAMED \
+  -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureItemProjectionWorkflow --isolated-display :191 --output build/ui-review/item-projection
+```
+
+The first child checks explicit retained-only preparation/cancellation, bounded pages, exact positive Item record IDs, all five columns, Enter/Escape inspection, stable input/caret, scoped no-match versus excluded copies, four proof dimensions, pinned definition attribution, stale-query suppression and workspace/locale separation. The second child reopens the actual retained index without reprojection, corrupts/removes its physical encoded source and checks that rows and persistent readiness clear without repair. Missing/corrupt notices survive navigation and locale changes but do not transfer to another exact build. Fresh explicit retained verification clears the failure; explicit preparation is still required before Item physical scope is ready.
+
+The final run against source `1cea99f` passed **85 assertions across two JVMs**, produced 19 scene-only PNGs and attempted zero HTTP. [Eighteen accepted references](../../docs/design/item-projection/README.md) omit the diagnostic after-pulse image. Both 100% and 200% text scaling are covered. Actual full decoded CKey verification, complete Item coverage, names/icons, live sources, other platforms and assistive technology are outside this evidence.
+
+Each child has a 120-second application deadline; the supervisor allows 150 seconds per child. On timeout or interruption it forcibly stops the active child and waits up to ten seconds for confirmed termination before deleting temporary storage. Unconfirmed termination preserves the store. Its deterministic no-JavaFX supervisor regression is available separately:
+
+```bash
+java -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+  CaptureItemProjectionWorkflow --supervisor-self-test
+```
+
+This checks confirmed retirement, interrupted waiting with restored interruption, and refusal to authorize cleanup while a worker remains alive. It requires no display. The native run uses programmatic keyboard events and scene checks; it does not certify physical keyboard or screen-reader operation.

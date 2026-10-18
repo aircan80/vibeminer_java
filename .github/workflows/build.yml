@@ -165,6 +165,9 @@ jobs:
         run: |
           mkdir -p build/ui-tool build/ui-review
           javac -cp 'bootstrap/build/install/bootstrap/lib/*' -d build/ui-tool tools/ui/*.java tools/ui/fixtures/*.java
+          java --enable-native-access=ALL-UNNAMED \
+            -cp 'build/ui-tool:bootstrap/build/install/bootstrap/lib/*' \
+            CaptureItemProjectionWorkflow --supervisor-self-test
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureAtlas \
             --isolated-display "$DISPLAY" --output build/ui-review'
@@ -183,6 +186,9 @@ jobs:
           xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
             -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureSelectedFileRetention \
             --isolated-display "$DISPLAY" --output build/ui-review/selected-file-retention'
+          xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+            -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureItemProjectionWorkflow \
+            --isolated-display "$DISPLAY" --output build/ui-review/item-projection'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:

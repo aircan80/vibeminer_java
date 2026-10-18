@@ -1,6 +1,6 @@
 # Atlas Item physical-row interface
 
-**Status: design for [#81](https://github.com/aircan80/vibeminer/issues/81), not implemented or visually accepted.** The [Item projection contract](../ITEM-PROJECTION.md) defines the admitted source, interpretation, proof and query boundary. This document specifies its native Atlas presentation. It authorizes no live requests and contains no actual row values, names or screenshots of a claimed implementation.
+**Status: native physical-row interface implemented and accepted for [#81](https://github.com/aircan80/vibeminer/issues/81), within the admitted scope.** The [Item projection contract](../ITEM-PROJECTION.md) defines the source, interpretation, proof and query boundary. [Native references and acceptance evidence](item-projection/README.md) record the two-JVM, 85-assertion synthetic workflow against source `1cea99f`, including 100% and 200% text scaling. This acceptance establishes Linux fixture presentation and retained-only integration; it does not establish live-source authentication, complete Item coverage, full decoded CKey verification, other-platform behavior or assistive-technology compatibility.
 
 ## Outcome, placement and identity
 
