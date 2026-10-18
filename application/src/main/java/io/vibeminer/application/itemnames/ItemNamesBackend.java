@@ -17,10 +17,26 @@ import java.util.Optional;
  * no decoded proof or historical timestamp. No complete decoded CKey or copied name is inferred.
  */
 public interface ItemNamesBackend {
+  int MAX_SEARCH_ITEM_ROWS = 200_000;
+  int MAX_SEARCH_NAME_ROWS = 200_000;
+  long MAX_SEARCH_NAME_UTF8_BYTES = 64L << 20;
+  int SEARCH_BATCH_ROWS = 128;
+
   PreparedItemNames prepare(ItemNamesRequest request, CancellationToken token);
 
   ItemNamesPage page(
       PreparedItemNames pair, Optional<ItemNamesCursor> cursor, int size, CancellationToken token);
 
   ItemNamesLookup lookup(PreparedItemNames pair, long recordId, CancellationToken token);
+
+  /** Validate every examined tuple before matching; limits cannot produce a partial no-match. */
+  default ItemNamesSearchPage search(
+      PreparedItemNames pair,
+      ItemNameLiteralQuery query,
+      Optional<ItemNamesSearchCursor> cursor,
+      int size,
+      CancellationToken token) {
+    throw new ItemNamesException(
+        ItemNamesException.Code.UNSUPPORTED, "This backend does not provide literal name search");
+  }
 }
