@@ -30,7 +30,10 @@ class AuthorizedRetentionSchema20Test {
   void createActual19() throws Exception {
     try (var input = getClass().getResourceAsStream("schema19.sql")) {
       assertNotNull(input);
-      String ddl = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+      String ddl =
+          new String(input.readAllBytes(), StandardCharsets.UTF_8)
+              .replace("\r\n", "\n")
+              .replace('\r', '\n');
       try (var c = raw();
           var s = c.createStatement()) {
         for (String sql : ddl.split("(?m)^-- VIBEMINER-STATEMENT\\R"))
@@ -185,8 +188,10 @@ class AuthorizedRetentionSchema20Test {
       assertEquals(53, before.size());
     }
     try (var c = new SqliteCatalog(database()).connect()) {
-      assertEquals(20, scalar(c, "PRAGMA user_version"));
-      assertEquals(before, rows(c));
+      assertEquals(SqliteCatalog.SCHEMA_VERSION, scalar(c, "PRAGMA user_version"));
+      var after = rows(c);
+      assertEquals(List.of(), after.remove("build_readiness_observations"));
+      assertEquals(before, after);
       boolean indexed = false;
       try (var s = c.createStatement();
           var plan =
