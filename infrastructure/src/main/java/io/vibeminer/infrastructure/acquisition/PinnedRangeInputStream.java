@@ -3,12 +3,15 @@ package io.vibeminer.infrastructure.acquisition;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
@@ -35,6 +38,14 @@ public final class PinnedRangeInputStream extends InputStream {
     CompletableFuture<AcquiredRange> fetch(CdnRangeRequest request);
   }
 
+  /** Transport observations contain no payload buffers and imply no whole-object proof. */
+  public record RangeObservation(
+      CdnRangeRequest request,
+      URI actualSourceUri,
+      Instant receivedAt,
+      int responseBytes,
+      String rangeSha256) {}
+
   private static final byte[] EMPTY = new byte[0];
   private final RangeSource source;
   private final CdnResource resource;
@@ -43,6 +54,7 @@ public final class PinnedRangeInputStream extends InputStream {
   private final Limits limits;
   private final BooleanSupplier cancelled;
   private final LongSupplier nanoClock;
+  private final Consumer<RangeObservation> observer;
   private final long started;
   private final AtomicBoolean closed = new AtomicBoolean();
   private final AtomicBoolean reading = new AtomicBoolean();
@@ -63,6 +75,29 @@ public final class PinnedRangeInputStream extends InputStream {
       Limits limits,
       BooleanSupplier cancelled) {
     this(
+        transport,
+        resource,
+        wholeLength,
+        childOffset,
+        childLength,
+        maximumSlice,
+        limits,
+        cancelled,
+        observation -> {});
+  }
+
+  /** Observer runs inline once per accepted slice, before exposing bytes; failure is terminal. */
+  public PinnedRangeInputStream(
+      PinnedCdnRangeTransport transport,
+      CdnResource resource,
+      long wholeLength,
+      long childOffset,
+      long childLength,
+      int maximumSlice,
+      Limits limits,
+      BooleanSupplier cancelled,
+      Consumer<RangeObservation> observer) {
+    this(
         Objects.requireNonNull(transport)::fetch,
         resource,
         wholeLength,
@@ -71,7 +106,8 @@ public final class PinnedRangeInputStream extends InputStream {
         maximumSlice,
         limits,
         cancelled,
-        System::nanoTime);
+        System::nanoTime,
+        observer);
   }
 
   PinnedRangeInputStream(
@@ -84,6 +120,31 @@ public final class PinnedRangeInputStream extends InputStream {
       Limits limits,
       BooleanSupplier cancelled,
       LongSupplier nanoClock) {
+    this(
+        source,
+        resource,
+        wholeLength,
+        childOffset,
+        childLength,
+        maximumSlice,
+        limits,
+        cancelled,
+        nanoClock,
+        observation -> {});
+  }
+
+  private PinnedRangeInputStream(
+      RangeSource source,
+      CdnResource resource,
+      long wholeLength,
+      long childOffset,
+      long childLength,
+      int maximumSlice,
+      Limits limits,
+      BooleanSupplier cancelled,
+      LongSupplier nanoClock,
+      Consumer<RangeObservation> observer) {
+    this.observer = Objects.requireNonNull(observer);
     this.source = Objects.requireNonNull(source);
     this.resource = Objects.requireNonNull(resource);
     this.limits = Objects.requireNonNull(limits);
@@ -234,6 +295,14 @@ public final class PinnedRangeInputStream extends InputStream {
       byte[] bytes = response.bytes();
       if (bytes.length != count)
         throw fail(new IOException("Range receipt is truncated or oversized"));
+      observer.accept(
+          new RangeObservation(
+              request,
+              response.actualSourceUri(),
+              response.receivedAt(),
+              bytes.length,
+              response.rangeSha256()));
+      check();
       buffer = bytes;
       return true;
     } catch (InterruptedException interrupted) {
