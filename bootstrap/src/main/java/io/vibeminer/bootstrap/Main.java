@@ -71,7 +71,21 @@ public final class Main {
           new LazyMetadataReuseService(content),
           new LazyMetadataRepairService(content),
           new LazyItemNamesService(content),
+          new LazyItemEvidenceService(content),
           List.of(args).contains("--fixtures"));
+      AtlasApplication.configureItemEvidenceDestinationChooser(
+          (owner, suggestedFileName) -> {
+            var chooser = new javafx.stage.FileChooser();
+            chooser.setTitle("Choose Item evidence destination");
+            chooser.setInitialFileName(suggestedFileName);
+            chooser
+                .getExtensionFilters()
+                .add(
+                    new javafx.stage.FileChooser.ExtensionFilter(
+                        "JSON evidence (*.json)", "*.json"));
+            return java.util.Optional.ofNullable(chooser.showSaveDialog(owner))
+                .map(java.io.File::getPath);
+          });
       javafx.application.Application.launch(AtlasApplication.class, args);
     } finally {
       shutdown(content, workspaceExecutor);
