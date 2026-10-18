@@ -26,6 +26,8 @@ Current implementation is [milestone 5](https://github.com/aircan80/vibeminer/mi
 - [Build browser delivery stories](BUILD-BROWSER-STORIES.md)
 - [Build browser acceptance](BUILD-BROWSER-ACCEPTANCE.md)
 - [Complete declared metadata required to open a build](BUILD-OPENING.md)
+- [Selected preparation view and job lifecycle](BUILD-PREPARATION.md)
+- [Measured SQLite inventory performance](SQLITE-INVENTORY-PERFORMANCE.md)
 - [Declared manifest inventory formats and admission boundaries](BUILD-INVENTORY-FORMATS.md)
 - [Selected Tables and top-navigation delivery stories](TABLES-STORIES.md)
 - [Optional table relationship labels and proof limits](TABLE-RELATION-LABELS.md)
