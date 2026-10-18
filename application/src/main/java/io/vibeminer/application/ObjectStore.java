@@ -31,6 +31,20 @@ public interface ObjectStore extends AutoCloseable {
       CompletionVerification completion,
       CancellationToken cancellation);
 
+  /**
+   * Explicitly repairs only the exact original physical SHA-256/length. The verifier runs after
+   * complete physical authentication and before atomic promotion. Caller owns the input stream.
+   * Unsupported adapters fail closed; this method never falls back to ordinary publication.
+   */
+  default StoredObject repairVerified(
+      InputStream source,
+      StoredObject expectedOriginal,
+      long maximumBytes,
+      CompletionVerification completion,
+      CancellationToken cancellation) {
+    throw new UnsupportedOperationException("Exact original object repair is unsupported");
+  }
+
   /** Rehashes stored bytes; absent and corrupt objects have distinct outcomes. */
   Optional<StoredObject> verify(ObjectDigest digest, CancellationToken cancellation);
 

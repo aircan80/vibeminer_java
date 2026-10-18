@@ -36,6 +36,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class FileObjectStore implements ObjectStore {
   private static final int BUFFER_BYTES = 64 * 1024;
+
+  @FunctionalInterface
+  interface AtomicMover {
+    void move(Path source, Path target, boolean replace) throws IOException;
+  }
+
+  private final AtomicMover atomicMover;
   private final Object coordinator = new Object();
   private final Path objects;
   private final Path work;
@@ -47,6 +54,22 @@ public final class FileObjectStore implements ObjectStore {
   private int readers;
 
   public FileObjectStore(Path root) {
+    this(
+        root,
+        (source, target, replace) -> {
+          if (replace)
+            Files.move(
+                source,
+                target,
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+          else Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        });
+  }
+
+  /** Deterministic failure seam; production always requires the native atomic move. */
+  FileObjectStore(Path root, AtomicMover atomicMover) {
+    this.atomicMover = Objects.requireNonNull(atomicMover);
     Objects.requireNonNull(root, "root");
     FileChannel channel = null;
     FileLock lock = null;
@@ -169,7 +192,8 @@ public final class FileObjectStore implements ObjectStore {
       long maximumBytes,
       CancellationToken cancellation) {
     Objects.requireNonNull(expected, "expected");
-    return publishInternal(source, expected.length(), maximumBytes, expected, null, cancellation);
+    return publishInternal(
+        source, expected.length(), maximumBytes, expected, null, null, cancellation);
   }
 
   @Override
@@ -181,7 +205,27 @@ public final class FileObjectStore implements ObjectStore {
       CancellationToken cancellation) {
     Objects.requireNonNull(completion, "completion");
     return publishInternal(
-        encodedSource, expectedEncodedLength, maximumBytes, null, completion, cancellation);
+        encodedSource, expectedEncodedLength, maximumBytes, null, completion, null, cancellation);
+  }
+
+  /** Conservative repair admission refuses promotion while any store read lease is active. */
+  @Override
+  public StoredObject repairVerified(
+      InputStream source,
+      StoredObject expectedOriginal,
+      long maximumBytes,
+      CompletionVerification completion,
+      CancellationToken cancellation) {
+    Objects.requireNonNull(expectedOriginal, "expectedOriginal");
+    Objects.requireNonNull(completion, "completion");
+    return publishInternal(
+        source,
+        expectedOriginal.length(),
+        maximumBytes,
+        null,
+        completion,
+        expectedOriginal,
+        cancellation);
   }
 
   private StoredObject publishInternal(
@@ -190,6 +234,7 @@ public final class FileObjectStore implements ObjectStore {
       long maximumBytes,
       ExpectedObjectChecksum expectedChecksum,
       CompletionVerification completion,
+      StoredObject expectedRepair,
       CancellationToken cancellation) {
     Objects.requireNonNull(source, "source");
     Objects.requireNonNull(cancellation, "cancellation");
@@ -199,6 +244,7 @@ public final class FileObjectStore implements ObjectStore {
       throw failure(LIMIT_EXCEEDED, "Object exceeds the configured byte limit");
     beginOperation();
     Path stage = null;
+    StoredObject object = null;
     try {
       cancellation.throwIfCancellationRequested();
       stage = Files.createTempFile(work, "stage-", ".tmp");
@@ -238,29 +284,40 @@ public final class FileObjectStore implements ObjectStore {
                 sourceHash.digest(), HexFormat.of().parseHex(expectedChecksum.hexDigest()))) {
           throw failure(INTEGRITY_FAILURE, "Object checksum differs from its expected identity");
         }
+        object =
+            new StoredObject(
+                new ObjectDigest(HexFormat.of().formatHex(physicalHash.digest())), total);
+        if (expectedRepair != null && !expectedRepair.equals(object))
+          throw failure(INTEGRITY_FAILURE, "Repair bytes differ from the exact original object");
         if (completion != null) completion.verifyComplete(cancellation);
         cancellation.throwIfCancellationRequested();
         output.force(true);
       }
-      var object =
-          new StoredObject(
-              new ObjectDigest(HexFormat.of().formatHex(physicalHash.digest())), total);
       synchronized (coordinator) {
         cancellation.throwIfCancellationRequested();
         var target = objectPath(object.digest());
         ensureDirectory(target.getParent());
+        if (expectedRepair != null && readers != 0)
+          throw failure(BUSY, "All object read leases must close before repair promotion");
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+          boolean corrupt = false;
+          if (expectedRepair != null && !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS))
+            throw failure(INTEGRITY_FAILURE, "Repair target is not a regular app-owned object");
           try (var existing = openVerifiedChannel(target, object.digest(), cancellation)) {
-            if (existing.size() != total || Files.mismatch(stage, target) != -1) {
+            if (existing.size() != total || Files.mismatch(stage, target) != -1)
               throw failure(
                   INTEGRITY_FAILURE, "An existing physical object conflicts with incoming bytes");
-            }
+          } catch (ObjectStoreException invalid) {
+            if (expectedRepair == null || invalid.code() != INTEGRITY_FAILURE) throw invalid;
+            corrupt = true;
+          }
+          if (corrupt) {
+            cancellation.throwIfCancellationRequested();
+            atomicMover.move(stage, target, true);
+            stage = null;
           }
         } else {
-          // Exclusive process ownership plus this monitor excludes another publisher.
-          // Atomic move is required; unsupported filesystems fail instead of publishing partial
-          // bytes.
-          Files.move(stage, target, StandardCopyOption.ATOMIC_MOVE);
+          atomicMover.move(stage, target, false);
           stage = null;
         }
       }
