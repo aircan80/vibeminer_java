@@ -2,6 +2,7 @@ package io.vibeminer.bootstrap;
 
 import io.vibeminer.application.CancellationToken;
 import io.vibeminer.application.buildoverview.*;
+import io.vibeminer.application.buildreadiness.RecordingBuildOverviewService;
 import io.vibeminer.application.buildretention.*;
 import io.vibeminer.application.content.CanonicalContentRepository;
 import io.vibeminer.application.encodedsource.*;
@@ -11,6 +12,7 @@ import io.vibeminer.application.selectedfile.*;
 import io.vibeminer.infrastructure.acquisition.*;
 import io.vibeminer.infrastructure.buildopening.*;
 import io.vibeminer.infrastructure.buildoverview.SqliteBuildOverviewBackend;
+import io.vibeminer.infrastructure.buildreadiness.SqliteBuildReadinessRepository;
 import io.vibeminer.infrastructure.buildretention.*;
 import io.vibeminer.infrastructure.encodedsource.*;
 import io.vibeminer.infrastructure.encoding.SqliteEncodingLookupIndex;
@@ -27,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class BuildMiningRuntime implements AutoCloseable {
   record Dependencies(
+      java.nio.file.Path catalogPath,
       SqliteCatalog catalog,
       FileObjectStore store,
       CanonicalContentRepository canonical,
@@ -47,6 +50,7 @@ final class BuildMiningRuntime implements AutoCloseable {
   private final BuildRetentionPump pump;
   private final BuildInventoryPreparationService preparation;
   private final BuildOverviewService overview;
+  private final BuildOverviewService actualOverview;
   private final BuildRetentionModeService mode;
   private final Executor controls;
   private final AtomicBoolean cancelled = new AtomicBoolean();
@@ -58,6 +62,7 @@ final class BuildMiningRuntime implements AutoCloseable {
       BuildRetentionPump pump,
       BuildInventoryPreparationService preparation,
       BuildOverviewService overview,
+      BuildOverviewService actualOverview,
       BuildRetentionModeService mode,
       Executor controls) {
     this.authority = authority;
@@ -65,6 +70,7 @@ final class BuildMiningRuntime implements AutoCloseable {
     this.pump = pump;
     this.preparation = preparation;
     this.overview = overview;
+    this.actualOverview = actualOverview;
     this.mode = mode;
     this.controls = controls;
   }
@@ -77,15 +83,9 @@ final class BuildMiningRuntime implements AutoCloseable {
     var index =
         new SqliteEncodingLookupIndex(
             d.catalog(), d.store(), d.admissions(), d.store().contentSession().epoch());
-    var payload =
-        new SelectedFileBudgets(
-            io.vibeminer.application.lookup.LookupBudgets.defaults(),
-            2L << 30,
-            1 << 20,
-            4096,
-            2L << 30,
-            Duration.ofMinutes(10));
-    var archives = ArchiveSearchBudgets.defaults();
+    var policy = reservationPolicy();
+    var payload = policy.payload();
+    var archives = policy.archives();
     var authority =
         new SqliteBuildRetentionInventory(
             d.catalog(),
@@ -94,7 +94,7 @@ final class BuildMiningRuntime implements AutoCloseable {
             index,
             metadataBounds,
             encodingBounds,
-            new SqliteBuildRetentionInventory.ReservationPolicy(payload, archives),
+            policy,
             16);
     try {
       var ledger =
@@ -134,7 +134,7 @@ final class BuildMiningRuntime implements AutoCloseable {
               payload.maximumPayloadRequests(),
               payload.maximumPayloadWireBytes(),
               payload.maximumPayloadDuration());
-      var overview =
+      var actualOverview =
           new DefaultBuildOverviewService(
               new SqliteBuildOverviewBackend(
                   d.catalog(),
@@ -145,9 +145,15 @@ final class BuildMiningRuntime implements AutoCloseable {
                   encodedBounds,
                   d.clock()),
               d.localJobs());
+      var overview =
+          new RecordingBuildOverviewService(
+              actualOverview,
+              new SqliteBuildReadinessRepository(d.catalogPath(), policy),
+              d.localJobs(),
+              SqliteBuildInventory.REVISION);
       var mode = new DefaultBuildRetentionModeService(ledger, pump, d.controls(), d.clock());
       return new BuildMiningRuntime(
-          authority, ledger, pump, preparation, overview, mode, d.controls());
+          authority, ledger, pump, preparation, overview, actualOverview, mode, d.controls());
     } catch (RuntimeException | Error failure) {
       try {
         authority.close();
@@ -161,6 +167,19 @@ final class BuildMiningRuntime implements AutoCloseable {
   static BuildOverview.Limits overviewLimits() {
     return new BuildOverview.Limits(
         50_000_000, 512L << 30, 128, 5_000_000_000L, Duration.ofHours(1));
+  }
+
+  /** Pure current policy, shared by source authority and historical chooser filtering. */
+  static SqliteBuildRetentionInventory.ReservationPolicy reservationPolicy() {
+    return new SqliteBuildRetentionInventory.ReservationPolicy(
+        new SelectedFileBudgets(
+            io.vibeminer.application.lookup.LookupBudgets.defaults(),
+            2L << 30,
+            1 << 20,
+            4096,
+            2L << 30,
+            Duration.ofMinutes(10)),
+        ArchiveSearchBudgets.defaults());
   }
 
   BuildInventoryPreparationService preparation() {
@@ -229,6 +248,7 @@ final class BuildMiningRuntime implements AutoCloseable {
     if (!cancelled.compareAndSet(false, true)) return;
     preparation.close();
     overview.close();
+    actualOverview.close();
     mode.close();
     pump.close();
   }

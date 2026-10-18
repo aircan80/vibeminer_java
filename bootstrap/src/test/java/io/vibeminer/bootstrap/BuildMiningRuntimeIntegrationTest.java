@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import io.vibeminer.application.buildopening.BuildMetadataAdmission;
 import io.vibeminer.application.buildoverview.BuildOverview;
+import io.vibeminer.application.buildreadiness.BuildReadiness;
 import io.vibeminer.application.buildretention.BuildRetention;
 import io.vibeminer.application.inventory.BuildInventoryPreparationResult;
 import java.nio.file.Path;
@@ -95,6 +96,8 @@ class BuildMiningRuntimeIntegrationTest {
         assertEquals(BuildOverview.Readiness.PARTIAL, initial.readiness());
         assertEquals(0, initial.measurements().retainedUnits().orElseThrow());
         assertEquals(0, data.gameObjectRequests());
+        var recordedPartial = lastChecked(metadata, admission, prepared);
+        assertEquals(BuildOverview.Readiness.PARTIAL, recordedPartial.readiness());
         var enabled =
             content
                 .retentionMode()
@@ -117,6 +120,9 @@ class BuildMiningRuntimeIntegrationTest {
           Thread.sleep(20);
         } while (true);
         assertEquals(1, complete.measurements().retainedUnits().orElseThrow());
+        var recordedFull = lastChecked(metadata, admission, prepared);
+        assertEquals(BuildOverview.Readiness.FULL, recordedFull.readiness());
+        assertEquals(complete.measuredAt(), recordedFull.measuredAt());
         assertEquals(
             complete.measurements().plannedEncodedBytes(),
             complete.measurements().retainedScopeEncodedBytes());
@@ -186,5 +192,28 @@ class BuildMiningRuntimeIntegrationTest {
         .completion()
         .toCompletableFuture()
         .get(10, TimeUnit.SECONDS);
+  }
+
+  private static BuildReadiness.Observation lastChecked(
+      MetadataRuntime metadata,
+      BuildMetadataAdmission admission,
+      BuildInventoryPreparationResult prepared)
+      throws Exception {
+    var context =
+        new BuildReadiness.Context(
+            admission.reference(),
+            admission.locale(),
+            admission.scopeRevision(),
+            prepared.target().scopeRevision());
+    var statuses =
+        metadata
+            .readiness()
+            .read(java.util.List.of(context))
+            .completion()
+            .toCompletableFuture()
+            .get(10, TimeUnit.SECONDS);
+    assertEquals(1, statuses.size());
+    assertEquals(BuildReadiness.AdmissionPresence.PRESENT, statuses.getFirst().admission());
+    return statuses.getFirst().lastChecked().orElseThrow();
   }
 }

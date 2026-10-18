@@ -2,6 +2,7 @@ package io.vibeminer.bootstrap;
 
 import io.vibeminer.application.*;
 import io.vibeminer.application.buildlibrary.*;
+import io.vibeminer.application.buildreadiness.*;
 import io.vibeminer.application.discoveryhistory.*;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.infrastructure.discovery.OfficialDiscoveryService;
@@ -23,6 +24,7 @@ final class MetadataRuntime implements AutoCloseable {
   private final DiscoveryHistoryService history;
   private final WorkspaceService workspaces;
   private final BuildLibraryService library;
+  private final BuildReadinessService readiness;
   private final DiscoveryService discovery;
   private final AtomicBoolean closed = new AtomicBoolean();
   private final Object resumeMonitor = new Object();
@@ -45,6 +47,11 @@ final class MetadataRuntime implements AutoCloseable {
     this.history = history;
     this.workspaces = workspaces;
     this.library = library;
+    readiness =
+        new DefaultBuildReadinessService(
+            new io.vibeminer.infrastructure.buildreadiness.SqliteBuildReadinessRepository(
+                catalogPath, BuildMiningRuntime.reservationPolicy()),
+            workers);
     discovery =
         new DiscoveryService() {
           public List<BuildSnapshot> fixtureBuilds() {
@@ -155,6 +162,10 @@ final class MetadataRuntime implements AutoCloseable {
     return library;
   }
 
+  BuildReadinessService readiness() {
+    return readiness;
+  }
+
   DiscoveryHistoryService history() {
     return history;
   }
@@ -242,6 +253,7 @@ final class MetadataRuntime implements AutoCloseable {
     if (pendingResume != null)
       pendingResume.completeExceptionally(new IllegalStateException("Metadata runtime closed"));
     if (pendingContent != null) pendingContent.cancel(false);
+    readiness.close();
     library.close();
     history.close();
     // Preserve accepted queued runnables: each sees the closed service and settles without I/O.

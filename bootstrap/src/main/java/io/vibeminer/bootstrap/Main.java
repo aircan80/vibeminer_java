@@ -35,6 +35,10 @@ public final class Main {
           new LazyItemEvidenceService(content),
           List.of(args).contains("--fixtures"));
       AtlasApplication.configureBuildLibrary(metadata.library());
+      AtlasApplication.configureBuildReadiness(
+          metadata.readiness(),
+          io.vibeminer.infrastructure.buildopening.BuildOpeningPolicy.SCOPE_REVISION,
+          io.vibeminer.infrastructure.inventory.SqliteBuildInventory.REVISION);
       AtlasApplication.configureBuildOpening(new LazyBuildOpeningService(content));
       AtlasApplication.configureBuildMining(
           mining, mining, mining, BuildMiningRuntime.overviewLimits());

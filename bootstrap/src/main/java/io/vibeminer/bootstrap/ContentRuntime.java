@@ -347,6 +347,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       buildMining =
           BuildMiningRuntime.open(
               new BuildMiningRuntime.Dependencies(
+                  dataDirectory.resolve("catalog.sqlite"),
                   sharedCatalog,
                   store,
                   contentClaims,
