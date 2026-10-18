@@ -10,6 +10,7 @@ import io.vibeminer.domain.*;
 import io.vibeminer.domain.selectedfile.*;
 import io.vibeminer.infrastructure.acquisition.*;
 import io.vibeminer.infrastructure.acquisition.CapturedBuildSource;
+import io.vibeminer.infrastructure.encodedsource.OfficialEncodedSourceLocator;
 import io.vibeminer.infrastructure.encodedsource.OfficialEncodedSourcePublisher;
 import io.vibeminer.protocol.tact.archive.*;
 import io.vibeminer.protocol.tact.blte.*;
@@ -33,6 +34,7 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
   private final Clock clock;
   private final LongSupplier nanoClock;
   private final OfficialEncodedSourcePublisher publisher;
+  private final OfficialEncodedSourceLocator sourceLocator;
   private final OfficialFileLookupGateway roots;
   private final SelectedFileCandidates candidates;
   private final Map<String, Session<CandidatePlan>> plans = new LinkedHashMap<>();
@@ -63,6 +65,8 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
     this.metadata = Objects.requireNonNull(metadata);
     this.clock = Objects.requireNonNull(clock);
     this.publisher = new OfficialEncodedSourcePublisher(store, ranges, nanoClock);
+    this.sourceLocator =
+        new OfficialEncodedSourceLocator(configurations, ranges, metadata, nanoClock);
     roots = new OfficialFileLookupGateway(store, configurations, ranges, clock);
     candidates =
         new SelectedFileCandidates(
@@ -135,25 +139,21 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
             cancellation,
             nanoClock);
     validateChoice(choice, work.token());
-    var resource = resource(choice, choice.candidate().encodingKey());
     try {
-      work.reserve(0);
-      var request = new CdnSizeRequest(resource, plan.budgets().maximumEncodedFileBytes());
-      var observation = work.await(metadata.size(request));
-      if (!observation.request().equals(request)
-          || !observation.actualSourceUri().equals(resource.uri()))
-        throw fail(INTEGRITY_FAILURE, "Loose size observation changed source");
-      requireCandidateLength(choice, observation.observedWholeBytes());
       var locator =
-          new FileLocator(
-              FileLocator.Kind.LOOSE,
-              resource.uri().toString(),
-              resource.key(),
-              observation.observedWholeBytes(),
-              0,
-              observation.observedWholeBytes(),
-              Optional.empty());
-      return new LooseProbe(Optional.of(located(choice, locator)), Optional.empty());
+          sourceLocator.probeLoose(
+              plan.variant().build(),
+              choice.candidate().encodingKey(),
+              choice.candidate().encodedBytes(),
+              locatorPolicy(
+                  plan.budgets(),
+                  ArchiveSearchBudgets.defaults(),
+                  plan.budgets().lookup().maximumMetadataWireBytes(),
+                  plan.budgets().lookup().maximumMetadataRequests(),
+                  plan.budgets().maximumMetadataDuration()),
+              locatorCancellation(work));
+      return new LooseProbe(
+          Optional.of(located(choice, selectedLocator(locator))), Optional.empty());
     } catch (Exception error) {
       var cause = unwrap(error);
       if (cause instanceof AcquisitionException acquisition
@@ -184,131 +184,69 @@ public final class OfficialSelectedFileGateway implements SelectedFileGateway, A
             nanoClock);
     validateLoose404Permit(permit, work.token());
     var choice = permit.choice();
-    var plan = choice.plan();
-    int checked = 0, advertised = 0;
     try {
-      var route = CapturedBuildSource.resolve(plan.variant().build());
-      int cap = (int) plan.budgets().lookup().maximumConfigurationBytes();
-      var configRequest =
-          new CdnRequest(
-              route, CdnRequest.Kind.CONFIG, plan.variant().build().cdnConfig(), cap, -1);
-      work.reserve(cap);
-      var bytes = work.await(configurations.fetch(configRequest));
-      work.settle(cap, bytes.bytes().length);
-      if (!bytes.request().equals(configRequest) || !bytes.configurationMd5Verified())
-        throw fail(INTEGRITY_FAILURE, "Pinned CDN configuration receipt changed");
-      var config =
-          new TactConfigParser()
-              .parse(
-                  bytes.bytes(),
-                  configRequest.key(),
-                  new TactConfigParser.Limits(cap, 20000, cap, 100000, 2L << 30, 2L << 30),
-                  work::cancelled);
-      var keys = config.values().get("archives");
-      if (keys == null)
-        throw fail(UNSUPPORTED, "Pinned CDN configuration has no supported archive list");
-      advertised = keys.size();
-      var hints = config.values().getOrDefault("archives-index-size", List.of());
-      if (!hints.isEmpty() && hints.size() != keys.size())
-        throw fail(INTEGRITY_FAILURE, "Advertised archive/index size association is ambiguous");
-      var parser = new ArchiveIndexParser();
-      long maxIndex = plan.budgets().lookup().maximumIndexBytes();
-      var parserLimits = new ArchiveIndexParser.Limits(100_000_000, 100_000, maxIndex);
-      for (int index = 0; index < keys.size() && checked < budgets.maximumArchives(); index++) {
-        work.check();
-        String key = keys.get(index);
-        var parent = new CdnResource(route, key, CdnResource.Kind.DATA);
-        var source = new CdnResource(route, key, CdnResource.Kind.INDEX);
-        var footerRequest = new CdnIndexFooterRequest(source, maxIndex);
-        work.reserve(28);
-        var observed = work.await(metadata.footer(footerRequest));
-        if (!observed.request().equals(footerRequest)
-            || !observed.actualSourceUri().equals(source.uri()))
-          throw fail(INTEGRITY_FAILURE, "Archive footer observation changed source");
-        var footer =
-            parser.authenticateFooter(
-                observed.bytes(),
-                key,
-                observed.observedWholeBytes(),
-                parserLimits,
-                work::cancelled);
-        OptionalLong advertisedIndexBytes = OptionalLong.empty();
-        if (!hints.isEmpty()) {
-          try {
-            long hint = Long.parseLong(hints.get(index));
-            if (hint <= 0) throw new NumberFormatException();
-            advertisedIndexBytes = OptionalLong.of(hint);
-          } catch (NumberFormatException invalid) {
-            throw fail(
-                UNSUPPORTED,
-                "Advertised archive index hint is not a supported positive size",
-                invalid);
-          }
-        }
-        byte[] tocBytes =
-            footer.tocBytes() == 0
-                ? new byte[0]
-                : range(work, source, footer.indexBytes(), footer.tocOffset(), footer.tocBytes());
-        var toc = parser.authenticateToc(footer, tocBytes, work::cancelled);
-        var page = toc.pageFor(choice.candidate().encodingKey());
-        if (page.isEmpty()) {
-          checked++;
-          continue;
-        }
-        byte[] pageBytes =
-            range(work, source, footer.indexBytes(), page.get().indexOffset(), page.get().length());
-        var match =
-            parser.lookup(
-                toc, page.get(), pageBytes, choice.candidate().encodingKey(), work::cancelled);
-        checked++;
-        if (match.isEmpty()) continue;
-        var child = match.get();
-        requireCandidateLength(choice, child.encodedSize());
-        work.reserve(0);
-        var parentRequest = new CdnSizeRequest(parent, budgets.maximumArchiveBytes());
-        var size = work.await(metadata.size(parentRequest));
-        if (!size.request().equals(parentRequest)
-            || !size.actualSourceUri().equals(parent.uri())
-            || child.archiveEndExclusive() > size.observedWholeBytes())
-          throw fail(
-              INTEGRITY_FAILURE, "Authenticated child span exceeds observed archive geometry");
-        var proof =
-            new ArchiveMappingProof(
-                key,
-                observed.footerSha256(),
-                SelectedFileCandidates.sha256(tocBytes),
-                SelectedFileCandidates.sha256(pageBytes),
-                "archive-index-footer-toc-page-v1",
-                advertisedIndexBytes,
-                footer.indexBytes());
-        var locator =
-            new FileLocator(
-                FileLocator.Kind.ARCHIVE,
-                parent.uri().toString(),
-                key,
-                size.observedWholeBytes(),
-                child.archiveOffset(),
-                child.encodedSize(),
-                Optional.of(proof));
-        return new ArchiveSearchResult(
-            Optional.of(located(choice, locator)), checked, advertised, checked == advertised);
-      }
-      return new ArchiveSearchResult(Optional.empty(), checked, advertised, checked == advertised);
-    } catch (Exception error) {
-      var typed = classify(error);
-      if (typed.code() == BUDGET_EXCEEDED)
-        return new ArchiveSearchResult(Optional.empty(), checked, advertised, false);
-      throw typed;
+      var result =
+          sourceLocator.searchArchives(
+              choice.plan().variant().build(),
+              choice.candidate().encodingKey(),
+              choice.candidate().encodedBytes(),
+              locatorPolicy(
+                  choice.plan().budgets(),
+                  budgets,
+                  budgets.maximumWireBytes(),
+                  budgets.maximumRequests(),
+                  budgets.maximumDuration()),
+              locatorCancellation(work));
+      return new ArchiveSearchResult(
+          result.located().map(value -> located(choice, selectedLocator(value))),
+          result.checkedArchives(),
+          result.advertisedArchives(),
+          result.complete());
+    } catch (Exception failure) {
+      throw classify(failure);
     }
   }
 
-  private byte[] range(Work work, CdnResource resource, long whole, long start, int count) {
-    work.reserve(count);
-    var request = new CdnRangeRequest(resource, whole, start, count, count);
-    var result = work.await(ranges.fetch(request));
-    if (!result.request().equals(request) || !result.actualSourceUri().equals(resource.uri()))
-      throw fail(INTEGRITY_FAILURE, "Selected archive index receipt changed source");
-    return result.bytes();
+  private static CancellationToken locatorCancellation(Work work) {
+    return () -> {
+      try {
+        work.check();
+        return false;
+      } catch (SelectedFileException bounded) {
+        if (bounded.code() == BUDGET_EXCEEDED)
+          throw new EncodedSourceException(
+              EncodedSourceException.Code.BUDGET_EXCEEDED, bounded.getMessage(), bounded);
+        throw bounded;
+      }
+    };
+  }
+
+  private static OfficialEncodedSourceLocator.Policy locatorPolicy(
+      SelectedFileBudgets selected,
+      ArchiveSearchBudgets archives,
+      long wire,
+      int requests,
+      Duration duration) {
+    return new OfficialEncodedSourceLocator.Policy(
+        (int) selected.lookup().maximumConfigurationBytes(),
+        selected.lookup().maximumIndexBytes(),
+        selected.maximumEncodedFileBytes(),
+        archives.maximumArchives(),
+        archives.maximumArchiveBytes(),
+        wire,
+        requests,
+        duration);
+  }
+
+  private static FileLocator selectedLocator(EncodedSourcePlan.Location location) {
+    return new FileLocator(
+        FileLocator.Kind.valueOf(location.kind().name()),
+        location.resourceUrl(),
+        location.resourceKey(),
+        location.resourceBytes(),
+        location.childOffset(),
+        location.childLength(),
+        location.archiveProof());
   }
 
   private LocatedFilePlan located(CandidateChoice choice, FileLocator locator) {

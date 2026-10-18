@@ -86,6 +86,16 @@ class SqliteBuildInventoryTest {
     Fixture(
         boolean malformedRoot, boolean missingMapping, boolean prefixCollision, boolean zeroEncoded)
         throws Exception {
+      this(malformedRoot, missingMapping, prefixCollision, zeroEncoded, false);
+    }
+
+    Fixture(
+        boolean malformedRoot,
+        boolean missingMapping,
+        boolean prefixCollision,
+        boolean zeroEncoded,
+        boolean officialSourceRow)
+        throws Exception {
       try (var c = sql.connect()) {
         BuildMetadataAdmissionSql.migrate(c);
         EncodingLookupSchema.migrate(c);
@@ -167,8 +177,11 @@ class SqliteBuildInventoryTest {
                       base + "cdns",
                       NOW,
                       utf(
-                          "Name!STRING:0|Path!STRING:0|Hosts!STRING:0\n"
-                              + "us|tpr/wow|cdn.example.invalid\n")));
+                          officialSourceRow
+                              ? "Name!STRING:0|Path!STRING:0|Hosts!STRING:0|Servers!STRING:0|ConfigPath!STRING:0\n"
+                                  + "us|tpr/wow|us.cdn.blizzard.com|https://us.cdn.blizzard.com/|tpr/configs/data\n"
+                              : "Name!STRING:0|Path!STRING:0|Hosts!STRING:0\n"
+                                  + "us|tpr/wow|cdn.example.invalid\n")));
       new SqliteDiscoveryHistoryRepository(sql)
           .append(event, DiscoveryHistoryLimits.defaults(), NONE);
       var reg =
