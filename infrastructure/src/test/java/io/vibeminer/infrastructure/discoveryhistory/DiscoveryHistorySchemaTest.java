@@ -30,7 +30,7 @@ class DiscoveryHistorySchemaTest {
     try (var c = catalog.connect();
         var q = c.createStatement()) {
       try (var r = q.executeQuery("PRAGMA user_version")) {
-        assertEquals(13, r.getInt(1));
+        assertEquals(SqliteCatalog.SCHEMA_VERSION, r.getInt(1));
       }
       try (var r = q.executeQuery("SELECT bytes FROM source_blobs")) {
         assertArrayEquals(original, r.getBytes(1));

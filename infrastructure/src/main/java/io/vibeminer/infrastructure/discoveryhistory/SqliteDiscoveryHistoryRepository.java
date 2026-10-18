@@ -192,7 +192,7 @@ public final class SqliteDiscoveryHistoryRepository implements DiscoveryHistoryR
         });
   }
 
-  private Optional<DiscoveryEvent> readEvent(Connection c, UUID id, CancellationToken token)
+  Optional<DiscoveryEvent> readEvent(Connection c, UUID id, CancellationToken token)
       throws SQLException {
     var found = header(c, id);
     if (found.isEmpty()) return Optional.empty();
@@ -208,7 +208,7 @@ public final class SqliteDiscoveryHistoryRepository implements DiscoveryHistoryR
     return Optional.of(mapper.replay(event));
   }
 
-  private Optional<Header> header(Connection c, UUID id) throws SQLException {
+  Optional<Header> header(Connection c, UUID id) throws SQLException {
     try (var q =
         c.prepareStatement(
             "SELECT"
@@ -362,7 +362,7 @@ public final class SqliteDiscoveryHistoryRepository implements DiscoveryHistoryR
     }
   }
 
-  private record Header(DiscoveryEventSummary summary, byte[] record) {}
+  record Header(DiscoveryEventSummary summary, byte[] record) {}
 
   @FunctionalInterface
   private interface Work<T> {

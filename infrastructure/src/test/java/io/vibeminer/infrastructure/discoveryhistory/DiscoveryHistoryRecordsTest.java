@@ -2,6 +2,7 @@ package io.vibeminer.infrastructure.discoveryhistory;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.vibeminer.application.buildlibrary.BuildLibraryReference;
 import io.vibeminer.application.discoveryhistory.DiscoveryEvent;
 import io.vibeminer.application.discoveryhistory.DiscoveryEventSummary;
 import io.vibeminer.domain.*;
@@ -260,6 +261,43 @@ class DiscoveryHistoryRecordsTest {
         event.cdns(),
         event.selectedCdn(),
         builds);
+  }
+
+  @Test
+  void libraryReferencesProjectStrictMetadataAndShareOnlyTwoBodyFreeReceipts() {
+    var event = event(64, 1024 * 1024);
+    var encoded = DiscoveryHistoryRecords.event(event);
+    var references = DiscoveryHistoryRecords.libraryReferences(encoded, 92);
+    assertEquals(BuildLibraryReference.from(event, 92), references);
+    var first = references.getFirst();
+    assertEquals(Map.of("Future", "café 未来", "Empty", ""), first.key().additionalReferences());
+    assertEquals(event.versions().source().sha256(), first.versions().sha256());
+    assertEquals(1024 * 1024, first.versions().length());
+    for (var reference : references) {
+      assertSame(first.versions(), reference.versions());
+      assertSame(first.cdns(), reference.cdns());
+      assertSame(first.selectedCdn(), reference.selectedCdn());
+      assertEquals(reference.snapshotId(), reference.key().snapshotIdFor(reference.region()));
+    }
+    assertThrows(UnsupportedOperationException.class, () -> references.clear());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DiscoveryHistoryRecords.libraryReferences(encoded, 0));
+    // Projection accepts just metadata, without the two 1MiB raw bodies or source objects.
+    assertTrue(encoded.length < 65536);
+    var corrupted = encoded.clone();
+    int offset = indexOf(corrupted, first.snapshotId().getBytes(StandardCharsets.UTF_8));
+    corrupted[offset] = corrupted[offset] == '0' ? (byte) '1' : (byte) '0';
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DiscoveryHistoryRecords.libraryReferences(corrupted, 92));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            DiscoveryHistoryRecords.libraryReferences(
+                Arrays.copyOf(encoded, encoded.length + 1), 92));
+    assertThrows(
+        IllegalArgumentException.class, () -> DiscoveryHistoryRecords.libraryReferences(null, 92));
   }
 
   @Test

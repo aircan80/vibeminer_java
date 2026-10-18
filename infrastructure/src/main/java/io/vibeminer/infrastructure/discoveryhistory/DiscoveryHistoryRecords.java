@@ -1,5 +1,7 @@
 package io.vibeminer.infrastructure.discoveryhistory;
 
+import io.vibeminer.application.buildlibrary.BuildLibraryReference;
+import io.vibeminer.application.buildlibrary.BuildReferenceGroupKey;
 import io.vibeminer.application.discoveryhistory.DiscoveryEvent;
 import io.vibeminer.application.discoveryhistory.DiscoveryEventSummary;
 import io.vibeminer.application.discoveryhistory.DiscoveryEventSummary.DocumentReceipt;
@@ -105,6 +107,31 @@ public final class DiscoveryHistoryRecords {
     try {
       var value = metadata(bytes);
       return summary(value, sequence);
+    } catch (RuntimeException failure) {
+      throw invalid(failure);
+    }
+  }
+
+  /** Body-free reader projection; selection and registration still require exact source replay. */
+  static List<BuildLibraryReference> libraryReferences(byte[] record, long sequence) {
+    try {
+      var value = metadata(record);
+      return value.builds.stream()
+          .map(
+              row ->
+                  new BuildLibraryReference(
+                      BuildReferenceGroupKey.from(
+                          new DiscoveryEvent.ObservedBuild(row.build, row.ordinal, row.values)),
+                      value.id,
+                      sequence,
+                      row.build.snapshotId(),
+                      row.ordinal,
+                      value.region,
+                      value.at,
+                      value.versions.receipt,
+                      value.cdns.receipt,
+                      value.cdn))
+          .toList();
     } catch (RuntimeException failure) {
       throw invalid(failure);
     }
