@@ -1,7 +1,11 @@
 package io.vibeminer.bootstrap;
 
+import io.vibeminer.application.ObjectStore;
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.bootstrap.DefaultBootstrapService;
+import io.vibeminer.application.item.DefaultItemProjectionService;
+import io.vibeminer.application.item.ItemProjectionBackend;
+import io.vibeminer.application.item.ItemProjectionService;
 import io.vibeminer.application.lookup.DefaultFileLookupService;
 import io.vibeminer.application.lookup.FileLookupService;
 import io.vibeminer.application.selectedfile.DefaultSelectedFileService;
@@ -12,6 +16,8 @@ import io.vibeminer.infrastructure.acquisition.PinnedCdnTransport;
 import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
 import io.vibeminer.infrastructure.bootstrap.OfficialBootstrapArtifactGateway;
 import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
+import io.vibeminer.infrastructure.item.RetainedItemProjectionSourceReader;
+import io.vibeminer.infrastructure.item.SqliteItemProjectionBackend;
 import io.vibeminer.infrastructure.lookup.OfficialFileLookupGateway;
 import io.vibeminer.infrastructure.lookup.OfficialSelectedFileGateway;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
@@ -24,6 +30,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /** Concrete content resources, initialized only by an explicit content action on a worker. */
@@ -32,6 +39,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final HttpClient client;
   private final ExecutorService orchestration;
   private final ExecutorService acquisition;
+  private final ExecutorService itemWorkers;
+  private final ItemProjectionService itemProjection;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -48,7 +57,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       FileLookupService lookup,
       OfficialFileLookupGateway lookupGateway,
       SelectedFileService selectedFiles,
-      OfficialSelectedFileGateway selectedGateway) {
+      OfficialSelectedFileGateway selectedGateway,
+      ExecutorService itemWorkers,
+      ItemProjectionService itemProjection) {
     this.store = store;
     this.client = client;
     this.orchestration = orchestration;
@@ -58,6 +69,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     this.lookupGateway = lookupGateway;
     this.selectedFiles = selectedFiles;
     this.selectedGateway = selectedGateway;
+    this.itemWorkers = itemWorkers;
+    this.itemProjection = itemProjection;
   }
 
   static ContentRuntime open(Path dataDirectory) {
@@ -72,11 +85,20 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
 
   /** Composition seam for deterministic tests; this runtime owns the supplied client. */
   static ContentRuntime open(Path dataDirectory, Supplier<HttpClient> clientFactory) {
+    return open(dataDirectory, clientFactory, (store, backend) -> backend);
+  }
+
+  /** Test composition seam; production retains the real bounded offline backend unchanged. */
+  static ContentRuntime open(
+      Path dataDirectory,
+      Supplier<HttpClient> clientFactory,
+      BiFunction<ObjectStore, ItemProjectionBackend, ItemProjectionBackend> itemDecorator) {
     var store = new FileObjectStore(dataDirectory.resolve("content"));
     var storeSession = store.contentSession();
     HttpClient client = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
+    var itemWorkers = workers("vibeminer-item-projection", 2);
     try {
       var sharedCatalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
       SqliteCanonicalContentRepository.recoverAtStartup(sharedCatalog, storeSession);
@@ -105,6 +127,14 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       var selectedFiles =
           new DefaultSelectedFileService(
               selectedGateway, catalog, selectedCatalog, retention, orchestration, acquisition);
+      var itemReader =
+          new RetainedItemProjectionSourceReader(
+              store, selectedCatalog, selectedGateway, Clock.systemUTC());
+      var itemBackend = new SqliteItemProjectionBackend(sharedCatalog, storeSession, itemReader);
+      var itemProjection =
+          new DefaultItemProjectionService(
+              java.util.Objects.requireNonNull(itemDecorator.apply(store, itemBackend)),
+              itemWorkers);
       return new ContentRuntime(
           store,
           client,
@@ -114,10 +144,13 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           lookup,
           lookupGateway,
           selectedFiles,
-          selectedGateway);
+          selectedGateway,
+          itemWorkers,
+          itemProjection);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
       acquisition.shutdownNow();
+      itemWorkers.shutdownNow();
       if (client != null) client.shutdownNow();
       try {
         store.close();
@@ -144,20 +177,28 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   }
 
   @Override
+  public ItemProjectionService itemProjection() {
+    return itemProjection;
+  }
+
+  @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    itemProjection.close();
     service.close();
     lookup.close();
     selectedFiles.close();
     orchestration.shutdownNow();
     acquisition.shutdownNow();
+    itemWorkers.shutdownNow();
     client.shutdownNow();
     var interrupted = new AtomicBoolean(Thread.interrupted());
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
     try {
       var jobsStopped = await(orchestration, deadline, interrupted);
       var transfersStopped = await(acquisition, deadline, interrupted);
-      if (!jobsStopped || !transfersStopped)
+      var itemsStopped = await(itemWorkers, deadline, interrupted);
+      if (!jobsStopped || !transfersStopped || !itemsStopped)
         throw new IllegalStateException(
             "Content workers have not stopped; active storage remains protected");
       lookupGateway.close();

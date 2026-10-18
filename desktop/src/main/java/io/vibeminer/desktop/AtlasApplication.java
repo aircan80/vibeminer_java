@@ -6,6 +6,7 @@ import io.vibeminer.application.ProductDiscoveryService;
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.lookup.FileLookupService;
 import io.vibeminer.application.selectedfile.SelectedFileService;
+import io.vibeminer.application.item.ItemProjectionService;
 import io.vibeminer.domain.PublishedProduct;
 import io.vibeminer.domain.ProductPointer;
 import io.vibeminer.domain.Workspace;
@@ -41,6 +42,7 @@ public final class AtlasApplication extends Application {
     private static BootstrapService configuredBootstrap;
     private static FileLookupService configuredLookup;
     private static SelectedFileService configuredSelected;
+    private static ItemProjectionService configuredItem;
     public static synchronized void configure(DiscoveryService service, boolean fixtureMode) {
         configure(service,null,fixtureMode);
     }
@@ -57,6 +59,9 @@ public final class AtlasApplication extends Application {
         configure(service,workspaces,products,bootstrap,lookup,null,fixtureMode);
     }
     public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, ProductDiscoveryService products, BootstrapService bootstrap, FileLookupService lookup, SelectedFileService selected, boolean fixtureMode) {
+        configure(service,workspaces,products,bootstrap,lookup,selected,null,fixtureMode);
+    }
+    public static synchronized void configure(DiscoveryService service, WorkspaceService workspaces, ProductDiscoveryService products, BootstrapService bootstrap, FileLookupService lookup, SelectedFileService selected, ItemProjectionService item, boolean fixtureMode) {
         if (configuredService != null) throw new IllegalStateException("Desktop has already been configured");
         configuredService = Objects.requireNonNull(service);
         initialFixtureMode = fixtureMode;
@@ -65,6 +70,7 @@ public final class AtlasApplication extends Application {
         configuredBootstrap = bootstrap;
         configuredLookup = lookup;
         configuredSelected = selected;
+        configuredItem = item;
     }
 
     private Stage stage;
@@ -91,6 +97,9 @@ public final class AtlasApplication extends Application {
     private SelectedFilePresentationModel.State selectedState;
     private SelectedFileRetentionPresentationModel retentionModel;
     private SelectedFileRetentionPresentationModel.State retentionState;
+    private ItemPresentationModel itemModel;
+    private ItemPresentationModel.State itemState;
+    private ItemProjectionPane itemPane;
     private String selectedFileVariant;
     private String installQuery="";
     private String selectedInstallEntry;
@@ -145,6 +154,7 @@ public final class AtlasApplication extends Application {
         });
         stage.setTitle("VibeMiner · Atlas research workbench"); stage.setMinWidth(940); stage.setMinHeight(650);
         stage.setScene(scene);
+        if(configuredItem!=null){itemModel=new ItemPresentationModel(configuredItem,Platform::runLater,this::onItemState);itemState=itemModel.state();}
         if(configuredSelected!=null){retentionModel=new SelectedFileRetentionPresentationModel(configuredSelected,Platform::runLater,this::onRetentionState);retentionState=retentionModel.state();selectedModel=new SelectedFilePresentationModel(configuredSelected,Platform::runLater,this::onSelectedFileState);selectedState=selectedModel.state();}
         if(configuredLookup!=null){lookupModel=new FileLookupPresentationModel(configuredLookup,Platform::runLater,this::onLookupState);lookupState=lookupModel.state();}
         if(configuredBootstrap!=null){installModel=new InstallPresentationModel(configuredBootstrap,Platform::runLater,this::onInstallState);installState=installModel.state();}
@@ -189,7 +199,7 @@ public final class AtlasApplication extends Application {
         state=next;
         updatingContext=true;
         try{if(installModel!=null)installModel.selectBuild(next.selected());if(lookupModel!=null)lookupModel.selectContext(next.selected(),currentLocale);}finally{updatingContext=false;}
-        refreshContextStripe();updateSavedWorkspaceBar();
+        syncItemContext();refreshContextStripe();updateSavedWorkspaceBar();
         status.setText(next.busy()?"Discovery in progress · interface remains available":next.message());render();
     }
     private void refreshContextStripe(){
@@ -232,9 +242,23 @@ public final class AtlasApplication extends Application {
         if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null&&!choiceOnly)lookupPane.refreshSelectedFileState();
     }
     private void onRetentionState(SelectedFileRetentionPresentationModel.State next){
-        retentionState=next;if(updatingContext||state==null)return;
+        retentionState=next;syncItemContext();if(updatingContext||state==null)return;
         status.setText(next.message());refreshContextStripe();
         if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null)lookupPane.refreshRetentionState();
+    }
+    private void syncItemContext(){if(itemModel!=null&&state!=null)itemModel.selectContext(state.selected(),currentLocale,retentionState==null?null:retentionState.receipt());}
+    private void onItemState(ItemPresentationModel.State next){
+        var previous=itemState;itemState=next;
+        if(updatingContext||state==null||!destination.equals("Database")||itemPane==null)return;
+        status.setText(next.message());
+        boolean sameResults=previous!=null&&previous.stage()==next.stage()&&previous.handle()==next.handle()&&previous.page()==next.page()&&previous.lookup()==next.lookup()&&Objects.equals(previous.source(),next.source())&&Objects.equals(previous.build(),next.build())&&previous.locale().equals(next.locale());
+        if(sameResults){itemPane.refreshDraftState();return;}
+        Node focused=stage.getScene().getFocusOwner();String id=focused==null?null:focused.getId();int caret=focused instanceof TextField field?field.getCaretPosition():-1;
+        itemPane.refreshState();
+        if(id!=null&&List.of("item-prepare","item-cancel","item-record-id","item-lookup","item-browse","item-first-page","item-next-page").contains(id)){
+            String target=id.equals("item-record-id")?id:next.busy()?"item-cancel":next.handle()==null?"item-prepare":next.page()!=null&&!next.page().rows().isEmpty()||next.lookup()!=null&&next.lookup().row().isPresent()?"item-row-table":id.equals("item-lookup")?"item-record-id":"item-browse";
+            Platform.runLater(()->{if(destination.equals("Database")&&itemPane!=null&&itemPane.getScene()!=null){Node control=itemPane.lookup("#"+target);if(control!=null){control.requestFocus();if(control instanceof TextField field&&caret>=0)field.positionCaret(Math.min(caret,field.getText().length()));}}});
+        }
     }
     private void openFileLookup(){archiveFindMode=true;archiveInstallMode=false;navigate("Archive");}
     private void onInstallState(InstallPresentationModel.State next){
@@ -542,6 +566,7 @@ public final class AtlasApplication extends Application {
     }
     private VBox comparison(){return unavailable("COMPARE BUILDS","Put changes in context.","A comparison needs two exact builds from the same edition, compatible schemas and verified input coverage.","Comparison engine not implemented","No added, changed or removed records can be asserted yet. Missing or encrypted inputs will be shown as not compared, rather than removed.","Choose build metadata",()->navigate("Archive"));}
     private VBox database(){
+        if(itemModel!=null){syncItemContext();VBox page=new VBox(14);page.getStyleClass().add("workspace");itemPane=new ItemProjectionPane(itemModel,Integer.parseInt(selectedScale.replace("%",""))/100.0,()->{if(state.selected()!=null)openFileLookup();else navigate("Archive");});page.getChildren().add(itemPane);return page;}
         VBox page=page("DATABASE WORKSPACE","Records, before interpretation.","Browse supported tables with raw values, readable fields and source-aware relationships.");
         TextField filter=new TextField();filter.setPromptText("Filter supported tables…");filter.setAccessibleText("Filter supported tables");filter.setDisable(true);
         VBox list=panel(label("TABLE CATALOG","eyebrow"),filter,wrap("No decoded table catalog. Exact-build DB2 decoding is not implemented in this slice."));list.setPrefWidth(230);
@@ -610,5 +635,5 @@ public final class AtlasApplication extends Application {
     private static Region spacer(){Region r=new Region();HBox.setHgrow(r,Priority.ALWAYS);return r;}
     private static Button button(String title,Runnable action,String style){Button b=new Button(title);b.getStyleClass().add(style);b.setOnAction(e->action.run());return b;}
     private static TableColumn<BuildSnapshot,String> column(String title,Function<BuildSnapshot,String> value,double width){TableColumn<BuildSnapshot,String> c=new TableColumn<>(title);c.setCellValueFactory(cell->new ReadOnlyStringWrapper(value.apply(cell.getValue())));c.setPrefWidth(width);return c;}
-    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();if(lookupModel!=null)lookupModel.close();if(selectedModel!=null)selectedModel.close();if(retentionModel!=null)retentionModel.close();}
+    @Override public void stop(){if(model!=null)model.close();if(workspaceModel!=null)workspaceModel.close();if(productModel!=null)productModel.close();if(installModel!=null)installModel.close();if(lookupModel!=null)lookupModel.close();if(selectedModel!=null)selectedModel.close();if(retentionModel!=null)retentionModel.close();if(itemModel!=null)itemModel.close();}
 }

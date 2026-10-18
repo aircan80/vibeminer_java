@@ -17,6 +17,12 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.item.ItemProjectionService itemProjection() {
+      throw new io.vibeminer.application.item.ItemProjectionException(
+          io.vibeminer.application.item.ItemProjectionException.Code.UNSUPPORTED,
+          "This content runtime does not provide Item projection");
+    }
+
     default io.vibeminer.application.selectedfile.SelectedFileService selectedFiles() {
       throw new io.vibeminer.application.selectedfile.SelectedFileException(
           io.vibeminer.application.selectedfile.SelectedFileException.Code.UNSUPPORTED,
