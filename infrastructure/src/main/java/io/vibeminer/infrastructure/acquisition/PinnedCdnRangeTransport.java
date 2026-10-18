@@ -108,9 +108,11 @@ public final class PinnedCdnRangeTransport {
           try {
             validateHeaders(response.statusCode(), response.headers(), request);
             if (!request.uri().equals(response.uri()))
-              throw new AcquisitionException(INTEGRITY, "Range response source changed");
+              throw new AcquisitionException(
+                  INTEGRITY, "Range response source changed", response.statusCode());
             if (response.body().length != request.count())
-              throw new AcquisitionException(INTEGRITY, "Range response body length mismatch");
+              throw new AcquisitionException(
+                  INTEGRITY, "Range response body length mismatch", response.statusCode());
             String hash =
                 HexFormat.of()
                     .formatHex(MessageDigest.getInstance("SHA-256").digest(response.body()));
@@ -136,6 +138,16 @@ public final class PinnedCdnRangeTransport {
   }
 
   private static void validateHeaders(int status, HttpHeaders headers, CdnRangeRequest request) {
+    try {
+      validateResponseHeaders(status, headers, request);
+    } catch (AcquisitionException failure) {
+      throw new AcquisitionException(
+          failure.reason(), failure.getMessage(), failure.getCause(), status);
+    }
+  }
+
+  private static void validateResponseHeaders(
+      int status, HttpHeaders headers, CdnRangeRequest request) {
     if (status == 404 || status == 410 || status == 416)
       throw new AcquisitionException(UNAVAILABLE, "Pinned range unavailable (HTTP " + status + ")");
     if (status == 200)

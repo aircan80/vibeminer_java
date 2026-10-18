@@ -143,9 +143,11 @@ public final class CdnMetadataTransport {
           try {
             long whole = validate(response.statusCode(), response.headers(), suffix, maximumWhole);
             if (!uri.equals(response.uri()))
-              throw new AcquisitionException(INTEGRITY, "Metadata source URI changed");
+              throw new AcquisitionException(
+                  INTEGRITY, "Metadata source URI changed", response.statusCode());
             if (response.body().length != (suffix ? 28 : 0))
-              throw new AcquisitionException(INTEGRITY, "Metadata response body length mismatch");
+              throw new AcquisitionException(
+                  INTEGRITY, "Metadata response body length mismatch", response.statusCode());
             result.complete(
                 finish.apply(
                     new Captured(
@@ -162,6 +164,16 @@ public final class CdnMetadataTransport {
   }
 
   private static long validate(int status, HttpHeaders headers, boolean suffix, long maximumWhole) {
+    try {
+      return validateResponse(status, headers, suffix, maximumWhole);
+    } catch (AcquisitionException failure) {
+      throw new AcquisitionException(
+          failure.reason(), failure.getMessage(), failure.getCause(), status);
+    }
+  }
+
+  private static long validateResponse(
+      int status, HttpHeaders headers, boolean suffix, long maximumWhole) {
     if (status == 404 || status == 410 || status == 416)
       throw new AcquisitionException(
           UNAVAILABLE, "Official metadata resource unavailable (HTTP " + status + ")");
