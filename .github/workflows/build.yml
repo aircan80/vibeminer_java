@@ -152,6 +152,7 @@ jobs:
           PROTOCOL_CP='infrastructure/build/classes/java/main:protocol-tact/build/classes/java/main:protocol-db2/build/classes/java/main:format-wow/build/classes/java/main:application/build/classes/java/main:domain/build/classes/java/main'
           javac -cp "$PROTOCOL_CP" -d build/protocol-tools tools/protocol/*.java
           java -cp "build/protocol-tools:$PROTOCOL_CP" ItemCohortProbe --self-test
+          java -cp "build/protocol-tools:$PROTOCOL_CP" ArchivedItemHeaderProbe --self-test
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
         run: |
