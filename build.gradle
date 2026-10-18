@@ -106,13 +106,19 @@ tasks.register('verifyDistribution') {
         }
         def root = new File(verifyRoot, imageDir.get().name)
         def launcher = new File(root, os.contains('mac') ? 'Contents/MacOS/VibeMiner' : os.contains('win') ? 'VibeMiner.exe' : 'bin/VibeMiner')
-        def selfTest = providers.exec { commandLine launcher.absolutePath, '--self-test' }
-        selfTest.result.get().assertNormalExitValue()
+        def selfTest = providers.exec { ignoreExitValue = true; commandLine launcher.absolutePath, '--self-test' }
+        def selfResult = selfTest.result.get()
+        def selfErrors = selfTest.standardError.asText.get().trim()
+        if (selfErrors) logger.lifecycle(selfErrors)
+        if (selfResult.exitValue != 0) throw new GradleException("Bundled self-test failed (${selfResult.exitValue}): ${selfErrors}")
         def selfOutput = selfTest.standardOutput.asText.get()
         if (!selfOutput.contains('VibeMiner self-test OK')) throw new GradleException("Bundled launch failed: ${selfOutput}")
         logger.lifecycle(selfOutput.trim())
-        def uiTest = providers.exec { commandLine launcher.absolutePath, '--smoke-test' }
-        uiTest.result.get().assertNormalExitValue()
+        def uiTest = providers.exec { ignoreExitValue = true; commandLine launcher.absolutePath, '--smoke-test' }
+        def uiResult = uiTest.result.get()
+        def uiErrors = uiTest.standardError.asText.get().trim()
+        if (uiErrors) logger.lifecycle(uiErrors)
+        if (uiResult.exitValue != 0) throw new GradleException("Bundled UI smoke failed (${uiResult.exitValue}): ${uiErrors}\n${uiTest.standardOutput.asText.get()}")
         def uiOutput = uiTest.standardOutput.asText.get()
         if (!uiOutput.contains('VibeMiner UI smoke OK')) throw new GradleException("Bundled JavaFX launch failed: ${uiOutput}")
         logger.lifecycle(uiOutput.trim())
