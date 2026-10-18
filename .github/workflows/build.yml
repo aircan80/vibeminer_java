@@ -163,7 +163,7 @@ jobs:
       - name: Independently validate Item evidence JSON
         if: runner.os == 'Linux'
         run: |
-          "$PYTHON" -m venv build/export-validator
+          python3 -m venv build/export-validator
           build/export-validator/bin/python -m pip install --disable-pip-version-check \
             --require-hashes -r tools/exports/requirements.txt
           mkdir -p build/export-tool build/export-corpus
