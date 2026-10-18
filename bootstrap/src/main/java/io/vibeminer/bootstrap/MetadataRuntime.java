@@ -25,13 +25,21 @@ final class MetadataRuntime implements AutoCloseable {
   private final BuildLibraryService library;
   private final DiscoveryService discovery;
   private final AtomicBoolean closed = new AtomicBoolean();
+  private final Object resumeMonitor = new Object();
+  private final io.vibeminer.infrastructure.buildretention.SqliteDownloadAllPresence
+      downloadAllPresence;
+  private CompletableFuture<Boolean> resumeDownloads;
+  private CompletableFuture<Boolean> pendingContentInitialization;
 
   private MetadataRuntime(
+      Path catalogPath,
       HttpClient client,
       ExecutorService workers,
       DiscoveryHistoryService history,
       WorkspaceService workspaces,
       BuildLibraryService library) {
+    downloadAllPresence =
+        new io.vibeminer.infrastructure.buildretention.SqliteDownloadAllPresence(catalogPath);
     this.client = client;
     this.workers = workers;
     this.history = history;
@@ -129,7 +137,8 @@ final class MetadataRuntime implements AutoCloseable {
       var workspaces =
           new DefaultWorkspaceService(
               new SqliteWorkspaceRepository(catalog), workers, Clock.systemUTC());
-      return new MetadataRuntime(client, workers, history, workspaces, library);
+      return new MetadataRuntime(
+          dataDirectory.resolve("catalog.sqlite"), client, workers, history, workspaces, library);
     } catch (RuntimeException | Error failure) {
       workers.shutdown();
       if (client != null)
@@ -158,9 +167,81 @@ final class MetadataRuntime implements AutoCloseable {
     return discovery;
   }
 
+  /**
+   * One metadata-worker startup check; the borrowed content owner alone validates saved authority.
+   * False means no stored Download all hint. True means owner initialization completed, not that
+   * any download, scope readiness, or retention succeeded. Callers cannot cancel the owned single
+   * flight.
+   */
+  CompletionStage<Boolean> resumeAuthorizedDownloads(LazyBootstrapService contentOwner) {
+    Objects.requireNonNull(contentOwner);
+    CompletableFuture<Boolean> result;
+    synchronized (resumeMonitor) {
+      if (resumeDownloads != null) return resumeDownloads.minimalCompletionStage();
+      result = new CompletableFuture<>();
+      resumeDownloads = result;
+    }
+    if (closed.get())
+      result.completeExceptionally(new IllegalStateException("Metadata runtime closed"));
+    else
+      try {
+        workers.execute(() -> checkAuthorizedDownloads(contentOwner, result));
+      } catch (RuntimeException | Error rejected) {
+        result.completeExceptionally(rejected);
+      }
+    return result.minimalCompletionStage();
+  }
+
+  private void checkAuthorizedDownloads(
+      LazyBootstrapService contentOwner, CompletableFuture<Boolean> result) {
+    try {
+      requireResumeOpen();
+      boolean present = downloadAllPresence.hasDownloadAll(closed::get);
+      requireResumeOpen();
+      if (!present) {
+        result.complete(false);
+        return;
+      }
+      CompletionStage<Boolean> initialized;
+      synchronized (resumeMonitor) {
+        requireResumeOpen();
+        initialized =
+            contentOwner.dispatchResources(
+                resources ->
+                    closed.get()
+                        ? CompletableFuture.failedFuture(
+                            new IllegalStateException("Metadata runtime closed"))
+                        : CompletableFuture.completedFuture(true),
+                Function.identity());
+        pendingContentInitialization = initialized.toCompletableFuture();
+      }
+      initialized.whenComplete(
+          (value, failure) -> {
+            if (closed.get())
+              result.completeExceptionally(new IllegalStateException("Metadata runtime closed"));
+            else if (failure != null) result.completeExceptionally(failure);
+            else result.complete(value);
+          });
+    } catch (Throwable failure) {
+      result.completeExceptionally(failure);
+    }
+  }
+
+  private void requireResumeOpen() {
+    if (closed.get()) throw new IllegalStateException("Metadata runtime closed");
+  }
+
   @Override
   public void close() {
-    if (!closed.compareAndSet(false, true)) return;
+    CompletableFuture<Boolean> pendingResume, pendingContent;
+    synchronized (resumeMonitor) {
+      if (!closed.compareAndSet(false, true)) return;
+      pendingResume = resumeDownloads;
+      pendingContent = pendingContentInitialization;
+    }
+    if (pendingResume != null)
+      pendingResume.completeExceptionally(new IllegalStateException("Metadata runtime closed"));
+    if (pendingContent != null) pendingContent.cancel(false);
     library.close();
     history.close();
     // Preserve accepted queued runnables: each sees the closed service and settles without I/O.
