@@ -188,4 +188,76 @@ class FileObjectStoreSessionTest {
       producer.get(3, TimeUnit.SECONDS);
     }
   }
+
+  @Test
+  void recoveryAssertionAcceptsOnlyTheActiveCallbackAndNeverCreatesAuthority() {
+    FileObjectStore.StoreSession closed;
+    try (var store = new FileObjectStore(root.resolve("phases"))) {
+      closed = store.contentSession();
+      assertThrows(IllegalStateException.class, closed::requireRecoveryInProgress);
+      closed.recoverAtStartup(() -> assertDoesNotThrow(closed::requireRecoveryInProgress));
+      assertThrows(IllegalStateException.class, closed::requireRecoveryInProgress);
+      closed.beforeProducerOperation();
+      assertThrows(IllegalStateException.class, closed::requireRecoveryInProgress);
+    }
+    assertThrows(ObjectStoreException.class, closed::requireRecoveryInProgress);
+    try (var store = new FileObjectStore(root.resolve("failed-phase"))) {
+      var session = store.contentSession();
+      assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              session.recoverAtStartup(
+                  () -> {
+                    throw new IllegalArgumentException("rollback");
+                  }));
+      assertThrows(IllegalStateException.class, session::requireRecoveryInProgress);
+    }
+    try (var store = new FileObjectStore(root.resolve("legacy-used-phase"))) {
+      store.publisherStarted();
+      assertThrows(IllegalStateException.class, store.contentSession()::requireRecoveryInProgress);
+    }
+  }
+
+  @Test
+  void anotherThreadCannotBorrowTheRecoveringPhaseAfterCallbackRetires() throws Exception {
+    try (var store = new FileObjectStore(root.resolve("thread-phase"));
+        var workers = Executors.newFixedThreadPool(2)) {
+      var entered = new CountDownLatch(1);
+      var exit = new CountDownLatch(1);
+      var attempted = new CountDownLatch(1);
+      var recovered =
+          workers.submit(
+              () ->
+                  store
+                      .contentSession()
+                      .recoverAtStartup(
+                          () -> {
+                            store.contentSession().requireRecoveryInProgress();
+                            entered.countDown();
+                            try {
+                              exit.await();
+                            } catch (InterruptedException interrupted) {
+                              Thread.currentThread().interrupt();
+                              throw new RuntimeException(interrupted);
+                            }
+                          }));
+      assertTrue(entered.await(3, TimeUnit.SECONDS));
+      var other =
+          workers.submit(
+              () -> {
+                attempted.countDown();
+                store.contentSession().requireRecoveryInProgress();
+              });
+      try {
+        assertTrue(attempted.await(3, TimeUnit.SECONDS));
+        assertFalse(other.isDone());
+      } finally {
+        exit.countDown();
+      }
+      recovered.get(3, TimeUnit.SECONDS);
+      assertInstanceOf(
+          IllegalStateException.class,
+          assertThrows(ExecutionException.class, () -> other.get(3, TimeUnit.SECONDS)).getCause());
+    }
+  }
 }

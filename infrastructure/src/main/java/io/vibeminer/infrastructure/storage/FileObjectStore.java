@@ -153,6 +153,17 @@ public final class FileObjectStore implements ObjectStore {
       }
     }
 
+    /**
+     * Read-only precondition for SQL helpers called inside this lifetime's one startup callback.
+     */
+    public void requireRecoveryInProgress() {
+      synchronized (coordinator) {
+        ensureOpen();
+        if (phase != Phase.RECOVERING)
+          throw new IllegalStateException("SQL recovery requires the active startup callback");
+      }
+    }
+
     /** Guarded producers call before any admission transaction or network operation. */
     public void beforeProducerOperation() {
       synchronized (coordinator) {
