@@ -5,6 +5,8 @@ These versioned documents are the formal project specifications. A clean checkou
 Published [alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.5) is exact `f3c4d46e42451bfc7941959b862143a462a3ddd6` (annotated tag `2cc1af4`). All four native packages and all 12 freshly downloaded assets were independently verified against manifests, SHA-256, targets and byte counts; [publication run 39119447852](https://github.com/aircan80/vibeminer/actions/runs/39119447852) passed. See [release notes](releases/v0.1.0-alpha.5.md) for scope. Explicit retained metadata reuse is released; names, repair execution and GC remain unfinished. Later source foundations do not alter the exact release contents.
 
 
+Later accepted local `c17ec25` adds literal-name-search controls and repair qualification (1,333 Java cases, verified Linux package 24, Noto/DejaVu search and repair native checks). Its new four-platform/eleven-workflow gate is pending; #83/#89 remain open, broad #21 retains relations/official-run work and #91 export is planning-only. These features are not in alpha.5. See the [current checkpoint](PLAN.md).
+
 - [Verified alpha.5 release notes](releases/v0.1.0-alpha.5.md)
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
@@ -22,6 +24,7 @@ Published [alpha.5](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-al
 - [Exact Item cohort, compatibility and proof coverage](ITEM-COHORT.md)
 - [Approved offline physical Item-row projection](ITEM-PROJECTION.md)
 - [Approved bounded literal Item-name search](ITEM-NAME-SEARCH.md)
+- [Literal name-search native visual references](design/item-name-search/README.md)
 - [Bounded Item name projection and exact-context joins](ITEM-NAMES.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
