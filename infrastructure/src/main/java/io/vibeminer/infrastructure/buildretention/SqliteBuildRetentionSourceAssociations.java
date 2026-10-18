@@ -5,7 +5,10 @@ import static io.vibeminer.application.buildretention.BuildRetentionException.Co
 import io.vibeminer.application.*;
 import io.vibeminer.application.buildretention.*;
 import io.vibeminer.domain.content.EncodedContentProof;
+import io.vibeminer.domain.content.MetadataContentProof;
 import io.vibeminer.domain.selectedfile.ContentRepresentation;
+import io.vibeminer.domain.selectedfile.ContentSlotKey;
+import io.vibeminer.infrastructure.buildopening.BuildMetadataAdmissionFacts;
 import io.vibeminer.infrastructure.content.*;
 import io.vibeminer.infrastructure.inventory.SqliteBuildRetentionInventory;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
@@ -43,6 +46,109 @@ public final class SqliteBuildRetentionSourceAssociations {
       ContentRepresentation actual,
       CancellationToken token) {
     return access(authority, target, member, actual, token, false);
+  }
+
+  /** Own-current-admission metadata fulfills itself without claiming encoded-file capability. */
+  public Optional<String> findMetadata(
+      SqliteBuildRetentionInventory.SourceAuthority authority,
+      BuildRetention.Target target,
+      BuildRetention.Member member,
+      CancellationToken token) {
+    Objects.requireNonNull(token).throwIfCancellationRequested();
+    if (!authority.target().equals(target) || !authority.member().equals(member))
+      throw failure(CORRUPT_STATE, "Metadata fulfillment differs from sealed member");
+    var matches =
+        authority.metadata().metadata().stream()
+            .filter(fact -> fact.slot().contentKey().equals(member.contentKey()))
+            .toList();
+    if (matches.isEmpty()) return Optional.empty();
+    if (matches.size() != 1) throw failure(CORRUPT_STATE, "Ambiguous admitted metadata member");
+    var fact = matches.getFirst();
+    var expected = fact.proof();
+    metadataFulfillmentProof(target, member, fact);
+    try (var lease = store.openRead(expected.object().digest(), token);
+        var connection = catalog.connect()) {
+      if (!lease.object().equals(expected.object()))
+        throw failure(CORRUPT_STATE, "Physical metadata geometry changed");
+      connection.setAutoCommit(false);
+      try {
+        authority.validateInTransaction(connection, token);
+        CanonicalContentGuards.check(connection, fact.slot());
+        try (var query =
+            connection.prepareStatement(
+                "SELECT token,status,length(representation),representation FROM"
+                    + " canonical_content_slots WHERE namespace=? AND content_key=?")) {
+          query.setString(1, fact.slot().namespace());
+          query.setString(2, fact.slot().contentKey());
+          try (var rows = query.executeQuery()) {
+            if (!rows.next() || !rows.getString(2).equals("RETAINED"))
+              throw failure(NOT_READY, "Admitted metadata is not currently retained");
+            if (!fact.canonicalReservationToken().toString().equals(rows.getString(1))
+                || rows.getLong(3) < 1
+                || rows.getLong(3) > CanonicalContentRecords.MAX_BYTES)
+              throw failure(CORRUPT_STATE, "Admitted metadata canonical identity changed");
+            var actual = CanonicalContentRecords.decode(rows.getBytes(4));
+            if (!(actual instanceof MetadataContentProof metadata) || !metadata.equals(expected))
+              throw failure(CORRUPT_STATE, "Admitted original metadata proof changed");
+          }
+        }
+        token.throwIfCancellationRequested();
+        connection.rollback();
+        return Optional.of(metadataFulfillmentProof(target, member, fact));
+      } catch (SQLException | RuntimeException failure) {
+        connection.rollback();
+        throw failure;
+      }
+    } catch (SQLException failure) {
+      throw new BuildRetentionException(
+          STORAGE_UNAVAILABLE, "Cannot verify admitted metadata member", failure);
+    }
+  }
+
+  /**
+   * Pure commitment only; caller must separately establish current admission and physical proof.
+   */
+  public static String metadataFulfillmentProof(
+      BuildRetention.Target target,
+      BuildRetention.Member member,
+      BuildMetadataAdmissionFacts.MetadataFact fact) {
+    var proof = fact.proof();
+    if (!fact.slot().equals(new ContentSlotKey("wow", member.contentKey()))
+        || !proof.actualEncodingKey().equals(member.encodingKey())
+        || proof.object().length() != member.encodedBytes()
+        || proof.decodedAttestation().isEmpty()
+        || proof.structuralAttestation().isEmpty())
+      throw failure(CORRUPT_STATE, "Member is not the exact admitted metadata representation");
+    try {
+      var bytes = new ByteArrayOutputStream();
+      var out = new DataOutputStream(bytes);
+      for (var value :
+          List.of(
+              "build-retention-admitted-metadata-v1",
+              target.identity(),
+              Long.toString(member.ordinal()),
+              member.memberId(),
+              member.contentKey(),
+              member.encodingKey(),
+              Long.toString(member.encodedBytes()),
+              Long.toString(member.cost().wireBytes()),
+              Long.toString(member.cost().additionalBytes()),
+              Long.toString(member.cost().requests()),
+              member.membershipCommitment(),
+              fact.role().name(),
+              fact.canonicalReservationToken().toString())) {
+        var encoded = value.getBytes(StandardCharsets.UTF_8);
+        out.writeInt(encoded.length);
+        out.write(encoded);
+      }
+      var encoded = CanonicalContentRecords.encode(proof);
+      out.writeInt(encoded.length);
+      out.write(encoded);
+      out.flush();
+      return sha256(bytes.toByteArray());
+    } catch (IOException impossible) {
+      throw new AssertionError(impossible);
+    }
   }
 
   private Optional<String> access(
