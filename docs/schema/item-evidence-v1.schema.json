@@ -1,0 +1,2621 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "schemaVersion",
+    "documentCreatedAt",
+    "proofNotice",
+    "itemRecordId",
+    "itemTableFileDataId",
+    "sparseTableFileDataId",
+    "verification",
+    "itemSource",
+    "sparseSource",
+    "row",
+    "name"
+  ],
+  "properties": {
+    "format": {
+      "const": "VibeMiner.ItemEvidence"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "documentCreatedAt": {
+      "type": "string",
+      "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+    },
+    "proofNotice": {
+      "const": "Reproducibility commitments; not a self-authenticating Blizzard proof package."
+    },
+    "itemRecordId": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "itemTableFileDataId": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "sparseTableFileDataId": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startedAt",
+        "completedAt",
+        "generationFingerprint"
+      ],
+      "properties": {
+        "startedAt": {
+          "type": "string",
+          "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+        },
+        "completedAt": {
+          "type": "string",
+          "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+        },
+        "generationFingerprint": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "itemSource": {
+      "$ref": "#/$defs/itemSource"
+    },
+    "sparseSource": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sparseSource"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicalOrdinal",
+        "sectionOrdinal",
+        "integers"
+      ],
+      "properties": {
+        "physicalOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sectionOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "integers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/integer"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/integer"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "CLASS_ID"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/integer"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "SUBCLASS_ID"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/integer"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "INVENTORY_TYPE"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/integer"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "ICON_FILE_DATA_ID"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "name": {
+      "$ref": "#/$defs/name"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aircan80/vibeminer/blob/main/docs/schema/item-evidence-v1.schema.json",
+  "title": "VibeMiner selected physical Item evidence version 1",
+  "$comment": "Strict UTF-8; maximum encoded document length 2097152 bytes. Byte ceiling and cross-source authentication are enforced by the application, not JSON Schema. Decimal strings retain lossless long values. Timestamp strings preserve Java Instant expanded-year range and nanosecond precision. No source payloads or raw definitions are permitted.",
+  "$defs": {
+    "physical": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "length"
+      ],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "length": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "namespace",
+        "immutableSourceKey",
+        "verificationSemantics"
+      ],
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "immutableSourceKey": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "verificationSemantics": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        }
+      }
+    },
+    "alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "object",
+        "evidence"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "object": {
+          "$ref": "#/$defs/physical"
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "verifierSemantics",
+            "sourceUrl",
+            "verifiedAt"
+          ],
+          "properties": {
+            "verifierSemantics": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "sourceUrl": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "verifiedAt": {
+              "type": "string",
+              "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+            }
+          }
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "productId",
+        "editionLabel",
+        "channel",
+        "region",
+        "versionLabel",
+        "buildConfig",
+        "cdnConfig",
+        "observedAt",
+        "fixture",
+        "upstreamBuildId",
+        "productConfig",
+        "sourceDocuments"
+      ],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "productId": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "editionLabel": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "channel": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "versionLabel": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "buildConfig": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "cdnConfig": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "observedAt": {
+          "type": "string",
+          "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+        },
+        "fixture": {
+          "type": "boolean"
+        },
+        "upstreamBuildId": {
+          "type": "string",
+          "pattern": "^[0-9]{0,20}$"
+        },
+        "productConfig": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "sourceDocuments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourceUrl",
+              "capturedAt",
+              "sha256"
+            ],
+            "properties": {
+              "sourceUrl": {
+                "type": "string",
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              },
+              "capturedAt": {
+                "type": "string",
+                "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          },
+          "minItems": 0,
+          "maxItems": 8
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootSource",
+        "fileDataId",
+        "contentKey",
+        "localeFlags",
+        "contentFlags",
+        "rawFlagsFirst",
+        "rawFlagsSecond",
+        "rawFlagsThird",
+        "nameHash"
+      ],
+      "properties": {
+        "rootSource": {
+          "$ref": "#/$defs/source"
+        },
+        "fileDataId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "contentKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "localeFlags": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "contentFlags": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "rawFlagsFirst": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "rawFlagsSecond": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "rawFlagsThird": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{2}$"
+        },
+        "nameHash": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "associationProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootSource",
+        "encodingBootstrapSource",
+        "verifierRevision",
+        "proofDigest",
+        "declaredDecodedBytes",
+        "authenticatedCandidates"
+      ],
+      "properties": {
+        "rootSource": {
+          "$ref": "#/$defs/source"
+        },
+        "encodingBootstrapSource": {
+          "$ref": "#/$defs/source"
+        },
+        "verifierRevision": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "proofDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "declaredDecodedBytes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authenticatedCandidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "encodingKey",
+              "encodedBytes",
+              "specificationIndex"
+            ],
+            "properties": {
+              "encodingKey": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "encodedBytes": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,18})$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "specificationIndex": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]{0,18})$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "minItems": 0,
+          "maxItems": 255
+        }
+      }
+    },
+    "archiveMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "indexIdentity",
+        "footerSha256",
+        "tocSha256",
+        "pageSha256",
+        "verifierRevision",
+        "advertisedIndexBytes",
+        "authenticatedIndexBytes"
+      ],
+      "properties": {
+        "indexIdentity": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "footerSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "tocSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "pageSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "verifierRevision": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "advertisedIndexBytes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authenticatedIndexBytes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "actualResourceUrl",
+        "resourceKey",
+        "parentWholeBytes",
+        "childOffset",
+        "childEncodedBytes",
+        "observedAt",
+        "payloadRequestCount",
+        "payloadResponseBytes",
+        "observationDigest",
+        "archiveMapping"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "LOOSE",
+            "ARCHIVE"
+          ]
+        },
+        "actualResourceUrl": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "resourceKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "parentWholeBytes": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "childOffset": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "childEncodedBytes": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "observedAt": {
+          "type": "string",
+          "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+        },
+        "payloadRequestCount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "payloadResponseBytes": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "observationDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "archiveMapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/archiveMapping"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "association": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshotId",
+        "role",
+        "build",
+        "variant",
+        "actualEncodingKey",
+        "encodedVerifierSemantics",
+        "configuration",
+        "root",
+        "associationProof",
+        "representation"
+      ],
+      "properties": {
+        "snapshotId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "build": {
+          "$ref": "#/$defs/build"
+        },
+        "variant": {
+          "$ref": "#/$defs/variant"
+        },
+        "actualEncodingKey": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "encodedVerifierSemantics": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "configuration": {
+          "$ref": "#/$defs/alias"
+        },
+        "root": {
+          "$ref": "#/$defs/alias"
+        },
+        "associationProof": {
+          "$ref": "#/$defs/associationProof"
+        },
+        "representation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "slot",
+            "encoded",
+            "scope",
+            "sourceReceipt"
+          ],
+          "properties": {
+            "slot": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "namespace",
+                "contentKey"
+              ],
+              "properties": {
+                "namespace": {
+                  "type": "string",
+                  "pattern": "^[^\\ud800-\\udfff]*$"
+                },
+                "contentKey": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{32}$"
+                }
+              }
+            },
+            "encoded": {
+              "$ref": "#/$defs/alias"
+            },
+            "scope": {
+              "enum": [
+                "ZERO_HEADER_WHOLE_ENCODED",
+                "HEADER_AND_ALL_ENCODED_CHUNKS"
+              ]
+            },
+            "sourceReceipt": {
+              "$ref": "#/$defs/receipt"
+            }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "association",
+        "localVerification",
+        "chunks",
+        "windows",
+        "fullDecoded"
+      ],
+      "properties": {
+        "association": {
+          "$ref": "#/$defs/association"
+        },
+        "localVerification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "object",
+            "verifiedAt",
+            "verifierRevision"
+          ],
+          "properties": {
+            "object": {
+              "$ref": "#/$defs/physical"
+            },
+            "verifiedAt": {
+              "type": "string",
+              "pattern": "^[+-]?[0-9]{4,10}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$"
+            },
+            "verifierRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            }
+          }
+        },
+        "chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ordinal",
+              "encodedOffset",
+              "encodedBytes",
+              "encodedMd5",
+              "decodedOffset",
+              "decodedBytes",
+              "verifierRevision"
+            ],
+            "properties": {
+              "ordinal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+              },
+              "encodedOffset": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              },
+              "encodedBytes": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              },
+              "encodedMd5": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "decodedOffset": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              },
+              "decodedBytes": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              },
+              "verifierRevision": {
+                "type": "string",
+                "pattern": "^[^\\ud800-\\udfff]*$"
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 4096
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "offset",
+              "length"
+            ],
+            "properties": {
+              "offset": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              },
+              "length": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "fullDecoded": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "contentKey",
+                "actualDecodedBytes",
+                "verifierRevision"
+              ],
+              "properties": {
+                "contentKey": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{32}$"
+                },
+                "actualDecodedBytes": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]{0,18})$"
+                },
+                "verifierRevision": {
+                  "type": "string",
+                  "pattern": "^[^\\ud800-\\udfff]*$"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "integer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "rawWidth",
+        "rawHex",
+        "physicalInterpretation",
+        "candidateDecimal",
+        "candidateBits",
+        "candidateSign"
+      ],
+      "properties": {
+        "field": {
+          "enum": [
+            "CLASS_ID",
+            "SUBCLASS_ID",
+            "INVENTORY_TYPE",
+            "ICON_FILE_DATA_ID"
+          ]
+        },
+        "rawWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "rawHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{1,16}$"
+        },
+        "physicalInterpretation": {
+          "enum": [
+            "UNSIGNED_BITS",
+            "SIGNED_TWOS_COMPLEMENT"
+          ]
+        },
+        "candidateDecimal": {
+          "type": "string",
+          "pattern": "^(-?[1-9][0-9]{0,19}|0)$"
+        },
+        "candidateBits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "candidateSign": {
+          "enum": [
+            "SIGNED",
+            "UNSIGNED"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 1
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{0}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 2
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{0}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 3
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{0}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 4
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{1}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 5
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{1}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 6
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{1}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 7
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{1}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 8
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 9
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 10
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 11
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 12
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{3}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 13
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{3}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 14
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{3}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 15
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{3}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 16
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{4}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 17
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{4}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 18
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{4}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 19
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{4}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 20
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{5}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 21
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{5}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 22
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{5}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 23
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{5}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 24
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{6}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 25
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{6}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 26
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{6}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 27
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{6}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 28
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{7}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 29
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{7}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 30
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{7}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 31
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{7}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 32
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 33
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 34
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 35
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{8}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 36
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{9}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 37
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{9}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 38
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{9}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 39
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{9}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 40
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{10}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 41
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{10}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 42
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{10}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 43
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{10}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 44
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{11}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 45
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{11}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 46
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{11}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 47
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{11}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 48
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{12}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 49
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{12}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 50
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{12}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 51
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{12}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 52
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{13}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 53
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{13}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 54
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{13}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 55
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{13}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 56
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{14}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 57
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{14}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 58
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{14}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 59
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{14}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 60
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{15}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 61
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-1][0-9a-f]{15}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 62
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-3][0-9a-f]{15}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 63
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-7][0-9a-f]{15}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rawWidth": {
+                "const": 64
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rawHex": {
+                "pattern": "^[0-9a-f]{16}$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "itemSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "revision",
+        "definitionPath",
+        "definitionSha256",
+        "selectionDigest",
+        "license",
+        "attribution",
+        "fields"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "definitionPath": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "definitionSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "selectionDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "license": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "attribution": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fieldBinding"
+          },
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fieldBinding"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "CLASS_ID"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fieldBinding"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "SUBCLASS_ID"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fieldBinding"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "INVENTORY_TYPE"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fieldBinding"
+                },
+                {
+                  "properties": {
+                    "field": {
+                      "const": "ICON_FILE_DATA_ID"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "sparseSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "revision",
+        "definitionPath",
+        "definitionSha256",
+        "selectionDigest",
+        "license",
+        "attribution",
+        "prefixFields"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "definitionPath": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "definitionSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "selectionDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "license": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "attribution": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "prefixFields": {
+          "const": [
+            "Description_lang",
+            "Display3_lang",
+            "Display2_lang",
+            "Display1_lang",
+            "Display_lang"
+          ]
+        }
+      }
+    },
+    "itemSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "sources",
+        "interpretation",
+        "coverage",
+        "evidence"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/physical"
+          },
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "interpretation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decoderRevision",
+            "indexRevision",
+            "tableHash",
+            "layoutHash",
+            "sectionOrdinal",
+            "locale",
+            "optionsRevision",
+            "proofSemantics",
+            "sectionDecodedOffset",
+            "sectionDecodedBytes",
+            "schema"
+          ],
+          "properties": {
+            "decoderRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "indexRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "tableHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}$"
+            },
+            "layoutHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}$"
+            },
+            "sectionOrdinal": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "locale": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "optionsRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "proofSemantics": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "sectionDecodedOffset": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "sectionDecodedBytes": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "schema": {
+              "$ref": "#/$defs/itemSchema"
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sectionOrdinal",
+            "physicalRows",
+            "unindexedCopyDeclarations",
+            "excludedSections"
+          ],
+          "properties": {
+            "sectionOrdinal": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "physicalRows": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "unindexedCopyDeclarations": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "excludedSections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      }
+    },
+    "sparseSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifactId",
+        "sources",
+        "interpretation",
+        "coverage",
+        "evidence"
+      ],
+      "properties": {
+        "artifactId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/physical"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "interpretation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decoderRevision",
+            "indexRevision",
+            "tableHash",
+            "layoutHash",
+            "sectionOrdinal",
+            "locale",
+            "optionsRevision",
+            "proofSemantics",
+            "metadataPrefixBytes",
+            "recordAreaOffset",
+            "recordAreaBytes",
+            "suffixOffset",
+            "suffixBytes",
+            "schema"
+          ],
+          "properties": {
+            "decoderRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "indexRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "tableHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}$"
+            },
+            "layoutHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}$"
+            },
+            "sectionOrdinal": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "locale": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "optionsRevision": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "proofSemantics": {
+              "type": "string",
+              "pattern": "^[^\\ud800-\\udfff]*$"
+            },
+            "metadataPrefixBytes": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "recordAreaOffset": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "recordAreaBytes": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "suffixOffset": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "suffixBytes": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "schema": {
+              "$ref": "#/$defs/sparseSchema"
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sectionOrdinal",
+            "physicalRows",
+            "unindexedCopyDeclarations",
+            "excludedSections",
+            "projectedUtf8Bytes"
+          ],
+          "properties": {
+            "sectionOrdinal": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "physicalRows": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "unindexedCopyDeclarations": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            "excludedSections": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2147483647
+            },
+            "projectedUtf8Bytes": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            }
+          }
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        }
+      }
+    },
+    "nameCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "physicalRecordId",
+        "physicalOrdinal",
+        "sectionOrdinal",
+        "decodedOffset",
+        "recordBytes",
+        "prefixBytes",
+        "utf8Bytes"
+      ],
+      "properties": {
+        "value": {
+          "type": "string",
+          "pattern": "^[^\\ud800-\\udfff]*$"
+        },
+        "physicalRecordId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "physicalOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "sectionOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "decodedOffset": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]{0,18})$"
+        },
+        "recordBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "prefixBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "utf8Bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65530
+        }
+      }
+    },
+    "name": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "candidate",
+        "copySourceId"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "NOT_INCLUDED",
+            "PHYSICAL_NAME",
+            "COPY_UNINDEXED",
+            "NO_PHYSICAL_MATCH"
+          ]
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/nameCandidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "copySourceId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,18})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "NOT_INCLUDED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "type": "null"
+              },
+              "copySourceId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "PHYSICAL_NAME"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "$ref": "#/$defs/nameCandidate"
+              },
+              "copySourceId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "COPY_UNINDEXED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "type": "null"
+              },
+              "copySourceId": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]{0,18})$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "NO_PHYSICAL_MATCH"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "type": "null"
+              },
+              "copySourceId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fieldBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "physicalFieldOrdinal",
+        "candidateBits",
+        "sign"
+      ],
+      "properties": {
+        "field": {
+          "enum": [
+            "CLASS_ID",
+            "SUBCLASS_ID",
+            "INVENTORY_TYPE",
+            "ICON_FILE_DATA_ID"
+          ]
+        },
+        "physicalFieldOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "candidateBits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "sign": {
+          "enum": [
+            "SIGNED",
+            "UNSIGNED"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "name": {
+            "properties": {
+              "state": {
+                "const": "NOT_INCLUDED"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "sparseSource": {
+            "type": "null"
+          },
+          "sparseTableFileDataId": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "sparseSource": {
+            "$ref": "#/$defs/sparseSource"
+          },
+          "sparseTableFileDataId": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      }
+    }
+  ]
+}
