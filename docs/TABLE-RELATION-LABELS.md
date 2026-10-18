@@ -66,3 +66,7 @@ Shared technical cache identity includes target artifact/projection identity, re
 3. Add optional labels to the approved Tables UI after milestone 5/navigation prerequisites. Native checks cover disabled/no work, lazy page batching, cancellation/late result isolation, raw values always visible, exact-context relation navigation and missing/corrupt target behavior.
 
 No all-table auto-label promise, cross-build join, implicit target download, local install/cache import, copy expansion, full decoded-CKey upgrade or server-semantic claim belongs to this increment. Retain **WoWDBDefs contributors** attribution and the [CC BY-SA 4.0 definition-data license](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/LICENSE.md); DBCD has its separate MIT license.
+
+## Future locale exploration
+
+[Locale switching #114](https://github.com/aircan80/vibeminer/issues/114) is future scope: a build Home selector may change the active research locale while keeping the exact build. Table labels and other localized projections must refresh with context fencing and complete cache identity. Shared verified content remains deduplicated; unavailable translations are explicit. Switching research locale does not silently alter the authorized bulk-retention scope or grant full-build download consent. This does not expand milestone 5 or the initial label implementation.
