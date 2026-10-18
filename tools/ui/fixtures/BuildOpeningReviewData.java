@@ -22,12 +22,20 @@ public final class BuildOpeningReviewData {
   private final Map<String, byte[]> objects = new HashMap<>();
   private final Map<String, String> keys = new HashMap<>();
   private final AtomicInteger requests = new AtomicInteger(), gameRequests = new AtomicInteger();
+  private final AtomicInteger forbiddenOfflineRequests = new AtomicInteger();
   private final byte[] versions, cdns;
   private final String gameEKey;
   private volatile boolean offline, holdEncoding;
   private final CountDownLatch encodingEntered = new CountDownLatch(1),
       encodingCancelled = new CountDownLatch(1);
   private final CompletableFuture<Void> encodingRelease = new CompletableFuture<>();
+  private volatile GameGate gameGate;
+
+  private static final class GameGate {
+    final CountDownLatch entered = new CountDownLatch(1);
+    final CountDownLatch cancelled = new CountDownLatch(1);
+    final CompletableFuture<Void> release = new CompletableFuture<>();
+  }
 
   public BuildOpeningReviewData() throws Exception {
     var decoded = new LinkedHashMap<String, byte[]>();
@@ -112,8 +120,34 @@ public final class BuildOpeningReviewData {
     encodingRelease.complete(null);
   }
 
+  /** Installs a new asynchronous response gate, including after an earlier runtime canceled. */
+  public void holdGame() {
+    gameGate = new GameGate();
+  }
+
+  public boolean awaitGame(Duration timeout) throws InterruptedException {
+    var gate = Objects.requireNonNull(gameGate, "Game gate is not installed");
+    return gate.entered.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
+  }
+
+  /** Observes cancellation of the actual HTTP response future, not a facade preference flag. */
+  public boolean awaitGameCancellation(Duration timeout) throws InterruptedException {
+    var gate = Objects.requireNonNull(gameGate, "Game gate is not installed");
+    return gate.cancelled.await(timeout.toNanos(), TimeUnit.NANOSECONDS);
+  }
+
+  public void releaseGame() {
+    var gate = gameGate;
+    gameGate = null;
+    if (gate != null) gate.release.complete(null);
+  }
+
   public void offline() {
     offline = true;
+  }
+
+  public int forbiddenOfflineRequests() {
+    return forbiddenOfflineRequests.get();
   }
 
   public int requests() {
@@ -304,7 +338,10 @@ public final class BuildOpeningReviewData {
   private final class Client extends HttpClient {
     public <T> CompletableFuture<HttpResponse<T>> sendAsync(
         HttpRequest request, HttpResponse.BodyHandler<T> handler) {
-      if (offline) throw new AssertionError("Authored offline reopen attempted HTTP");
+      if (offline) {
+        forbiddenOfflineRequests.incrementAndGet();
+        throw new AssertionError("Authored offline reopen attempted HTTP");
+      }
       if (!request.uri().getScheme().equals("https")
           || request.uri().getRawQuery() != null
           || request.uri().getPort() != -1
@@ -347,6 +384,31 @@ public final class BuildOpeningReviewData {
               }
             });
         encodingEntered.countDown();
+        return pending;
+      }
+      var game = gameGate;
+      if (key.equals(gameEKey) && game != null && !request.method().equals("HEAD")) {
+        var pending = new CompletableFuture<HttpResponse<T>>();
+        pending.whenComplete(
+            (value, failure) -> {
+              if (pending.isCancelled()) game.cancelled.countDown();
+            });
+        byte[] captured = whole;
+        game.release.whenComplete(
+            (ignored, failure) -> {
+              if (pending.isDone()) return;
+              try {
+                respond(request, handler, captured)
+                    .whenComplete(
+                        (value, error) -> {
+                          if (error != null) pending.completeExceptionally(error);
+                          else pending.complete(value);
+                        });
+              } catch (Throwable error) {
+                pending.completeExceptionally(error);
+              }
+            });
+        game.entered.countDown();
         return pending;
       }
       return respond(request, handler, whole);

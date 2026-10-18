@@ -5,12 +5,15 @@ import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.bootstrap.DefaultBootstrapService;
 import io.vibeminer.application.buildopening.BuildOpeningService;
 import io.vibeminer.application.buildopening.DefaultBuildOpeningService;
+import io.vibeminer.application.buildoverview.BuildOverviewService;
+import io.vibeminer.application.buildretention.BuildRetentionModeService;
 import io.vibeminer.application.content.DefaultMetadataRepairService;
 import io.vibeminer.application.content.DefaultMetadataReuseService;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseGateway;
 import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.encodedsource.EncodedSourceAcquisition;
+import io.vibeminer.application.inventory.BuildInventoryPreparationService;
 import io.vibeminer.application.item.DefaultItemProjectionService;
 import io.vibeminer.application.item.ItemProjectionBackend;
 import io.vibeminer.application.item.ItemProjectionService;
@@ -51,6 +54,9 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
@@ -79,6 +85,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final ItemEvidenceService itemEvidence;
   private final BuildOpeningService buildOpening;
   private final OfficialBuildOpeningGateway openingGateway;
+  private final BuildMiningRuntime buildMining;
   private final BootstrapService service;
   private final FileLookupService lookup;
   private final OfficialFileLookupGateway lookupGateway;
@@ -111,7 +118,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       ItemNamesService itemNames,
       ItemEvidenceService itemEvidence,
       BuildOpeningService buildOpening,
-      OfficialBuildOpeningGateway openingGateway) {
+      OfficialBuildOpeningGateway openingGateway,
+      BuildMiningRuntime buildMining) {
+    this.buildMining = buildMining;
     this.buildOpening = buildOpening;
     this.openingGateway = openingGateway;
     this.itemEvidence = itemEvidence;
@@ -212,6 +221,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     OfficialBuildOpeningGateway openingGateway = null;
     BuildOpeningService buildOpening = null;
     EncodedSourceAcquisition encodedSources = null;
+    BuildMiningRuntime buildMining = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
     var sourceScheduler = new PrioritySourceScheduler(acquisition);
@@ -334,6 +344,23 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               acquisition,
               sourceScheduler,
               encodedSources);
+      buildMining =
+          BuildMiningRuntime.open(
+              new BuildMiningRuntime.Dependencies(
+                  sharedCatalog,
+                  store,
+                  contentClaims,
+                  admissions,
+                  selectedCatalog,
+                  encodedSources,
+                  sourceScheduler,
+                  transport,
+                  rangeTransport,
+                  metadataTransport,
+                  orchestration,
+                  itemWorkers,
+                  metadataWorkers,
+                  Clock.systemUTC()));
       var itemReader =
           new RetainedItemProjectionSourceReader(
               store, selectedCatalog, selectedGateway, Clock.systemUTC());
@@ -360,33 +387,44 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               java.util.Objects.requireNonNull(snapshotDecorator.apply(store, snapshotBackend)),
               java.util.Objects.requireNonNull(writerDecorator.apply(evidenceWriter)),
               namesWorkers);
-      return new ContentRuntime(
-          store,
-          client,
-          orchestration,
-          acquisition,
-          sourceScheduler,
-          encodedSources,
-          service,
-          lookup,
-          lookupGateway,
-          selectedFiles,
-          selectedGateway,
-          itemWorkers,
-          itemProjection,
-          metadataWorkers,
-          metadataReuse,
-          metadataGateway,
-          repairWorkers,
-          metadataRepair,
-          repairIssuer,
-          repairLocal,
-          namesWorkers,
-          itemNames,
-          itemEvidence,
-          buildOpening,
-          openingGateway);
+      var runtime =
+          new ContentRuntime(
+              store,
+              client,
+              orchestration,
+              acquisition,
+              sourceScheduler,
+              encodedSources,
+              service,
+              lookup,
+              lookupGateway,
+              selectedFiles,
+              selectedGateway,
+              itemWorkers,
+              itemProjection,
+              metadataWorkers,
+              metadataReuse,
+              metadataGateway,
+              repairWorkers,
+              metadataRepair,
+              repairIssuer,
+              repairLocal,
+              namesWorkers,
+              itemNames,
+              itemEvidence,
+              buildOpening,
+              openingGateway,
+              buildMining);
+      buildMining.resumeAuthorized();
+      return runtime;
     } catch (RuntimeException | Error failure) {
+      if (buildMining != null) {
+        try {
+          buildMining.close();
+        } catch (RuntimeException | Error cleanup) {
+          failure.addSuppressed(cleanup);
+        }
+      }
       if (buildOpening != null) buildOpening.close();
       if (encodedSources != null) encodedSources.close();
       if (openingGateway != null) openingGateway.close();
@@ -413,6 +451,21 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   @Override
   public BuildOpeningService buildOpening() {
     return buildOpening;
+  }
+
+  @Override
+  public BuildInventoryPreparationService inventoryPreparation() {
+    return buildMining.preparation();
+  }
+
+  @Override
+  public BuildOverviewService buildOverview() {
+    return buildMining.overview();
+  }
+
+  @Override
+  public BuildRetentionModeService retentionMode() {
+    return buildMining.mode();
   }
 
   @Override
@@ -458,6 +511,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    buildMining.cancel();
     buildOpening.close();
     openingGateway.close();
     itemEvidence.close();
@@ -474,8 +528,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     sourceScheduler.close();
     // Accepted wrappers must execute their cancellation/retirement callbacks; never drop them.
     acquisition.shutdown();
-    itemWorkers.shutdownNow();
-    metadataWorkers.shutdownNow();
+    shutdownDrainingWorkers(itemWorkers);
+    shutdownDrainingWorkers(metadataWorkers);
     repairWorkers.shutdownNow();
     namesWorkers.shutdownNow();
     client.shutdownNow();
@@ -496,15 +550,35 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           || !namesStopped)
         throw new IllegalStateException(
             "Content workers have not stopped; active storage remains protected");
-      repairIssuer.close();
-      repairLocal.close();
-      metadataGateway.close();
-      lookupGateway.close();
-      selectedGateway.close();
-      store.close();
+      closeResources();
     } finally {
       if (interrupted.get()) Thread.currentThread().interrupt();
     }
+  }
+
+  private void closeResources() {
+    Throwable failure = null;
+    for (var resource :
+        new AutoCloseable[] {
+          buildMining,
+          repairIssuer,
+          repairLocal,
+          metadataGateway,
+          lookupGateway,
+          selectedGateway,
+          store
+        }) {
+      try {
+        resource.close();
+      } catch (Throwable cleanup) {
+        if (failure == null) failure = cleanup;
+        else failure.addSuppressed(cleanup);
+      }
+    }
+    if (failure instanceof Error error) throw error;
+    if (failure instanceof RuntimeException runtime) throw runtime;
+    if (failure != null)
+      throw new IllegalStateException("Content resource cleanup failed", failure);
   }
 
   private static boolean await(ExecutorService executor, long deadline, AtomicBoolean interrupted) {
@@ -520,14 +594,55 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     return true;
   }
 
+  /** Preserve accepted wrappers while signaling currently running cooperative legacy I/O. */
+  private static void shutdownDrainingWorkers(ExecutorService executor) {
+    executor.shutdown();
+    ((ContentWorkers) executor).interruptRunning();
+  }
+
   private static ExecutorService workers(String name, int count) {
-    return new ThreadPoolExecutor(
-        count,
-        count,
-        0,
-        TimeUnit.MILLISECONDS,
-        new ArrayBlockingQueue<>(32),
-        Thread.ofPlatform().daemon().name(name + "-", 0).factory(),
-        new ThreadPoolExecutor.AbortPolicy());
+    return new ContentWorkers(name, count);
+  }
+
+  private static final class ContentWorkers extends ThreadPoolExecutor {
+    private final Set<Thread> running = new HashSet<>();
+
+    ContentWorkers(String name, int count) {
+      super(
+          count,
+          count,
+          0,
+          TimeUnit.MILLISECONDS,
+          new ArrayBlockingQueue<>(32),
+          Thread.ofPlatform().daemon().name(name + "-", 0).factory(),
+          new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    @Override
+    protected void beforeExecute(Thread thread, Runnable action) {
+      super.beforeExecute(thread, action);
+      synchronized (running) {
+        running.add(thread);
+      }
+    }
+
+    @Override
+    protected void afterExecute(Runnable action, Throwable failure) {
+      try {
+        synchronized (running) {
+          running.remove(Thread.currentThread());
+        }
+      } finally {
+        super.afterExecute(action, failure);
+      }
+    }
+
+    void interruptRunning() {
+      final List<Thread> current;
+      synchronized (running) {
+        current = List.copyOf(running);
+      }
+      current.forEach(Thread::interrupt);
+    }
   }
 }

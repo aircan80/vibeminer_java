@@ -31,6 +31,17 @@ public final class SqliteBuildInventory {
       long maximumBatches,
       FullRootInventory.Limits root,
       InstallManifestParser.Limits install) {
+    /** Initial all-declared profile; exceeding a ceiling leaves the inventory unsealed. */
+    public static Limits initialCohort() {
+      return new Limits(
+          50_000_000,
+          16L << 30,
+          256,
+          1_000_000,
+          new FullRootInventory.Limits(512L << 20, 50_000_000, 1_000_000, 2_000_000, 64L << 20),
+          new InstallManifestParser.Limits(16 << 20, 500_000, 4096, 4096));
+    }
+
     public Limits {
       new InventoryStaging.Limits(
           maximumReferences, maximumDerivedBytes, batchRows, maximumBatches);

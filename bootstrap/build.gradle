@@ -15,3 +15,8 @@ application {
     mainClass = 'io.vibeminer.bootstrap.Main'
     applicationDefaultJvmArgs = ['--enable-native-access=ALL-UNNAMED']
 }
+
+// Share the authored HTTP vectors with native review; this source is test-only, never packaged.
+tasks.named('compileTestJava', JavaCompile) {
+    source rootProject.file('tools/ui/fixtures/BuildOpeningReviewData.java')
+}

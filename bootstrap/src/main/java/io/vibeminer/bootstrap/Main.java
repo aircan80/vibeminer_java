@@ -5,7 +5,7 @@ import io.vibeminer.infrastructure.discovery.OfficialProductDiscoveryService;
 import io.vibeminer.infrastructure.workspace.AppDataDirectory;
 import java.util.List;
 
-/** Composition root; launching never discovers game installations or starts network requests. */
+/** Composition root; only previously authorized downloads may resume during launch. */
 public final class Main {
   private Main() {}
 
@@ -17,6 +17,7 @@ public final class Main {
     var dataDirectory = AppDataDirectory.resolve();
     var metadata = MetadataRuntime.open(dataDirectory);
     var content = new LazyBootstrapService(() -> ContentRuntime.open(dataDirectory));
+    var mining = new LazyBuildServices(content);
     var shutdown = new Thread(() -> shutdown(content, metadata), "vibeminer-shutdown");
     Runtime.getRuntime().addShutdownHook(shutdown);
     try {
@@ -35,6 +36,15 @@ public final class Main {
           List.of(args).contains("--fixtures"));
       AtlasApplication.configureBuildLibrary(metadata.library());
       AtlasApplication.configureBuildOpening(new LazyBuildOpeningService(content));
+      AtlasApplication.configureBuildMining(
+          mining, mining, mining, BuildMiningRuntime.overviewLimits());
+      metadata
+          .resumeAuthorizedDownloads(content)
+          .whenComplete(
+              (resumed, failure) -> {
+                if (failure != null)
+                  System.err.println("VibeMiner: saved downloads could not be resumed at startup");
+              });
       AtlasApplication.configureItemEvidenceDestinationChooser(
           (owner, suggestedFileName) -> {
             var chooser = new javafx.stage.FileChooser();
@@ -50,11 +60,15 @@ public final class Main {
           });
       javafx.application.Application.launch(AtlasApplication.class, args);
     } finally {
-      shutdown(content, metadata);
       try {
-        Runtime.getRuntime().removeShutdownHook(shutdown);
-      } catch (IllegalStateException alreadyShuttingDown) {
-        /* The registered hook owns the same idempotent shutdown. */
+        mining.close();
+      } finally {
+        shutdown(content, metadata);
+        try {
+          Runtime.getRuntime().removeShutdownHook(shutdown);
+        } catch (IllegalStateException alreadyShuttingDown) {
+          /* The registered hook owns the same idempotent shutdown. */
+        }
       }
     }
   }
