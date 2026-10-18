@@ -100,6 +100,7 @@ public final class AtlasApplication extends Application {
     private ItemPresentationModel itemModel;
     private ItemPresentationModel.State itemState;
     private ItemProjectionPane itemPane;
+    private final ItemSourceReadiness itemReadiness=new ItemSourceReadiness();
     private String selectedFileVariant;
     private String installQuery="";
     private String selectedInstallEntry;
@@ -206,14 +207,16 @@ public final class AtlasApplication extends Application {
         mode.setText(state.fixtureMode()?"FICTIONAL FIXTURE MODE":"OFFICIAL METADATA DISCOVERY");
         context.getChildren().clear();BuildSnapshot b=state.selected();
         boolean rootVerified=b!=null&&lookupState!=null&&lookupState.result()!=null&&lookupState.build()!=null&&lookupState.build().snapshotId().equals(b.snapshotId());
+        boolean itemVerified=b!=null&&itemState!=null&&itemState.handle()!=null&&itemState.handle().snapshotId().equals(b.snapshotId())&&itemState.locale().equals(currentLocale);
+        var itemFailure=itemReadiness.failureFor(b);
         boolean installVerified=b!=null&&installState!=null&&installState.inspection()!=null&&installState.build()!=null&&installState.build().snapshotId().equals(b.snapshotId());
         context.getChildren().addAll(contextItem("GAME / EDITION",b==null?"No workspace selected":b.editionLabel().replace("World of Warcraft","WoW")),
                 contextItem("PRODUCT ID",b==null?"Not selected":b.productId()),
                 contextItem("CHANNEL / REGION",b==null?"Not selected":b.channel()+" / "+b.region()),
                 contextItem("EXACT BUILD",b==null?"Not selected":b.versionLabel()),
                 contextItem("LOCALE",b==null?"Not selected":currentLocale+" · view preference"),
-                contextItem("COVERAGE",b==null?"No data loaded":rootVerified?"Root map verified":installVerified?"Install list verified":"Metadata only"),
-                contextItem("CONTENT",b==null?"Not checked":retentionState!=null&&retentionState.receipt()!=null&&retentionState.receipt().descriptor().association().build().snapshotId().equals(b.snapshotId())?"Selected encoded file verified; decoded unverified":configuredSelected!=null?"Selected file not checked":rootVerified?"Game files not acquired":installVerified?"Game files not acquired":"Unverified"));
+                contextItem("COVERAGE",b==null?"No data loaded":itemFailure.isPresent()?"Item scope not verified":itemVerified?"Item physical rows · copies unindexed":rootVerified?"Root map verified":installVerified?"Install list verified":"Metadata only"),
+                contextItem("CONTENT",b==null?"Not checked":itemFailure.isPresent()?ItemSourceReadiness.message(itemFailure.get()):itemVerified?"Partial Item scope":retentionState!=null&&retentionState.receipt()!=null&&retentionState.receipt().descriptor().association().build().snapshotId().equals(b.snapshotId())?"Selected encoded file verified; decoded unverified":configuredSelected!=null?"Selected file not checked":rootVerified?"Game files not acquired":installVerified?"Game files not acquired":"Unverified"));
         Button change=button(b==null?"Choose a build →":"Change build",()->{archiveInstallMode=false;archiveFindMode=false;navigate("Archive");},"context-action");context.getChildren().add(change);
         if(b!=null&&installModel!=null){Button files=button("Install files",()->openInstallFiles(b),"context-action");files.setId("open-install-files");context.getChildren().add(files);}
     }
@@ -242,13 +245,17 @@ public final class AtlasApplication extends Application {
         if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null&&!choiceOnly)lookupPane.refreshSelectedFileState();
     }
     private void onRetentionState(SelectedFileRetentionPresentationModel.State next){
-        retentionState=next;syncItemContext();if(updatingContext||state==null)return;
+        retentionState=next;if(next.receipt()!=null&&(next.stage()==SelectedFileRetentionPresentationModel.Stage.RETAINED||next.stage()==SelectedFileRetentionPresentationModel.Stage.OFFLINE_VERIFIED))itemReadiness.verified(next.receipt());syncItemContext();if(updatingContext||state==null)return;
         status.setText(next.message());refreshContextStripe();
         if(destination.equals("Archive")&&archiveFindMode&&lookupPane!=null)lookupPane.refreshRetentionState();
     }
     private void syncItemContext(){if(itemModel!=null&&state!=null)itemModel.selectContext(state.selected(),currentLocale,retentionState==null?null:retentionState.receipt());}
     private void onItemState(ItemPresentationModel.State next){
         var previous=itemState;itemState=next;
+        itemReadiness.observe(next.source());
+        if(next.code()==io.vibeminer.application.item.ItemProjectionException.Code.MISSING_LOCAL||next.code()==io.vibeminer.application.item.ItemProjectionException.Code.CORRUPT)itemReadiness.failed(next.source(),next.code());
+        if(previous!=null&&previous.stage()==ItemPresentationModel.Stage.PREPARING&&next.stage()==ItemPresentationModel.Stage.READY&&next.handle()!=null)itemReadiness.verified(next.source());
+        if(!updatingContext&&state!=null&&(previous==null||previous.handle()!=next.handle()||next.code()==io.vibeminer.application.item.ItemProjectionException.Code.MISSING_LOCAL||next.code()==io.vibeminer.application.item.ItemProjectionException.Code.CORRUPT))refreshContextStripe();
         if(updatingContext||state==null||!destination.equals("Database")||itemPane==null)return;
         status.setText(next.message());
         boolean sameResults=previous!=null&&previous.stage()==next.stage()&&previous.handle()==next.handle()&&previous.page()==next.page()&&previous.lookup()==next.lookup()&&Objects.equals(previous.source(),next.source())&&Objects.equals(previous.build(),next.build())&&previous.locale().equals(next.locale());

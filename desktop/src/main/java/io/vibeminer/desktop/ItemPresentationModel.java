@@ -213,7 +213,8 @@ public final class ItemPresentationModel implements AutoCloseable {
           long last = cursor.map(ItemPageCursor::afterRecordId).orElse(-1L);
           var physicalOrdinals = new HashSet<Integer>();
           for (var row : result.rows()) {
-            if (!physicalOrdinals.add(row.physicalOrdinal())
+            if (row.recordId() < 1
+                || !physicalOrdinals.add(row.physicalOrdinal())
                 || row.recordId() <= last
                 || row.sectionOrdinal() != current.coverage().sectionOrdinal()
                 || row.physicalOrdinal() >= current.coverage().physicalRows()) {

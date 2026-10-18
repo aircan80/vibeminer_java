@@ -464,4 +464,15 @@ class ItemPresentationModelTest {
             h.coverage()));
     assertEquals(ItemProjectionException.Code.CORRUPT, m.state().code());
   }
+
+  @Test
+  void zeroPhysicalRecordCannotBypassPositiveItemIdQueryPolicy() {
+    var f = new Fake();
+    var m = model(f);
+    ready(m, f);
+    m.firstPage();
+    f.paging.complete(new ItemPage(m.state().handle(), List.of(row(0)), Optional.empty()));
+    assertEquals(ItemProjectionException.Code.CORRUPT, m.state().code());
+    assertNull(m.state().page());
+  }
 }

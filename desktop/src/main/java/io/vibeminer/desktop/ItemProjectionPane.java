@@ -93,7 +93,15 @@ public final class ItemProjectionPane extends VBox {
         getChildren()
             .add(
                 copy(
-                    "Offline work only: verify up to "
+                    "Offline work only. Authenticate admitted physical rows and build a local"
+                        + " index. Copies and other sections are not indexed. Duration unknown; no"
+                        + " acquisition or repair.",
+                    "body-copy"));
+        TitledPane workLimits =
+            new TitledPane(
+                "Local work limits",
+                copy(
+                    "Verify up to "
                         + bytes(l.maxEncodedBytes())
                         + " encoded bytes; admit at most "
                         + bytes(l.maxSectionBytes())
@@ -107,9 +115,11 @@ public final class ItemProjectionPane extends VBox {
                         + bytes(l.maxPalletBytes())
                         + ". Duration unknown. No acquisition or repair.",
                     "secondary"));
+        workLimits.setExpanded(false);
+        workLimits.setId("item-local-limits");
         Button prepare = button("Prepare supported rows", model::prepare, "item-prepare");
         prepare.getStyleClass().add("primary");
-        getChildren().add(prepare);
+        getChildren().addAll(prepare, workLimits);
       }
       getChildren().add(sourceIdentity(s));
       return;
@@ -418,10 +428,20 @@ public final class ItemProjectionPane extends VBox {
                 + "\nActual encoding: "
                 + a.descriptor().actualEncodingKey()
                 + "\nLocale view: "
-                + s.locale();
+                + s.locale()
+                + "\nOriginal encoded receipt URL: "
+                + a.representation().sourceReceipt().actualResourceUrl()
+                + "\nOriginal observation: "
+                + a.representation().sourceReceipt().observedAt()
+                + "\nOriginal physical SHA-256: "
+                + a.representation().encoded().object().digest().value()
+                + "\n"
+                + "Historical receipt is inspectable; current Item evidence readiness is reported"
+                + " separately.";
     var p =
         new TitledPane(
-            "Selected retained source", value(text, "Selected retained source identity"));
+            "Retained source identity and original receipt",
+            value(text, "Historical source receipt; current verification status is separate"));
     p.setExpanded(false);
     return p;
   }
