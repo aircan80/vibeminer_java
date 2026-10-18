@@ -792,35 +792,54 @@ public final class AtlasApplication extends Application {
             && previous.stage() == next.stage()
             && previous.pair() == next.pair()
             && previous.page() == next.page()
-            && previous.lookup() == next.lookup();
+            && previous.lookup() == next.lookup()
+            && previous.searchPage() == next.searchPage()
+            && Objects.equals(previous.executedQuery(), next.executedQuery())
+            && previous.queryMode() == next.queryMode();
     if (draft) {
       namesPane.refreshDraftState();
       return;
     }
     Node focused = stage.getScene().getFocusOwner();
     String id = focused == null ? null : focused.getId();
-    int caret = focused instanceof TextField f ? f.getCaretPosition() : -1;
+    int caret = focused instanceof TextInputControl f ? f.getCaretPosition() : -1;
+    int anchor = focused instanceof TextInputControl f ? f.getAnchor() : -1;
     namesPane.refreshState();
-    if (id != null && id.startsWith("names-")) {
-      String target =
-          id.equals("names-record-id")
-              ? id
-              : next.busy()
-                  ? "names-cancel"
-                  : next.pair() == null
-                      ? "names-prepare"
-                      : next.page() != null && !next.page().rows().isEmpty()
-                              || next.selected() != null
-                          ? "names-row-table"
-                          : "names-record-id";
+    if (id != null
+        && List.of(
+                "names-record-id",
+                "names-search-input",
+                "names-search",
+                "names-search-clear",
+                "names-prepare",
+                "names-cancel",
+                "names-lookup",
+                "names-browse",
+                "names-first-page",
+                "names-next-page")
+            .contains(id)) {
+      String target;
+      if (id.equals("names-record-id") || id.equals("names-search-input")) target = id;
+      else if (id.equals("names-search-clear")) target = "names-browse";
+      else if (next.busy()) target = "names-cancel";
+      else if (next.pair() == null) target = "names-prepare";
+      else if (next.searchPage() != null && !next.searchPage().rows().isEmpty()
+          || next.page() != null && !next.page().rows().isEmpty()
+          || next.selected() != null) target = "names-row-table";
+      else
+        target =
+            next.queryMode() == ItemNamesPresentationModel.QueryMode.SEARCH
+                ? "names-search-input"
+                : "names-record-id";
       Platform.runLater(
           () -> {
             if (destination.equals("Database") && namesMode && namesPane != null) {
               Node n = namesPane.lookup("#" + target);
               if (n != null) {
                 n.requestFocus();
-                if (n instanceof TextField f && caret >= 0)
-                  f.positionCaret(Math.min(caret, f.getLength()));
+                if (n instanceof TextInputControl f && caret >= 0)
+                  f.selectRange(
+                      Math.min(Math.max(0, anchor), f.getLength()), Math.min(caret, f.getLength()));
               }
             }
           });

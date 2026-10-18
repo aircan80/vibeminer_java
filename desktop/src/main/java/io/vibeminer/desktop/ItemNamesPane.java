@@ -6,6 +6,8 @@ import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.collections.FXCollections;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.InputMethodEvent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 
@@ -16,8 +18,11 @@ public final class ItemNamesPane extends VBox {
   private final ItemNamesPresentationModel model;
   private final double scale;
   private final Runnable inspectSparse;
-  private Label status, mode;
+  private Label status, mode, searchError;
   private TableView<NamedItemRow> table;
+  private LiteralEditor searchInput;
+  private Button searchButton, nextButton;
+  private TextArea executedText;
 
   public ItemNamesPane(ItemNamesPresentationModel model, double scale, Runnable inspectSparse) {
     super(12);
@@ -36,12 +41,23 @@ public final class ItemNamesPane extends VBox {
       status.setAccessibleText(s.message());
     }
     if (mode != null) mode.setText(s.mode() + " · fixed page limit " + model.pageSize());
+    if (searchInput != null) searchInput.restoreFromModel();
+    if (searchButton != null) searchButton.setDisable(s.busy() || s.searchBlocked());
+    refreshSearchError(s);
+    if (nextButton != null) nextButton.setDisable(!canContinue(s));
+    if (executedText != null && s.executedQuery() != null)
+      executedText.setText(s.executedQuery().text());
   }
 
   public void refreshState() {
     var s = model.state();
     getChildren().clear();
     table = null;
+    searchInput = null;
+    searchButton = null;
+    searchError = null;
+    nextButton = null;
+    executedText = null;
     getChildren()
         .addAll(
             copy("DATABASE / NAME CANDIDATES", "eyebrow"),
@@ -118,6 +134,7 @@ public final class ItemNamesPane extends VBox {
                   10, 8, p, button("Cancel local request", model::cancel, "names-cancel")));
     }
     if (s.pair() != null) {
+      getChildren().add(searchForm(s));
       TextField input = new TextField(s.input());
       input.setId("names-record-id");
       input.setPromptText("Positive Item record ID");
@@ -134,10 +151,15 @@ public final class ItemNamesPane extends VBox {
           });
       Button browse = button("Browse Item IDs", model::firstPage, "names-browse");
       browse.setDisable(s.busy());
-      Button first = button("First page", model::firstPage, "names-first-page");
+      Button first = button("First Browse page", model::firstPage, "names-first-page");
       first.setDisable(s.busy());
       Button next = button("Next page", model::nextPage, "names-next-page");
-      next.setDisable(s.busy() || s.page() == null || s.page().nextCursor().isEmpty());
+      nextButton = next;
+      next.setText(
+          s.queryMode() == ItemNamesPresentationModel.QueryMode.SEARCH
+              ? "Next matches"
+              : "Next page");
+      next.setDisable(!canContinue(s));
       getChildren()
           .add(
               new FlowPane(
@@ -151,11 +173,46 @@ public final class ItemNamesPane extends VBox {
       mode = copy(s.mode() + " · fixed page limit " + model.pageSize(), "secondary");
       getChildren().add(mode);
       List<NamedItemRow> rows =
-          s.page() != null
-              ? s.page().rows()
-              : s.selected() != null ? List.of(s.selected()) : List.of();
+          s.searchPage() != null
+              ? s.searchPage().rows()
+              : s.page() != null
+                  ? s.page().rows()
+                  : s.lookup() != null && s.lookup().result().item().row().isPresent()
+                      ? List.of(
+                          new NamedItemRow(
+                              s.lookup().result().item().row().orElseThrow(),
+                              s.lookup().result().name().orElseThrow()))
+                      : List.of();
       if (!rows.isEmpty()) addRows(rows, s);
-      else if (s.lookup() != null
+      if (s.executedQuery() != null) {
+        executedText =
+            value(
+                s.executedQuery().text(),
+                "Exact executed literal query; preserved whitespace, case and normalization");
+        executedText.setId("names-executed-query");
+        executedText.setPrefRowCount(2);
+        String generation =
+            s.searchPage() == null
+                ? "No current result generation"
+                : s.searchPage().generationFingerprint();
+        TitledPane queryProof =
+            new TitledPane(
+                "Executed query and result scope",
+                new VBox(
+                    8,
+                    copy(
+                        "Literal and case-sensitive · " + ItemNameLiteralQuery.MODE_REVISION,
+                        "secondary"),
+                    executedText,
+                    copy(
+                        "Current result generation: "
+                            + generation
+                            + ". Query text is not persisted as an artifact or result ledger.",
+                        "secondary")));
+        queryProof.setId("names-search-proof");
+        queryProof.setExpanded(false);
+        getChildren().add(queryProof);
+      } else if (s.lookup() != null
           && s.lookup().result().item().outcome() == ItemLookupResult.Outcome.COPY_UNINDEXED)
         getChildren()
             .add(
@@ -200,6 +257,168 @@ public final class ItemNamesPane extends VBox {
     limits.setExpanded(false);
     limits.setId("names-local-limits");
     getChildren().add(limits);
+  }
+
+  private boolean canContinue(ItemNamesPresentationModel.State s) {
+    return s.queryMode() == ItemNamesPresentationModel.QueryMode.SEARCH
+        ? model.canContinueSearch()
+        : !s.busy() && s.page() != null && s.page().nextCursor().isPresent();
+  }
+
+  private VBox searchForm(ItemNamesPresentationModel.State state) {
+    searchInput = new LiteralEditor(model);
+    searchInput.setId("names-search-input");
+    searchInput.setPromptText("Literal Display candidate text");
+    searchInput.setAccessibleText(
+        "Literal case-sensitive Display candidate search. One to 128 Unicode scalar values, no"
+            + " normalization. Enter searches; Shift Enter inserts line feed. Tab inserts a literal"
+            + " tab; Ctrl Tab moves focus. Carriage return and unsupported control characters are"
+            + " rejected.");
+    searchInput.setPrefRowCount(2);
+    searchInput.setMaxWidth(Double.MAX_VALUE);
+    searchError = copy("Input rejected. Edit or Clear before searching.", "notice-heading");
+    searchError.setId("names-search-error");
+    refreshSearchError(state);
+    searchButton = button("Search Display candidates", model::search, "names-search");
+    searchButton.setDisable(state.busy() || state.searchBlocked());
+    searchButton.getStyleClass().add("primary");
+    searchInput.addEventFilter(
+        javafx.scene.input.KeyEvent.KEY_PRESSED,
+        event -> {
+          if (event.getCode() == KeyCode.ENTER && !searchInput.composing) {
+            if (event.isShiftDown()) searchInput.replaceSelection("\n");
+            else if (!searchButton.isDisabled()) model.search();
+            event.consume();
+          }
+        });
+    Button clear = button("Clear to Browse", model::clearSearch, "names-search-clear");
+    Label cost =
+        copy(
+            "Bounded local linear scan. A page limits displayed matches, not total proof or scan"
+                + " work. Source replay and stored-index integrity checks are additional. No"
+                + " network.",
+            "secondary");
+    cost.setId("names-search-cost");
+    TitledPane limits =
+        new TitledPane(
+            "Literal search limits",
+            copy(
+                "One to 128 Unicode scalar values and at most 512 strict UTF-8 bytes, preserved"
+                    + " verbatim. No case folding, normalization, regex or wildcards. At most"
+                    + " 200,000 physical Item anchors and 200,000 physical names, 64 MiB projected"
+                    + " UTF-8, scanned in batches of at most 128. Existing per-record and"
+                    + " independent source-replay limits also apply. Duration unknown; there is no"
+                    + " count-all pass.",
+                "secondary"));
+    limits.setId("names-search-limits");
+    limits.setExpanded(false);
+    VBox form =
+        new VBox(
+            8,
+            copy("DISPLAY CANDIDATES · EXACT TEXT, CASE-SENSITIVE", "eyebrow"),
+            searchInput,
+            searchError,
+            copy(
+                "Enter searches · Shift+Enter inserts a line break · Ctrl+Tab moves focus · LF and"
+                    + " tab are preserved",
+                "secondary"),
+            cost,
+            new FlowPane(10, 8, searchButton, clear),
+            limits);
+    form.getStyleClass().add("install-cost-card");
+    return form;
+  }
+
+  private void refreshSearchError(ItemNamesPresentationModel.State state) {
+    if (searchError == null) return;
+    searchError.setVisible(state.searchBlocked());
+    searchError.setManaged(state.searchBlocked());
+    searchError.setAccessibleText(
+        state.searchBlocked()
+            ? "Input rejected. This native editor cannot preserve CR, NUL, other control characters"
+                  + " or DEL. LF and tab are supported. Edit valid text or Clear before searching."
+            : "No rejected input.");
+  }
+
+  /** Raw editor ingress is checked before TextInputControl can remove unsupported characters. */
+  public static final class LiteralEditor extends TextArea {
+    private final ItemNamesPresentationModel model;
+    private boolean internal;
+    private boolean composing;
+
+    public LiteralEditor(ItemNamesPresentationModel model) {
+      this.model = Objects.requireNonNull(model);
+      restoreFromModel();
+      addEventFilter(
+          InputMethodEvent.INPUT_METHOD_TEXT_CHANGED,
+          event -> composing = !event.getComposed().isEmpty());
+      textProperty()
+          .addListener(
+              (observable, before, after) -> {
+                if (!internal && !Objects.equals(after, model.state().searchInput())) {
+                  model.rejectSearchIngress();
+                  restoreFromModel();
+                }
+              });
+    }
+
+    public void restoreFromModel() {
+      String value = model.state().searchInput();
+      if (Objects.equals(getText(), value)) return;
+      if (!ItemNamesPresentationModel.acceptsEditorText(value)) {
+        model.rejectSearchIngress();
+        return;
+      }
+      internal = true;
+      try {
+        setText(value);
+        if (!Objects.equals(getText(), value)) model.rejectSearchIngress();
+      } finally {
+        internal = false;
+      }
+    }
+
+    @Override
+    public void replaceText(int start, int end, String raw) {
+      if (internal) {
+        super.replaceText(start, end, raw);
+        return;
+      }
+      String proposed = getText().substring(0, start) + raw + getText().substring(end);
+      if (!ItemNamesPresentationModel.acceptsEditorText(raw)
+          || !ItemNamesPresentationModel.acceptsEditorText(proposed)) {
+        model.rejectSearchIngress();
+        return;
+      }
+      internal = true;
+      try {
+        super.replaceText(start, end, raw);
+      } finally {
+        internal = false;
+      }
+      if (!getText().equals(proposed)) {
+        model.rejectSearchIngress();
+        restoreFromModel();
+        return;
+      }
+      model.setSearchInput(getText());
+    }
+
+    @Override
+    public void replaceText(IndexRange range, String raw) {
+      replaceText(range.getStart(), range.getEnd(), raw);
+    }
+
+    @Override
+    public void replaceSelection(String raw) {
+      replaceText(getSelection(), raw);
+    }
+
+    @Override
+    public void paste() {
+      String raw = Clipboard.getSystemClipboard().getString();
+      if (raw != null) replaceSelection(raw);
+    }
   }
 
   private void addRows(List<NamedItemRow> rows, ItemNamesPresentationModel.State s) {
