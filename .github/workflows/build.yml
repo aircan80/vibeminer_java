@@ -153,6 +153,7 @@ jobs:
           javac -cp "$PROTOCOL_CP" -d build/protocol-tools tools/protocol/*.java
           java -cp "build/protocol-tools:$PROTOCOL_CP" ItemCohortProbe --self-test
           java -cp "build/protocol-tools:$PROTOCOL_CP" ArchivedItemHeaderProbe --self-test
+          java -cp "build/protocol-tools:$PROTOCOL_CP" SparseItemHeaderProbe --self-test
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
         run: |
