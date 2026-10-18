@@ -160,6 +160,18 @@ jobs:
           java -cp "build/protocol-tools:$PROTOCOL_CP" ItemRowCohortProbe --self-test
           java --enable-native-access=ALL-UNNAMED -cp "build/protocol-tools:$PROTOCOL_CP:bootstrap/build/install/bootstrap/lib/*" io.vibeminer.infrastructure.lookup.RootLookupServiceProbe --self-test
           java --enable-native-access=ALL-UNNAMED -cp "build/protocol-tools:$PROTOCOL_CP:bootstrap/build/install/bootstrap/lib/*" io.vibeminer.infrastructure.lookup.SelectedFileServiceProbe --self-test
+      - name: Independently validate Item evidence JSON
+        if: runner.os == 'Linux'
+        run: |
+          "$PYTHON" -m venv build/export-validator
+          build/export-validator/bin/python -m pip install --disable-pip-version-check \
+            --require-hashes -r tools/exports/requirements.txt
+          mkdir -p build/export-tool build/export-corpus
+          javac -cp 'bootstrap/build/install/bootstrap/lib/*:infrastructure/build/classes/java/test' \
+            -d build/export-tool tools/exports/ExportOracleCorpus.java
+          java -cp 'build/export-tool:bootstrap/build/install/bootstrap/lib/*:infrastructure/build/classes/java/test' \
+            io.vibeminer.infrastructure.itemexport.ExportOracleCorpus build/export-corpus
+          build/export-validator/bin/python tools/exports/oracle.py build/export-corpus
       - name: Capture and check the Atlas interface
         if: runner.os == 'Linux'
         run: |
