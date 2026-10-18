@@ -264,6 +264,15 @@ public final class GuidedDiscoveryPane extends VBox {
 
   private ViewData data;
   private long selectionChange;
+  private String pendingSelectionId;
+
+  private record SelectionContext(String product, Filter filter, String query, String region) {}
+
+  private static SelectionContext selectionContext(ViewData value) {
+    return new SelectionContext(
+        value.selectedProductId(), value.filter(), value.query(), value.region());
+  }
+
   private final Interactions events;
   private final ComboBox<ProductOption> products = new ComboBox<>();
   private final Button refresh = button("↻ Refresh builds", "guided-refresh");
@@ -395,16 +404,23 @@ public final class GuidedDiscoveryPane extends VBox {
         .selectedItemProperty()
         .addListener(
             (o, before, after) -> {
+              if (events.restoring != 0) return;
               long change = ++selectionChange;
-              if (events.restoring != 0 || after == null) return;
+              pendingSelectionId = after == null ? null : after.groupId();
+              if (after == null) return;
+              var context = selectionContext(data);
+              String groupId = after.groupId();
               // A model callback can synchronously render a loading state. Wait until JavaFX has
-              // finished notifying its selected-indices change before that render mutates
-              // selection.
+              // finished its selection change. Same-context fact refreshes may restore null or
+              // replace row values before dispatch; they must not discard this valid user intent.
               javafx.application.Platform.runLater(
                   () -> {
                     if (selectionChange == change
-                        && Objects.equals(rows.getSelectionModel().getSelectedItem(), after))
-                      events.buildSelected(after.groupId());
+                        && context.equals(selectionContext(data))
+                        && data.rows().stream().anyMatch(row -> row.groupId().equals(groupId))) {
+                      pendingSelectionId = null;
+                      events.buildSelected(groupId);
+                    }
                   });
             });
     inspector.setId("guided-inspector");
@@ -487,6 +503,13 @@ public final class GuidedDiscoveryPane extends VBox {
     String focusedId = focused == null ? null : focused.getId();
     events.restore(
         () -> {
+          if (!selectionContext(data).equals(selectionContext(next))
+              || pendingSelectionId != null
+                  && next.rows().stream()
+                      .noneMatch(row -> row.groupId().equals(pendingSelectionId))) {
+            selectionChange++;
+            pendingSelectionId = null;
+          }
           data = next;
           products.getItems().setAll(next.products());
           products.setValue(

@@ -362,6 +362,49 @@ class GuidedDiscoveryPaneTest {
           List.of("b"),
           selected,
           "Programmatic restored selection cannot emit another user request");
+      var refreshedBeforeDispatch =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                var pane = (GuidedDiscoveryPane) stage.getScene().getRoot();
+                var list = (javafx.scene.control.ListView<?>) pane.lookup("#guided-builds");
+                list.getSelectionModel().clearAndSelect(0);
+                var current = data("wow", null, false);
+                var original = current.rows().getFirst();
+                var updated =
+                    new GuidedDiscoveryPane.BuildRow(
+                        original.groupId(),
+                        original.version(),
+                        original.regions(),
+                        "Partial",
+                        original.local(),
+                        original.currentlyAdvertised(),
+                        original.newToVibeMiner(),
+                        original.details(),
+                        original.openEnabled(),
+                        original.openReason());
+                pane.update(
+                    new GuidedDiscoveryPane.ViewData(
+                        current.products(),
+                        "wow",
+                        List.of(updated, current.rows().get(1)),
+                        null,
+                        current.filter(),
+                        false,
+                        true,
+                        false,
+                        "",
+                        ""));
+                return null;
+              });
+      javafx.application.Platform.runLater(refreshedBeforeDispatch);
+      refreshedBeforeDispatch.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      var refreshed = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(refreshed);
+      refreshed.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(
+          List.of("b", "a"),
+          selected,
+          "Same-context restored-null/readiness refresh must preserve the pending user selection");
       var supersede =
           new java.util.concurrent.FutureTask<Void>(
               () -> {
@@ -378,7 +421,117 @@ class GuidedDiscoveryPaneTest {
       javafx.application.Platform.runLater(superseded);
       superseded.get(5, java.util.concurrent.TimeUnit.SECONDS);
       assertEquals(
-          List.of("b"), selected, "Superseded deferred selection cannot select another product");
+          List.of("b", "a"),
+          selected,
+          "Superseded deferred selection cannot select another product");
+      var base = data("wow", null, false);
+      var changedContexts =
+          List.of(
+              data("wowt", null, false),
+              new GuidedDiscoveryPane.ViewData(
+                  base.products(),
+                  "wow",
+                  base.rows(),
+                  null,
+                  GuidedDiscoveryPane.Filter.LOCAL,
+                  false,
+                  true,
+                  false,
+                  "",
+                  ""),
+              new GuidedDiscoveryPane.ViewData(
+                  base.products(),
+                  "wow",
+                  base.rows(),
+                  null,
+                  base.filter(),
+                  false,
+                  true,
+                  false,
+                  "",
+                  "",
+                  "changed",
+                  "",
+                  List.of()),
+              new GuidedDiscoveryPane.ViewData(
+                  base.products(),
+                  "wow",
+                  base.rows(),
+                  null,
+                  base.filter(),
+                  false,
+                  true,
+                  false,
+                  "",
+                  "",
+                  "",
+                  "eu",
+                  List.of("eu")),
+              new GuidedDiscoveryPane.ViewData(
+                  base.products(),
+                  "wow",
+                  List.of(base.rows().get(1)),
+                  null,
+                  base.filter(),
+                  false,
+                  true,
+                  false,
+                  "",
+                  ""));
+      for (var changedContext : changedContexts) {
+        var invalidate =
+            new java.util.concurrent.FutureTask<Void>(
+                () -> {
+                  var pane = (GuidedDiscoveryPane) stage.getScene().getRoot();
+                  pane.update(base);
+                  var list = (javafx.scene.control.ListView<?>) pane.lookup("#guided-builds");
+                  list.getSelectionModel().clearAndSelect(0);
+                  pane.update(changedContext);
+                  pane.update(
+                      base); // Even a return before dispatch must not revive an invalidated click.
+                  return null;
+                });
+        javafx.application.Platform.runLater(invalidate);
+        invalidate.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        var invalidated = new java.util.concurrent.FutureTask<Void>(() -> null);
+        javafx.application.Platform.runLater(invalidated);
+        invalidated.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(
+            List.of("b", "a"),
+            selected,
+            "Context change or removal must invalidate even when the old context returns");
+      }
+      var clearUserIntent =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                var list =
+                    (javafx.scene.control.ListView<?>) stage.getScene().lookup("#guided-builds");
+                list.getSelectionModel().clearAndSelect(0);
+                list.getSelectionModel().clearSelection();
+                return null;
+              });
+      javafx.application.Platform.runLater(clearUserIntent);
+      clearUserIntent.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      var cleared = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(cleared);
+      cleared.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(List.of("b", "a"), selected, "Explicit user clear cancels queued intent");
+      var newerUserIntent =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                var list =
+                    (javafx.scene.control.ListView<?>) stage.getScene().lookup("#guided-builds");
+                list.getSelectionModel().clearAndSelect(0);
+                list.getSelectionModel().clearAndSelect(1);
+                return null;
+              });
+      javafx.application.Platform.runLater(newerUserIntent);
+      newerUserIntent.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      var newer = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(newer);
+      newer.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(
+          List.of("b", "a", "b"), selected, "Only the latest queued user selection is dispatched");
       assertNull(failure.get(), () -> "JavaFX mouse selection failed: " + failure.get());
     } finally {
       var close =
