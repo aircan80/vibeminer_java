@@ -25,6 +25,14 @@ public record RetentionScope(
             && !roles.equals(Set.of("BUILD_CONFIG", "ROOT_MANIFEST")))
       throw new IllegalArgumentException(
           "Scope must declare its supported offline dependency closure");
+    if (kind == ScopeKind.ENCODED_FILE
+        && (roles.size() != 3
+            || !roles.contains("BUILD_CONFIG")
+            || !roles.contains("ROOT_MANIFEST")
+            || roles.stream().filter(role -> role.matches("EF1_[A-Za-z0-9_-]{43}")).count() != 1)) {
+      throw new IllegalArgumentException(
+          "Encoded file scope requires configuration, root and one exact file role");
+    }
   }
 
   public String scopeId() {

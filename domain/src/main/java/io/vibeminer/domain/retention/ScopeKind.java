@@ -4,5 +4,6 @@ package io.vibeminer.domain.retention;
 public enum ScopeKind {
   INSTALL_METADATA,
   ROOT_METADATA,
+  ENCODED_FILE,
   LEGACY_RETAINED
 }
