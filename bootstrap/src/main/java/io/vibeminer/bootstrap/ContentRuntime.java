@@ -15,6 +15,7 @@ import io.vibeminer.application.itemexport.*;
 import io.vibeminer.application.itemnames.*;
 import io.vibeminer.application.lookup.DefaultFileLookupService;
 import io.vibeminer.application.lookup.FileLookupService;
+import io.vibeminer.application.scheduler.PrioritySourceScheduler;
 import io.vibeminer.application.selectedfile.DefaultSelectedFileService;
 import io.vibeminer.application.selectedfile.SelectedFileService;
 import io.vibeminer.infrastructure.acquisition.CdnMetadataTransport;
@@ -57,6 +58,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
   private final HttpClient client;
   private final ExecutorService orchestration;
   private final ExecutorService acquisition;
+  private final PrioritySourceScheduler sourceScheduler;
   private final ExecutorService itemWorkers;
   private final ItemProjectionService itemProjection;
   private final ExecutorService metadataWorkers;
@@ -81,6 +83,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
       HttpClient client,
       ExecutorService orchestration,
       ExecutorService acquisition,
+      PrioritySourceScheduler sourceScheduler,
       BootstrapService service,
       FileLookupService lookup,
       OfficialFileLookupGateway lookupGateway,
@@ -109,6 +112,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     this.client = client;
     this.orchestration = orchestration;
     this.acquisition = acquisition;
+    this.sourceScheduler = sourceScheduler;
     this.service = service;
     this.lookup = lookup;
     this.lookupGateway = lookupGateway;
@@ -193,6 +197,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     OfficialMetadataLocalVerificationGateway repairLocal = null;
     var orchestration = workers("vibeminer-content-jobs", 4);
     var acquisition = workers("vibeminer-content-transfers", 4);
+    var sourceScheduler = new PrioritySourceScheduler(acquisition);
     var itemWorkers = workers("vibeminer-item-projection", 2);
     var metadataWorkers = workers("vibeminer-metadata-reuse", 2);
     var repairWorkers = workers("vibeminer-metadata-repair", 2);
@@ -229,14 +234,22 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               retention,
               contentClaims,
               metadataAssociations,
-              localMetadata);
+              localMetadata,
+              sourceScheduler);
       var rangeTransport =
           new PinnedCdnRangeTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
       var lookupGateway =
           new OfficialFileLookupGateway(store, transport, rangeTransport, Clock.systemUTC());
       var lookup =
           new DefaultFileLookupService(
-              lookupGateway, catalog, store, orchestration, acquisition, retention, contentClaims);
+              lookupGateway,
+              catalog,
+              store,
+              orchestration,
+              acquisition,
+              retention,
+              contentClaims,
+              sourceScheduler);
       var selectedCatalog = new SqliteSelectedFileCatalog(sharedCatalog, store, storeSession);
       var metadataTransport =
           new CdnMetadataTransport(client, Clock.systemUTC(), Duration.ofSeconds(15));
@@ -267,7 +280,13 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
               store, transport, rangeTransport, metadataTransport, Clock.systemUTC());
       var selectedFiles =
           new DefaultSelectedFileService(
-              selectedGateway, catalog, selectedCatalog, retention, orchestration, acquisition);
+              selectedGateway,
+              catalog,
+              selectedCatalog,
+              retention,
+              orchestration,
+              acquisition,
+              sourceScheduler);
       var itemReader =
           new RetainedItemProjectionSourceReader(
               store, selectedCatalog, selectedGateway, Clock.systemUTC());
@@ -299,6 +318,7 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           client,
           orchestration,
           acquisition,
+          sourceScheduler,
           service,
           lookup,
           lookupGateway,
@@ -318,7 +338,8 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
           itemEvidence);
     } catch (RuntimeException | Error failure) {
       orchestration.shutdownNow();
-      acquisition.shutdownNow();
+      sourceScheduler.close();
+      acquisition.shutdown();
       itemWorkers.shutdownNow();
       metadataWorkers.shutdownNow();
       repairWorkers.shutdownNow();
@@ -388,7 +409,9 @@ final class ContentRuntime implements LazyBootstrapService.Resources {
     lookup.close();
     selectedFiles.close();
     orchestration.shutdownNow();
-    acquisition.shutdownNow();
+    sourceScheduler.close();
+    // Accepted wrappers must execute their cancellation/retirement callbacks; never drop them.
+    acquisition.shutdown();
     itemWorkers.shutdownNow();
     metadataWorkers.shutdownNow();
     repairWorkers.shutdownNow();

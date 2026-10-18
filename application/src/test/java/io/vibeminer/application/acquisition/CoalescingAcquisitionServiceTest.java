@@ -1,6 +1,7 @@
 package io.vibeminer.application.acquisition;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.*;
 import org.junit.jupiter.api.Test;
 import java.io.InputStream;
@@ -233,6 +234,58 @@ class CoalescingAcquisitionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "key", ""));
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "key\nother", "verifier"));
         assertThrows(IllegalArgumentException.class, () -> new ResolvedSourceIdentity("wow", "x".repeat(4097), "verifier"));
+    }
+
+    @Test void sharedSchedulerPromotesExistingFlightAndPreservesOtherConsumers() {
+        var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
+        try (var scheduler = new PrioritySourceScheduler(executor);
+                var service = new CoalescingAcquisitionService(store, (source, token) -> {
+                    calls.incrementAndGet(); return verified(source, store.add(source.immutableSourceKey()));
+                }, executor, 68, 32, 1024, false, scheduler)) {
+            var owner = scheduler.newBulkOwner("a".repeat(64));
+            for (int i = 0; i < 2; i++) service.acquire(new ResolvedSourceIdentity("test", "bulk" + i, "v1"), owner.demand());
+            var bulk = service.acquire(SOURCE, owner.demand());
+            assertEquals(2, executor.tasks.size());
+            var interactive = service.acquire(SOURCE);
+            assertEquals(3, executor.tasks.size());
+            scheduler.cancelBulk(owner);
+            bulk.cancel();
+            while (!executor.tasks.isEmpty()) executor.runNext();
+            assertEquals(SOURCE, interactive.completion().toCompletableFuture().join().source());
+            assertEquals(1, calls.get());
+        }
+    }
+
+    @Test void canceledAcceptedSchedulerWrapperRetiresCoalescerOnlyAfterActualRun() {
+        var executor = new ManualExecutor(); var store = new FakeStore();
+        try (var scheduler = new PrioritySourceScheduler(executor);
+                var service = new CoalescingAcquisitionService(store, (source, token) -> {
+                    fail("Canceled producer must not enter"); return null;
+                }, executor, 1, 32, 1024, false, scheduler)) {
+            var owner = scheduler.newBulkOwner("a".repeat(64));
+            var request = service.acquire(SOURCE, owner.demand());
+            scheduler.cancelBulk(owner);
+            assertFalse(request.completion().toCompletableFuture().isDone());
+            assertFailed(service.acquire(new ResolvedSourceIdentity("test", "other", "v1")), AcquisitionException.Code.CAPACITY_EXCEEDED);
+            executor.runNext();
+            assertTrue(request.completion().toCompletableFuture().isCompletedExceptionally());
+            var replacement = service.acquire(new ResolvedSourceIdentity("test", "other", "v1"));
+            assertFalse(replacement.completion().toCompletableFuture().isDone());
+        }
+    }
+
+    @Test void successCallbackCanRequestSameSourceAfterSchedulerRetirement() {
+        var executor = new ManualExecutor(); var store = new FakeStore(); var calls = new AtomicInteger();
+        try (var scheduler = new PrioritySourceScheduler(executor);
+                var service = new CoalescingAcquisitionService(store, (source, token) -> {
+                    calls.incrementAndGet(); return verified(source, store.add("shared"));
+                }, executor, 68, 32, 1024, true, scheduler)) {
+            var first = service.acquire(SOURCE);
+            var repeated = first.completion().thenCompose(original -> service.acquire(SOURCE).completion());
+            while (!executor.tasks.isEmpty()) executor.runNext();
+            assertEquals(first.completion().toCompletableFuture().join(), repeated.toCompletableFuture().join());
+            assertEquals(1, calls.get());
+        }
     }
 
     private static VerifiedSourceAlias verified(ResolvedSourceIdentity source, StoredObject object) {

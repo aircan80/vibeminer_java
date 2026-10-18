@@ -66,6 +66,15 @@ public final class PrioritySourceScheduler implements AutoCloseable {
       this.owner = owner;
     }
 
+    /** Mode-off applies only to this generation; foreground demand is independent. */
+    public boolean isForeground() {
+      return owner == null;
+    }
+
+    public boolean isCancellationRequested() {
+      return owner != null && owner.disabled.get();
+    }
+
     public static Demand foreground() {
       return new Demand(null);
     }
@@ -129,6 +138,7 @@ public final class PrioritySourceScheduler implements AutoCloseable {
     final AtomicBoolean cancelled = new AtomicBoolean();
     State state = State.QUEUED;
     boolean admittedBulk;
+    boolean bound;
 
     Flight(ResolvedSourceIdentity source, SourceWork work) {
       this.source = source;
@@ -165,6 +175,16 @@ public final class PrioritySourceScheduler implements AutoCloseable {
   }
 
   public ScheduledSource submit(ResolvedSourceIdentity source, SourceWork work, Demand demand) {
+    return submit(source, work, demand, issued -> {});
+  }
+
+  /** Internal binding boundary: no producer can execute before the issued handle is bound. */
+  ScheduledSource submit(
+      ResolvedSourceIdentity source,
+      SourceWork work,
+      Demand demand,
+      java.util.function.Consumer<ScheduledSource> beforeDispatch) {
+    Objects.requireNonNull(beforeDispatch);
     Objects.requireNonNull(source);
     Objects.requireNonNull(work);
     ScheduledSource result;
@@ -179,6 +199,22 @@ public final class PrioritySourceScheduler implements AutoCloseable {
       sources.put(source, flight);
       queued.add(flight);
       result = new ScheduledSource(flight, initial);
+    }
+    try {
+      beforeDispatch.accept(result);
+    } catch (RuntimeException | Error failedBinding) {
+      synchronized (monitor) {
+        for (var handle : List.copyOf(result.flight.demands)) detachLocked(handle);
+        queued.remove(result.flight);
+        sources.remove(result.flight.source, result.flight);
+        result.flight.state = State.RETIRED;
+      }
+      result.flight.retired.completeExceptionally(failedBinding);
+      pump();
+      throw failedBinding;
+    }
+    synchronized (monitor) {
+      result.flight.bound = true;
     }
     pump();
     return result;
@@ -269,6 +305,7 @@ public final class PrioritySourceScheduler implements AutoCloseable {
       while (!closed && dispatched < MAXIMUM_ACTUAL_WORKERS) {
         Flight foreground = null, bulk = null;
         for (var flight : queued) {
+          if (!flight.bound) continue;
           if (flight.foreground()) {
             if (foreground == null) foreground = flight;
           } else if (bulk == null && dispatchedBulk < MAXIMUM_BULK_WORKERS) bulk = flight;

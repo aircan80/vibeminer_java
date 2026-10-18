@@ -5,6 +5,7 @@ import static io.vibeminer.application.selectedfile.SelectedFileException.Code.*
 import io.vibeminer.application.*;
 import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.retention.*;
+import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.*;
 import io.vibeminer.domain.retention.*;
@@ -21,6 +22,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
   private final SelectedFileCatalog files;
   private final RetentionRepository retention;
   private final Executor jobs, acquisitions;
+  private final PrioritySourceScheduler scheduler;
   private final Semaphore capacity = new Semaphore(4);
   private final Set<CompletableFuture<?>> active = ConcurrentHashMap.newKeySet();
   private final AtomicBoolean closed = new AtomicBoolean();
@@ -54,8 +56,15 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     boolean accepting = true;
     boolean publicationClosing;
     Thread worker;
+    final SourceDemandRegistration scheduling;
+    volatile CancellationToken schedulerCancellation = CancellationToken.none();
 
-    Flight(LocatedFilePlan plan, CanonicalReservation reservation) {
+    Flight(
+        LocatedFilePlan plan,
+        CanonicalReservation reservation,
+        PrioritySourceScheduler scheduler,
+        ResolvedSourceIdentity source) {
+      scheduling = scheduler == null ? null : new SourceDemandRegistration(scheduler, source);
       firstPlan = plan;
       firstReservation = reservation;
     }
@@ -68,6 +77,18 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       RetentionRepository retention,
       Executor jobs,
       Executor acquisitions) {
+    this(gateway, builds, files, retention, jobs, acquisitions, null);
+  }
+
+  public DefaultSelectedFileService(
+      SelectedFileGateway gateway,
+      BuildObjectCatalog builds,
+      SelectedFileCatalog files,
+      RetentionRepository retention,
+      Executor jobs,
+      Executor acquisitions,
+      PrioritySourceScheduler scheduler) {
+    this.scheduler = scheduler;
     this.gateway = Objects.requireNonNull(gateway);
     this.builds = Objects.requireNonNull(builds);
     this.files = Objects.requireNonNull(files);
@@ -169,9 +190,22 @@ public final class DefaultSelectedFileService implements SelectedFileService {
 
   @Override
   public CompletionStage<SelectedFileAssociation> retain(SelectedFilePlan plan) {
+    return retain(plan, PrioritySourceScheduler.Demand.foreground());
+  }
+
+  @Override
+  public CompletionStage<SelectedFileAssociation> retain(
+      SelectedFilePlan plan, PrioritySourceScheduler.Demand demand) {
     Objects.requireNonNull(plan);
+    Objects.requireNonNull(demand);
+    if (scheduler == null && !demand.isForeground())
+      return CompletableFuture.failedFuture(
+          error(UNSUPPORTED, "Priority source admission not configured"));
     return submit(
-        token -> {
+        operationToken -> {
+          CancellationToken token =
+              () -> operationToken.isCancellationRequested() || demand.isCancellationRequested();
+          token.throwIfCancellationRequested();
           var choice = plan.choice();
           validateChoice(choice, token);
           long length;
@@ -196,7 +230,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
             var scope = scope(choice, length);
             builds.registerSnapshot(choice.plan().variant().build());
             retention.pin(scope, token);
-            var representation = retainBytes(plan, current, slot, length, token);
+            var representation = retainBytes(plan, current, slot, length, demand, token);
             token.throwIfCancellationRequested();
             var expected = association(choice, representation);
             var attached = files.attachAssociation(expected, scope, token);
@@ -221,6 +255,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       Optional<ContentRepresentation> current,
       Slot slot,
       long length,
+      PrioritySourceScheduler.Demand demand,
       CancellationToken token) {
     var choice = plan.choice();
     if (current.isPresent()) {
@@ -244,17 +279,18 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     }
     FlightJoin joined;
     try {
-      joined = join(slot, reservation, located);
+      joined = join(slot, reservation, located, demand);
     } catch (RuntimeException rejected) {
       scheduleUnownedReservationCleanup(slot, reservation, rejected);
       throw rejected;
     }
     try {
-      await(joined.flight().result, token);
+      await(joined.result(), token);
     } catch (RuntimeException failure) {
       if (!joined.enrolled()) scheduleUnownedReservationCleanup(slot, reservation, failure);
       throw failure;
     } finally {
+      if (joined.scheduling() != null) joined.scheduling().close();
       if (joined.enrolled()) detach(joined.flight());
     }
     if (!joined.enrolled()) {
@@ -570,9 +606,17 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     if (slot.consumers == 0 && slot.workers == 0) slots.remove(slot.key, slot);
   }
 
-  private record FlightJoin(Flight flight, boolean enrolled) {}
+  private record FlightJoin(
+      Flight flight,
+      boolean enrolled,
+      SourceDemandRegistration.Subscription scheduling,
+      CompletableFuture<ContentRepresentation> result) {}
 
-  private FlightJoin join(Slot slot, CanonicalReservation reservation, LocatedFilePlan plan) {
+  private FlightJoin join(
+      Slot slot,
+      CanonicalReservation reservation,
+      LocatedFilePlan plan,
+      PrioritySourceScheduler.Demand demand) {
     Flight flight;
     boolean start = false;
     var source = ContentRepresentation.encodedIdentity(slot.encodingKey);
@@ -587,11 +631,12 @@ public final class DefaultSelectedFileService implements SelectedFileService {
           throw error(INTEGRITY_FAILURE, "Shared EKey length conflict");
         // The bounded orchestration jobs already account for these waiters. They
         // own no source subscription and cannot cancel or extend frozen publication.
-        return new FlightJoin(flight, false);
+        return new FlightJoin(flight, false, null, flight.result);
       }
       if (flight == null) {
-        if (flights.size() >= 4) throw error(CAPACITY_EXCEEDED, "Source worker capacity exceeded");
-        flight = new Flight(plan, reservation);
+        if (flights.size() >= (scheduler == null ? 4 : 68))
+          throw error(CAPACITY_EXCEEDED, "Source worker capacity exceeded");
+        flight = new Flight(plan, reservation, scheduler, source);
         flights.put(source, flight);
         start = true;
       } else if (flight.firstPlan.encodedBytes() != plan.encodedBytes())
@@ -610,7 +655,24 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       if (flight.heldSlots.add(slot)) slot.workers++;
     }
     var shared = flight;
-    if (start) {
+    var consumerResult = new CompletableFuture<ContentRepresentation>();
+    shared.result.whenComplete(
+        (value, failure) -> {
+          if (failure == null) consumerResult.complete(value);
+          else consumerResult.completeExceptionally(failure);
+        });
+    SourceDemandRegistration.Subscription subscription =
+        shared.scheduling == null
+            ? null
+            : shared.scheduling.register(demand, consumerResult::completeExceptionally);
+    if (start && shared.scheduling != null) {
+      shared.scheduling.start(
+          cancellation -> {
+            shared.schedulerCancellation = cancellation;
+            runSource(source, shared);
+          },
+          rejected -> retireUnstarted(source, shared, rejected));
+    } else if (start) {
       try {
         acquisitions.execute(() -> runSource(source, shared));
       } catch (RuntimeException rejected) {
@@ -625,7 +687,17 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         finish(source, shared, null, failure, true);
       }
     }
-    return new FlightJoin(shared, true);
+    return new FlightJoin(shared, true, subscription, consumerResult);
+  }
+
+  private void retireUnstarted(ResolvedSourceIdentity source, Flight shared, Throwable rejected) {
+    RuntimeException failure = classify(rejected);
+    try {
+      claimFirst(shared);
+    } catch (RuntimeException denied) {
+      failure.addSuppressed(denied);
+    }
+    finish(source, shared, null, failure, true);
   }
 
   private void detach(Flight flight) {
@@ -672,7 +744,11 @@ public final class DefaultSelectedFileService implements SelectedFileService {
       flight.worker = Thread.currentThread();
     }
     CancellationToken token =
-        () -> flight.cancelled || closed.get() || Thread.currentThread().isInterrupted();
+        () ->
+            flight.cancelled
+                || closed.get()
+                || Thread.currentThread().isInterrupted()
+                || flight.schedulerCancellation.isCancellationRequested();
     ContentRepresentation ready = null;
     Throwable failure = null;
     boolean enteredGateway = false;
@@ -779,16 +855,23 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         else failure.addSuppressed(cleanup);
       }
     }
-    synchronized (coordinator) {
-      flights.remove(source, flight);
-      flight.worker = null;
-      for (var slot : flight.heldSlots) {
-        slot.workers--;
-        removeSlot(slot);
-      }
-    }
-    if (failure == null) flight.result.complete(ready);
-    else flight.result.completeExceptionally(classify(failure));
+    var finalFailure = failure;
+    Runnable complete =
+        () -> {
+          synchronized (coordinator) {
+            flights.remove(source, flight);
+            flight.worker = null;
+            for (var slot : flight.heldSlots) {
+              slot.workers--;
+              removeSlot(slot);
+            }
+          }
+          if (flight.scheduling != null) flight.scheduling.close();
+          if (finalFailure == null) flight.result.complete(ready);
+          else flight.result.completeExceptionally(classify(finalFailure));
+        };
+    if (flight.scheduling == null) complete.run();
+    else flight.scheduling.retirement().whenComplete((ignored, retiredFailure) -> complete.run());
   }
 
   private static void checkRepresentation(LocatedFilePlan plan, ContentRepresentation value) {
@@ -858,7 +941,7 @@ public final class DefaultSelectedFileService implements SelectedFileService {
         (value, failure) -> {
           if (result.isCancelled()) {
             var thread = worker.get();
-            if (thread != null) thread.interrupt();
+            if (thread != null && thread != Thread.currentThread()) thread.interrupt();
           }
         });
     try {
@@ -906,6 +989,14 @@ public final class DefaultSelectedFileService implements SelectedFileService {
     while ((problem instanceof ExecutionException || problem instanceof CompletionException)
         && problem.getCause() != null) problem = problem.getCause();
     if (problem instanceof SelectedFileException scoped) return scoped;
+    if (problem instanceof PrioritySourceException scheduling)
+      return switch (scheduling.code()) {
+        case BULK_DISABLED -> new CancellationException("Bulk generation disabled");
+        case BUSY -> error(BUSY, scheduling.getMessage());
+        case CLOSED -> error(CLOSED, scheduling.getMessage());
+        case INVALID_REQUEST -> error(INVALID_REQUEST, scheduling.getMessage());
+        case CAPACITY_EXCEEDED -> error(CAPACITY_EXCEEDED, scheduling.getMessage());
+      };
     if (problem instanceof EncodedAcquisitionFailure scoped) return scoped.failure();
     if (problem instanceof CancellationException cancelled) return cancelled;
     if (problem instanceof RetentionException retention)

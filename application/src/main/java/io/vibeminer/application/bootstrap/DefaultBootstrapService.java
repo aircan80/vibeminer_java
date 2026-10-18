@@ -2,6 +2,8 @@ package io.vibeminer.application.bootstrap;
 
 import io.vibeminer.application.*;
 import io.vibeminer.application.acquisition.*;
+import io.vibeminer.application.scheduler.PrioritySourceScheduler;
+import io.vibeminer.application.scheduler.PrioritySourceException;
 import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.content.*;
 import io.vibeminer.application.lookup.LookupBudgets;
@@ -95,6 +97,16 @@ public final class DefaultBootstrapService implements BootstrapService {
             CanonicalContentRepository content,
             MetadataAssociationRepository metadataAssociations,
             MetadataReuseGateway metadataReuse) {
+        this(gateway, catalog, store, executor, acquisitionExecutor, retention, content,
+            metadataAssociations, metadataReuse, null);
+    }
+
+    /** Borrowed global source admission; ordinary metadata actions are foreground demands. */
+    public DefaultBootstrapService(BootstrapArtifactGateway gateway, BuildObjectCatalog catalog,
+            ObjectStore store, Executor executor, Executor acquisitionExecutor,
+            RetentionRepository retention, CanonicalContentRepository content,
+            MetadataAssociationRepository metadataAssociations, MetadataReuseGateway metadataReuse,
+            PrioritySourceScheduler scheduler) {
         if ((metadataAssociations == null) != (metadataReuse == null))
             throw new IllegalArgumentException("Associated reopen requires repository and verifier");
         this.metadataAssociations = Optional.ofNullable(metadataAssociations);
@@ -106,7 +118,7 @@ public final class DefaultBootstrapService implements BootstrapService {
         this.executor = Objects.requireNonNull(executor);
         acquisitions =
                 new CoalescingAcquisitionService(
-                        store, this::acquireVerified, acquisitionExecutor, 4, 256, 1024, content == null);
+                        store, this::acquireVerified, acquisitionExecutor, scheduler == null ? 4 : 68, scheduler == null ? 256 : 32, 1024, content == null, scheduler);
     }
 
     @Override
@@ -363,7 +375,27 @@ public final class DefaultBootstrapService implements BootstrapService {
                             request,
                             source,
                             () -> catalog.findVerifiedSourceAlias(source, token),
-                            (observer, cancellation) -> gateway.acquireInstall(plan, observer, cancellation),
+                            (observer, cancellation) -> {
+                                var structured = new AtomicBoolean();
+                                var forwarded = new MetadataPublicationObserver() {
+                                    public void beforePromotion(
+                                            io.vibeminer.domain.content.MetadataContentProof proof,
+                                            CancellationToken token) {
+                                        observer.beforePromotion(proof, token);
+                                    }
+
+                                    public void afterStructureValidation(
+                                            io.vibeminer.domain.content.MetadataContentProof proof,
+                                            CancellationToken token) {
+                                        observer.afterStructureValidation(proof, token);
+                                        structured.set(true);
+                                    }
+                                };
+                                var artifact = gateway.acquireInstall(plan, forwarded, cancellation);
+                                if (!structured.get())
+                                    gateway.inspectRetained(plan, artifact, observer, cancellation);
+                                return artifact;
+                            },
                             (artifact, observer, cancellation) ->
                                     gateway.inspectRetained(plan, artifact, observer, cancellation),
                             token);
@@ -479,6 +511,13 @@ public final class DefaultBootstrapService implements BootstrapService {
         while ((error instanceof CompletionException || error instanceof ExecutionException)
                 && error.getCause() != null) error = error.getCause();
         if (error instanceof ContentClaimException scoped) return scoped;
+        if (error instanceof PrioritySourceException scheduling)
+            return new BootstrapException(switch (scheduling.code()) {
+                case BULK_DISABLED -> BootstrapException.Reason.CANCELLED;
+                case CLOSED -> BootstrapException.Reason.CLOSED;
+                case BUSY, CAPACITY_EXCEEDED -> BootstrapException.Reason.CAPACITY;
+                case INVALID_REQUEST -> BootstrapException.Reason.INTEGRITY;
+            }, scheduling.getMessage(), scheduling);
         if (error instanceof MetadataAcquisitionFailure scoped) return classify(scoped.failure());
         if (error instanceof BootstrapException scoped) return scoped;
         if (error instanceof CancellationException)

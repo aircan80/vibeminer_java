@@ -8,6 +8,8 @@ import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.content.*;
 import io.vibeminer.application.retention.RetentionException;
 import io.vibeminer.application.retention.RetentionRepository;
+import io.vibeminer.application.scheduler.PrioritySourceException;
+import io.vibeminer.application.scheduler.PrioritySourceScheduler;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
 import io.vibeminer.domain.retention.*;
@@ -101,7 +103,10 @@ public final class DefaultFileLookupService implements FileLookupService {
     this(gateway, catalog, store, jobs, acquisitionExecutor, retention, null);
   }
 
-  /** Opt-in guard; ContentClaimException preserves canonical contention/recovery outcomes. Production composition is separate. */
+  /**
+   * Opt-in guard; ContentClaimException preserves canonical contention/recovery outcomes.
+   * Production composition is separate.
+   */
   public DefaultFileLookupService(
       FileLookupGateway gateway,
       BuildObjectCatalog catalog,
@@ -110,6 +115,19 @@ public final class DefaultFileLookupService implements FileLookupService {
       Executor acquisitionExecutor,
       RetentionRepository retention,
       CanonicalContentRepository content) {
+    this(gateway, catalog, store, jobs, acquisitionExecutor, retention, content, null);
+  }
+
+  /** Borrowed global source admission; ordinary root actions are foreground demands. */
+  public DefaultFileLookupService(
+      FileLookupGateway gateway,
+      BuildObjectCatalog catalog,
+      ObjectStore store,
+      Executor jobs,
+      Executor acquisitionExecutor,
+      RetentionRepository retention,
+      CanonicalContentRepository content,
+      PrioritySourceScheduler scheduler) {
     this.content = Optional.ofNullable(content).map(MetadataContentAcquisition::new);
     this.retention = Optional.ofNullable(retention);
     this.gateway = Objects.requireNonNull(gateway);
@@ -120,10 +138,11 @@ public final class DefaultFileLookupService implements FileLookupService {
             Objects.requireNonNull(store),
             this::acquire,
             Objects.requireNonNull(acquisitionExecutor),
-            4,
-            256,
+            scheduler == null ? 4 : 68,
+            scheduler == null ? 256 : 32,
             1024,
-            content == null);
+            content == null,
+            scheduler);
   }
 
   @Override
@@ -412,6 +431,19 @@ public final class DefaultFileLookupService implements FileLookupService {
     while ((error instanceof ExecutionException || error instanceof CompletionException)
         && error.getCause() != null) error = error.getCause();
     if (error instanceof ContentClaimException scoped) return scoped;
+    if (error instanceof PrioritySourceException scheduling) {
+      if (scheduling.code() == PrioritySourceException.Code.BULK_DISABLED)
+        return new CancellationException("Bulk generation disabled");
+      return new FileLookupException(
+          switch (scheduling.code()) {
+            case CLOSED -> CLOSED;
+            case BUSY, CAPACITY_EXCEEDED -> CAPACITY_EXCEEDED;
+            case INVALID_REQUEST -> INVALID_REQUEST;
+            case BULK_DISABLED -> throw new IllegalStateException("Handled cancellation");
+          },
+          scheduling.getMessage(),
+          scheduling);
+    }
     if (error instanceof MetadataAcquisitionFailure scoped) return classify(scoped.failure());
     if (error instanceof FileLookupException scoped) return scoped;
     if (error instanceof CancellationException cancelled) return cancelled;

@@ -4,6 +4,7 @@ import static io.vibeminer.application.selectedfile.SelectedFileException.Code.*
 import static io.vibeminer.application.selectedfile.SelectedFileFixture.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.selectedfile.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -27,6 +28,57 @@ class DefaultSelectedFileServiceTest {
   static SelectedFilePlan located(SelectedFileService service, CandidatePlan plan, int index)
       throws Exception {
     return await(service.probeLoose(choose(plan, index))).plan().orElseThrow();
+  }
+
+  @Test
+  void bulkModeOffAfterSourceVerificationPreventsOnlyUncommittedConsumerAssociation()
+      throws Exception {
+    for (boolean afterAssociationCommit : List.of(false, true)) {
+      var f = new SelectedFileFixture();
+      var variant = f.add("bulk", C);
+      try (var scheduler = new PrioritySourceScheduler(Runnable::run)) {
+        var owner = scheduler.newBulkOwner(variant.build().snapshotId());
+        var catalog =
+            (SelectedFileCatalog)
+                java.lang.reflect.Proxy.newProxyInstance(
+                    SelectedFileCatalog.class.getClassLoader(),
+                    new Class<?>[] {SelectedFileCatalog.class},
+                    (proxy, method, arguments) -> {
+                      try {
+                        var result = method.invoke(f.files, arguments);
+                        if ((!afterAssociationCommit
+                                && method.getName().equals("completePublication"))
+                            || (afterAssociationCommit
+                                && method.getName().equals("attachAssociation")))
+                          scheduler.cancelBulk(owner);
+                        return result;
+                      } catch (java.lang.reflect.InvocationTargetException failure) {
+                        throw failure.getCause();
+                      }
+                    });
+        try (var service =
+            new DefaultSelectedFileService(
+                f.gateway, f.builds, catalog, f.pins, Runnable::run, Runnable::run, scheduler)) {
+          var candidates = await(service.planCandidates(variant.build(), variant, BUDGETS));
+          var plan = located(service, candidates, 0);
+          var operation = service.retain(plan, owner.demand());
+          if (afterAssociationCommit) {
+            assertEquals(variant.build().snapshotId(), await(operation).snapshotId());
+            assertEquals(1, f.files.associations.size());
+          } else {
+            assertThrows(CancellationException.class, () -> await(operation));
+            assertTrue(f.files.associations.isEmpty());
+          }
+          assertEquals(1, f.gateway.acquisitions);
+          assertEquals(
+              CanonicalReservation.Status.RETAINED, f.files.slots.get(variant.slot()).status());
+          // Mode-off never deletes retained physical content or prevents a foreground consumer.
+          var foreground = await(service.retain(plan));
+          assertEquals(variant.build().snapshotId(), foreground.snapshotId());
+          assertEquals(1, f.gateway.acquisitions);
+        }
+      }
+    }
   }
 
   @Test

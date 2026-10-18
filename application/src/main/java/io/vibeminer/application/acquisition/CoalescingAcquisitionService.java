@@ -1,6 +1,7 @@
 package io.vibeminer.application.acquisition;
 
 import io.vibeminer.application.ObjectStore;
+import io.vibeminer.application.scheduler.*;
 import io.vibeminer.domain.VerifiedSourceAlias;
 import io.vibeminer.domain.ResolvedSourceIdentity;
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     private final ObjectStore store;
     private final VerifiedSourceAcquirer acquirer;
     private final Executor executor;
+    private final PrioritySourceScheduler scheduler;
     private final int maximumSources;
     private final int maximumConsumers;
     private final int maximumAliases;
@@ -52,6 +54,15 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     /** Disable alias shortcuts when every source worker must replay a durable authority policy. */
     public CoalescingAcquisitionService(ObjectStore store, VerifiedSourceAcquirer acquirer, Executor executor,
             int maximumSources, int maximumConsumers, int maximumAliases, boolean reuseProcessAliases) {
+        this(store, acquirer, executor, maximumSources, maximumConsumers, maximumAliases,
+            reuseProcessAliases, null);
+    }
+
+    /** Shared source admission; the scheduler and executor remain caller-owned. */
+    public CoalescingAcquisitionService(ObjectStore store, VerifiedSourceAcquirer acquirer,
+            Executor executor, int maximumSources, int maximumConsumers, int maximumAliases,
+            boolean reuseProcessAliases, PrioritySourceScheduler scheduler) {
+        this.scheduler = scheduler;
         this.reuseProcessAliases = reuseProcessAliases;
         this.store = Objects.requireNonNull(store);
         this.acquirer = Objects.requireNonNull(acquirer);
@@ -63,7 +74,21 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
     }
 
     public AcquisitionRequest acquire(ResolvedSourceIdentity identity) {
+        return acquire(identity, PrioritySourceScheduler.Demand.foreground());
+    }
+
+    /**
+     * Demand controls source admission and shared-worker cancellation, not build membership.
+     * The calling use case owns its consumer cancellation and must check generation cancellation
+     * before attaching an artifact to a build. Other consumers may still receive the valid artifact.
+     */
+    public AcquisitionRequest acquire(ResolvedSourceIdentity identity, PrioritySourceScheduler.Demand demand) {
         Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(demand, "demand");
+        if (demand.isCancellationRequested())
+            return new AcquisitionRequest(CompletableFuture.failedFuture(new java.util.concurrent.CancellationException("Bulk generation disabled")));
+        if (scheduler == null && !demand.isForeground())
+            return failed(CAPACITY_EXCEEDED, "Priority source scheduling is not configured");
         Flight flight;
         boolean start = false;
         var result = new CompletableFuture<VerifiedSourceAlias>();
@@ -72,7 +97,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             flight = inFlight.get(identity);
             if (flight == null) {
                 if (active.size() >= maximumSources) return failed(CAPACITY_EXCEEDED, "Too many source acquisitions are active");
-                flight = new Flight(identity);
+                flight = new Flight(identity, scheduler);
                 inFlight.put(identity, flight);
                 active.add(flight);
                 start = true;
@@ -85,7 +110,24 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         result.whenComplete((value, failure) -> {
             if (result.isCancelled()) detach(shared, result);
         });
-        if (start) {
+        if (shared.scheduling != null) {
+            var subscription = shared.scheduling.register(demand, failure -> {
+                result.completeExceptionally(failure);
+                detach(shared, result);
+            });
+            boolean keep;
+            synchronized (coordinator) {
+                keep = shared.consumers.contains(result);
+                if (keep) shared.demands.put(result, subscription);
+            }
+            if (!keep) subscription.close();
+        }
+        if (start && shared.scheduling != null) {
+            shared.scheduling.start(token -> {
+                shared.schedulerCancellation = token;
+                run(shared);
+            }, failure -> finish(shared, null, failure));
+        } else if (start) {
             try { executor.execute(() -> run(shared)); }
             catch (RuntimeException rejected) {
                 finish(shared, null, new AcquisitionException(CAPACITY_EXCEEDED, "Acquisition executor rejected work", rejected));
@@ -104,7 +146,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             synchronized (coordinator) { cached = reuseProcessAliases ? aliases.get(flight.identity) : null; }
             if (cached != null) {
                 try {
-                    var verified = store.verify(cached.object().digest(), flight.cancelled::get);
+                    var verified = store.verify(cached.object().digest(), flight::isCancelled);
                     if (verified.isPresent()) {
                         if (!verified.get().equals(cached.object())) throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Stored object metadata changed during reuse");
                         result = cached;
@@ -118,11 +160,11 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             }
             if (result == null) {
                 flight.checkCancellation();
-                var acquired = acquirer.acquire(flight.identity, flight.cancelled::get);
+                var acquired = acquirer.acquire(flight.identity, flight::isCancelled);
                 if (acquired == null || !acquired.source().equals(flight.identity)) {
                     throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Source verifier returned no matching acquisition receipt");
                 }
-                var verified = store.verify(acquired.object().digest(), flight.cancelled::get);
+                var verified = store.verify(acquired.object().digest(), flight::isCancelled);
                 if (verified.isEmpty() || !verified.get().equals(acquired.object())) {
                     throw new AcquisitionException(INVALID_VERIFIED_OBJECT, "Source verifier did not return a complete verified local object");
                 }
@@ -132,16 +174,24 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         } catch (Throwable unsuccessful) {
             failure = unsuccessful;
         } finally {
-            finish(flight, result, failure);
+            if (flight.scheduling == null) finish(flight, result, failure);
+            else {
+                var completedObject = result;
+                var completedFailure = failure;
+                flight.scheduling.retirement().whenComplete((ignored, retiredFailure) ->
+                    finish(flight, completedObject, completedFailure));
+            }
         }
         if (failure instanceof Error error) throw error;
     }
 
     private void detach(Flight flight, CompletableFuture<VerifiedSourceAlias> consumer) {
+        SourceDemandRegistration.Subscription demand;
         synchronized (coordinator) {
-            if (!flight.consumers.remove(consumer) || !flight.consumers.isEmpty()) return;
-            cancelLocked(flight);
+            demand = flight.demands.remove(consumer);
+            if (flight.consumers.remove(consumer) && flight.consumers.isEmpty()) cancelLocked(flight);
         }
+        if (demand != null) demand.close();
     }
 
     private void cancelLocked(Flight flight) {
@@ -164,6 +214,7 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
             consumers = List.copyOf(flight.consumers);
             flight.consumers.clear();
         }
+        if (flight.scheduling != null) flight.scheduling.close();
         for (var consumer : consumers) {
             if (failure == null && object != null) consumer.complete(object);
             else consumer.completeExceptionally(failure == null ? new java.util.concurrent.CancellationException("Acquisition cancelled") : failure);
@@ -192,9 +243,16 @@ public final class CoalescingAcquisitionService implements AutoCloseable {
         private final AtomicBoolean cancelled = new AtomicBoolean();
         private final List<CompletableFuture<VerifiedSourceAlias>> consumers = new ArrayList<>();
         private Thread worker;
-        private Flight(ResolvedSourceIdentity identity) { this.identity = identity; }
+        private final SourceDemandRegistration scheduling;
+        private final Map<CompletableFuture<VerifiedSourceAlias>, SourceDemandRegistration.Subscription> demands = new HashMap<>();
+        private volatile io.vibeminer.application.CancellationToken schedulerCancellation = io.vibeminer.application.CancellationToken.none();
+        private Flight(ResolvedSourceIdentity identity, PrioritySourceScheduler scheduler) {
+            this.identity = identity;
+            scheduling = scheduler == null ? null : new SourceDemandRegistration(scheduler, identity);
+        }
+        private boolean isCancelled() { return cancelled.get() || schedulerCancellation.isCancellationRequested(); }
         private void checkCancellation() {
-            if (cancelled.get()) throw new java.util.concurrent.CancellationException("Acquisition cancelled");
+            if (isCancelled()) throw new java.util.concurrent.CancellationException("Acquisition cancelled");
         }
     }
 }

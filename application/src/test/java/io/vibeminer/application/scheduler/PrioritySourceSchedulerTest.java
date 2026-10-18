@@ -415,6 +415,46 @@ class PrioritySourceSchedulerTest {
     }
   }
 
+  @Test
+  void internalBindingFailureOrReentrantCloseCannotExecuteOrStrandProducer() {
+    var queue = new Manual();
+    try (var scheduler = new PrioritySourceScheduler(queue)) {
+      var issued = new AtomicReference<PrioritySourceScheduler.ScheduledSource>();
+      var failure = new IllegalStateException("binding refused");
+      assertSame(
+          failure,
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  scheduler.submit(
+                      source(0),
+                      t -> fail("Unbound producer executed"),
+                      PrioritySourceScheduler.Demand.foreground(),
+                      handle -> {
+                        issued.set(handle);
+                        crossThread(() -> scheduler.newBulkOwner("a".repeat(64)));
+                        throw failure;
+                      })));
+      assertSame(
+          failure,
+          assertThrows(
+                  CompletionException.class,
+                  () -> issued.get().retirement().toCompletableFuture().join())
+              .getCause());
+      assertEquals(0, queue.size());
+      scheduler.submit(source(0), t -> {}, PrioritySourceScheduler.Demand.foreground());
+      queue.drain();
+    }
+    var scheduler = new PrioritySourceScheduler(Runnable::run);
+    var retired =
+        scheduler.submit(
+            source(0),
+            t -> fail("Closed unbound producer executed"),
+            PrioritySourceScheduler.Demand.foreground(),
+            issued -> scheduler.close());
+    assertTrue(retired.retirement().toCompletableFuture().isCompletedExceptionally());
+  }
+
   static void assertCapacity(Runnable action) {
     assertEquals(
         PrioritySourceException.Code.CAPACITY_EXCEEDED,

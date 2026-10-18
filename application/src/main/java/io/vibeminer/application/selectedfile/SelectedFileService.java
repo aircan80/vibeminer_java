@@ -1,5 +1,6 @@
 package io.vibeminer.application.selectedfile;
 
+import io.vibeminer.application.scheduler.PrioritySourceScheduler;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.selectedfile.*;
 import java.util.concurrent.CompletableFuture;
@@ -16,6 +17,14 @@ public interface SelectedFileService extends AutoCloseable {
       Loose404Permit permit, ArchiveSearchBudgets budgets);
 
   CompletionStage<SelectedFileAssociation> retain(SelectedFilePlan plan);
+
+  /** Explicit source demand; bulk generation cancellation affects only this consumer. */
+  default CompletionStage<SelectedFileAssociation> retain(
+      SelectedFilePlan plan, PrioritySourceScheduler.Demand demand) {
+    return CompletableFuture.failedFuture(
+        new SelectedFileException(
+            SelectedFileException.Code.UNSUPPORTED, "Priority source admission is not supported"));
+  }
 
   CompletionStage<SelectedFileAssociation> inspectOffline(
       SelectedFileDescriptor descriptor, SelectedFileBudgets budgets);

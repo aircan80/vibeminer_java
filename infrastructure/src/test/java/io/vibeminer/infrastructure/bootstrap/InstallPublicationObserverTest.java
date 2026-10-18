@@ -4,9 +4,14 @@ import static io.vibeminer.infrastructure.bootstrap.BootstrapWorkflowIntegration
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.bootstrap.DefaultBootstrapService;
 import io.vibeminer.application.content.*;
 import io.vibeminer.domain.content.*;
+import io.vibeminer.domain.selectedfile.*;
 import io.vibeminer.infrastructure.acquisition.*;
+import io.vibeminer.infrastructure.acquisitioncatalog.SqliteBuildObjectCatalog;
+import io.vibeminer.infrastructure.content.SqliteCanonicalContentRepository;
+import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
 import java.nio.file.Path;
 import java.time.*;
@@ -27,6 +32,69 @@ class InstallPublicationObserverTest {
 
     public void afterStructureValidation(MetadataContentProof p, CancellationToken t) {
       after.add(p);
+    }
+  }
+
+  @Test
+  void freshGuardedApplicationRetainsGrammarAndReopensWithoutAnotherTransfer() throws Exception {
+    byte[] decoded = manifest(), encoded = encode(decoded), config = config(decoded, encoded);
+    var requests = new java.util.concurrent.atomic.AtomicInteger();
+    BootstrapTransfer transfer =
+        request -> {
+          requests.incrementAndGet();
+          byte[] bytes = request.kind() == CdnRequest.Kind.CONFIG ? config : encoded;
+          return CompletableFuture.completedFuture(
+              new AcquiredBytes(
+                  request,
+                  NOW,
+                  bytes,
+                  hash("SHA-256", bytes),
+                  request.kind() == CdnRequest.Kind.CONFIG));
+        };
+    var catalog = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+    var selected = build(config);
+    String contentKey;
+    try (var store = new FileObjectStore(directory.resolve("content"))) {
+      SqliteCanonicalContentRepository.recoverAtStartup(catalog, store.contentSession());
+      var claims = new SqliteCanonicalContentRepository(catalog, store, store.contentSession());
+      var objects = new SqliteBuildObjectCatalog(catalog, store);
+      var gateway = new OfficialBootstrapArtifactGateway(store, transfer, Clock.systemUTC());
+      try (var service =
+          new DefaultBootstrapService(
+              gateway, objects, store, Runnable::run, Runnable::run, null, claims)) {
+        var plan = service.inspectConfiguration(selected).toCompletableFuture().join();
+        contentKey = plan.contentKey();
+        var inspection = service.download(plan).toCompletableFuture().join();
+        assertFalse(inspection.entries().isEmpty());
+        var claim =
+            claims
+                .lookup(new ContentSlotKey("wow", contentKey), CancellationToken.none())
+                .orElseThrow();
+        assertEquals(CanonicalReservation.Status.RETAINED, claim.status());
+        var proof = assertInstanceOf(MetadataContentProof.class, claim.proof().orElseThrow());
+        assertEquals(
+            MetadataStructureAttestation.Kind.INSTALL,
+            proof.structuralAttestation().orElseThrow().kind());
+      }
+      assertEquals(2, requests.get());
+    }
+    try (var store = new FileObjectStore(directory.resolve("content"))) {
+      SqliteCanonicalContentRepository.recoverAtStartup(catalog, store.contentSession());
+      var objects = new SqliteBuildObjectCatalog(catalog, store);
+      var claims = new SqliteCanonicalContentRepository(catalog, store, store.contentSession());
+      var offline =
+          new OfficialBootstrapArtifactGateway(
+              store,
+              request -> {
+                throw new AssertionError("Offline reopening cannot transfer");
+              },
+              Clock.systemUTC());
+      try (var service =
+          new DefaultBootstrapService(
+              offline, objects, store, Runnable::run, Runnable::run, null, claims)) {
+        assertFalse(service.reopen(selected).toCompletableFuture().join().entries().isEmpty());
+        assertEquals(2, requests.get());
+      }
     }
   }
 
