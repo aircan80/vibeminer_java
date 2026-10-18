@@ -199,6 +199,7 @@ public final class GuidedDiscoveryPane extends VBox {
   private final Label error = copy("", "guided-error");
   private final ListView<BuildRow> rows = new ListView<>();
   private final VBox inspector = new VBox(12);
+  private Node openingFeedback;
   private final Button more = button("Next page", "guided-more");
   private final SplitPane results = new SplitPane();
   private final ToggleGroup filterGroup = new ToggleGroup();
@@ -359,6 +360,14 @@ public final class GuidedDiscoveryPane extends VBox {
     }
   }
 
+  /**
+   * Optional application-owned metadata progress, placed beside this exact selection's Open action.
+   */
+  public void setOpeningFeedback(Node feedback) {
+    openingFeedback = Objects.requireNonNull(feedback);
+    updateInspector(selected(data));
+  }
+
   private void updateInspector(BuildRow selected) {
     inspector.getChildren().clear();
     inspector.getChildren().add(copy("SELECTED BUILD", "guided-eyebrow"));
@@ -395,6 +404,7 @@ public final class GuidedDiscoveryPane extends VBox {
       reason.setId("guided-open-reason");
       inspector.getChildren().add(reason);
     }
+    if (openingFeedback != null) inspector.getChildren().add(openingFeedback);
     Button source = button("Source details", "guided-source-details");
     source.setOnAction(e -> events.sourceDetails());
     inspector.getChildren().add(source);

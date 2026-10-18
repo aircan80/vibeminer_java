@@ -64,6 +64,11 @@ class BuildOverviewPaneTest {
     assertEquals("Unknown", BuildOverviewPane.retainedPercentage(unknown));
     assertEquals("0 B", BuildOverviewPane.bytes(OptionalLong.of(0)));
     assertEquals("Not measured", BuildOverviewPane.bytes(OptionalLong.empty()));
+    assertEquals(
+        "No inventory or storage measurements yet.",
+        BuildOverviewPane.measurementSummary(
+            metrics(OptionalLong.empty(), OptionalLong.empty(), false)));
+    assertTrue(BuildOverviewPane.measurementSummary(unknown).startsWith("Measured: "));
   }
 
   @Test

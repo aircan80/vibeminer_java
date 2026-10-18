@@ -6,6 +6,7 @@ import io.vibeminer.application.WorkspaceService;
 import io.vibeminer.application.bootstrap.BootstrapService;
 import io.vibeminer.application.buildlibrary.BuildLibraryPage;
 import io.vibeminer.application.buildlibrary.BuildLibraryService;
+import io.vibeminer.application.buildopening.*;
 import io.vibeminer.application.content.MetadataRepairService;
 import io.vibeminer.application.content.MetadataReuseService;
 import io.vibeminer.application.item.ItemProjectionService;
@@ -24,7 +25,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import javafx.animation.KeyFrame;
 import javafx.animation.PauseTransition;
+import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyStringWrapper;
@@ -56,6 +59,7 @@ public final class AtlasApplication extends Application {
   private static ItemEvidenceService configuredEvidence;
   private static ItemEvidenceDestinationChooser evidenceChooser;
   private static BuildLibraryService configuredBuildLibrary;
+  private static BuildOpeningService configuredBuildOpening;
   private ItemEvidenceExportDialog evidenceDialog;
   private io.vibeminer.domain.item.PreparedItemProjection exportItem;
   private io.vibeminer.domain.item.PreparedItemNames exportPair;
@@ -67,6 +71,15 @@ public final class AtlasApplication extends Application {
     if (configuredBuildLibrary != null)
       throw new IllegalStateException("Build library has already been configured");
     configuredBuildLibrary = Objects.requireNonNull(library);
+  }
+
+  /** Optional exact-build metadata opening; the application runtime owns the service. */
+  public static synchronized void configureBuildOpening(BuildOpeningService opening) {
+    if (configuredBuildLibrary == null)
+      throw new IllegalStateException("Configure the build library before build opening");
+    if (configuredBuildOpening != null)
+      throw new IllegalStateException("Build opening has already been configured");
+    configuredBuildOpening = Objects.requireNonNull(opening);
   }
 
   public static synchronized void configureItemEvidenceDestinationChooser(
@@ -212,6 +225,7 @@ public final class AtlasApplication extends Application {
     configuredNames = names;
     configuredEvidence = evidence;
     configuredBuildLibrary = null;
+    configuredBuildOpening = null;
   }
 
   private Stage stage;
@@ -226,6 +240,16 @@ public final class AtlasApplication extends Application {
   private GuidedDiscoveryPresentationModel guidedModel;
   private GuidedDiscoveryPane guidedPane;
   private ScrollPane guidedScroll;
+  private BuildOpenPresentationModel openingModel;
+  private Timeline openingPoll;
+  private VBox openingFeedback;
+  private Label openingProgress;
+  private Button openingCancel;
+  private boolean wasOpening;
+  private BuildOverviewPane overviewPane;
+  private ScrollPane overviewScroll;
+  private BuildLibraryPage.Entry openedEntry;
+
   private ProductPresentationModel productModel;
   private ProductPresentationModel.State productState;
   private String productFilter = "";
@@ -444,6 +468,14 @@ public final class AtlasApplication extends Application {
       workspaceState = workspaceModel.state();
     }
     if (configuredBuildLibrary != null) {
+      if (configuredBuildOpening != null) {
+        openingModel =
+            new BuildOpenPresentationModel(
+                configuredBuildOpening, Platform::runLater, this::onOpeningState);
+        openingPoll =
+            new Timeline(new KeyFrame(Duration.millis(150), e -> openingModel.pollProgress()));
+        openingPoll.setCycleCount(Timeline.INDEFINITE);
+      }
       guidedModel =
           new GuidedDiscoveryPresentationModel(
               configuredBuildLibrary,
@@ -452,22 +484,53 @@ public final class AtlasApplication extends Application {
               this::onGuidedState,
               entry ->
                   new GuidedDiscoveryPresentationModel.OpenAdmission(
-                      false, "Build metadata preparation is not connected yet."),
-              entry -> {
-                throw new IllegalStateException("No build-opening capability is configured");
-              },
+                      openingModel != null && !openingModel.state().busy(),
+                      openingModel == null
+                          ? "Build metadata preparation is not connected yet."
+                          : openingModel.state().busy()
+                              ? "Metadata preparation is in progress."
+                              : "Prepare verified metadata for this exact build and research"
+                                  + " locale."),
+              this::openGuidedBuild,
               this::guidedSourceDetails);
       guidedPane =
           new GuidedDiscoveryPane(
               guidedModel.viewData(),
               new GuidedDiscoveryPane.Callbacks(
-                  guidedModel::selectProduct,
-                  guidedModel::filter,
-                  guidedModel::select,
+                  product -> {
+                    retireOpening();
+                    guidedModel.selectProduct(product);
+                  },
+                  filter -> {
+                    retireOpening();
+                    guidedModel.filter(filter);
+                  },
+                  group -> {
+                    retireOpening();
+                    guidedModel.select(group);
+                  },
                   ignored -> guidedModel.openSelected(),
-                  guidedModel::refresh,
-                  guidedModel::more,
+                  () -> {
+                    retireOpening();
+                    guidedModel.refresh();
+                  },
+                  () -> {
+                    retireOpening();
+                    guidedModel.more();
+                  },
                   ignored -> guidedModel.sourceDetails()));
+      if (openingModel != null) {
+        openingProgress = wrap("");
+        openingProgress.setId("guided-opening-progress");
+        openingProgress.setMinHeight(Region.USE_PREF_SIZE);
+        openingCancel = button("Cancel preparation", () -> openingModel.cancel(), "quiet-button");
+        openingCancel.setId("guided-opening-cancel");
+        openingFeedback = new VBox(8, openingProgress, openingCancel);
+        openingFeedback.setMinHeight(Region.USE_PREF_SIZE);
+        openingFeedback.setVisible(false);
+        openingFeedback.setManaged(false);
+        guidedPane.setOpeningFeedback(openingFeedback);
+      }
       Label aliases = wrap(WarcraftProductLabels.attribution());
       aliases.getStyleClass().add("secondary");
       aliases.setId("guided-alias-attribution");
@@ -1158,10 +1221,19 @@ public final class AtlasApplication extends Application {
   }
 
   private void navigate(String name) {
-    if (configuredBuildLibrary != null && !name.equals("Archive") && !name.equals("Settings"))
-      return;
+    if (configuredBuildLibrary != null
+        && !name.equals("Archive")
+        && !name.equals("Settings")
+        && !(name.equals("BuildHome") && overviewPane != null)) return;
+    if (openingModel != null && name.equals("Archive") && destination.equals("BuildHome"))
+      retireOpening();
+    if (openingModel != null
+        && name.equals("Archive")
+        && destination.equals("Settings")
+        && overviewPane != null) name = "BuildHome";
     destination = name;
-    navigation.getToggles().forEach(t -> t.setSelected(name.equals(t.getUserData())));
+    if (openingModel != null) openingModel.setDiscoveryActive(!name.equals("Settings"));
+    navigation.getToggles().forEach(t -> t.setSelected(destination.equals(t.getUserData())));
     render();
   }
 
@@ -1169,10 +1241,28 @@ public final class AtlasApplication extends Application {
     if (state == null) return;
     if (configuredBuildLibrary != null
         && !destination.equals("Archive")
-        && !destination.equals("Settings")) destination = "Archive";
+        && !destination.equals("Settings")
+        && !(destination.equals("BuildHome") && overviewPane != null)) destination = "Archive";
     boolean guided = guidedModel != null && destination.equals("Archive");
     context.setVisible(configuredBuildLibrary == null);
     context.setManaged(configuredBuildLibrary == null);
+    if (destination.equals("BuildHome") && overviewPane != null) {
+      savedWorkspaceBar.setVisible(false);
+      savedWorkspaceBar.setManaged(false);
+      workspaceFeedback.setVisible(false);
+      workspaceFeedback.setManaged(false);
+      mode.setText("EXACT BUILD · METADATA READY");
+      status.setText("Metadata verified. Build content coverage has not been measured.");
+      if (overviewScroll == null) {
+        overviewScroll = new ScrollPane(overviewPane);
+        overviewScroll.setFitToWidth(true);
+        overviewScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        overviewScroll.getStyleClass().add("workspace-scroll");
+        overviewScroll.setId("build-overview-scroll");
+      }
+      content.getChildren().setAll(overviewScroll);
+      return;
+    }
     if (guided) {
       savedWorkspaceBar.setVisible(false);
       savedWorkspaceBar.setManaged(false);
@@ -1675,6 +1765,155 @@ public final class AtlasApplication extends Application {
     if (guidedPane != null) guidedPane.update(guidedModel.viewData());
     if (status != null && destination.equals("Archive"))
       status.setText(next.error().isBlank() ? next.message() : next.error());
+  }
+
+  private void retireOpening() {
+    if (openingModel != null) openingModel.clear();
+    overviewPane = null;
+    overviewScroll = null;
+    openedEntry = null;
+  }
+
+  private void openGuidedBuild(BuildLibraryPage.Entry entry) {
+    if (openingModel == null) return;
+    openedEntry = entry;
+    openingModel.select(entry.row().group().preferredReference(), currentLocale);
+    openingModel.open();
+  }
+
+  private void onOpeningState(BuildOpenPresentationModel.State next) {
+    boolean revealProgress = next.busy() && !wasOpening;
+    wasOpening = next.busy();
+    if (openingFeedback != null) {
+      boolean visible = next.busy() || !next.error().isBlank();
+      openingFeedback.setVisible(visible);
+      openingFeedback.setManaged(visible);
+      openingCancel.setVisible(next.busy());
+      openingCancel.setManaged(next.busy());
+      if (next.progress() != null && next.busy()) {
+        var progress = next.progress();
+        String requirements =
+            progress.verifiedRequirements()
+                + "/"
+                + (progress.requiredRequirements().isPresent()
+                    ? progress.requiredRequirements().getAsInt()
+                    : "unknown")
+                + " metadata requirements verified";
+        String wire =
+            progress.transferredWireBytes().isPresent()
+                ? progress.transferredWireBytes().getAsLong() + " wire bytes received"
+                : "Wire bytes not measured";
+        if (progress.expectedWireBytes().isPresent())
+          wire += " of " + progress.expectedWireBytes().getAsLong();
+        openingProgress.setText(
+            progress.stage().name().replace('_', ' ') + " · " + requirements + " · " + wire);
+      } else openingProgress.setText(next.error());
+    }
+    if (openingPoll != null) {
+      if (next.busy()) openingPoll.play();
+      else openingPoll.stop();
+    }
+    if (guidedPane != null) guidedPane.update(guidedModel.viewData());
+    if (revealProgress) Platform.runLater(this::revealOpeningProgress);
+    if (next.admission() != null) {
+      var admission = next.admission();
+      var view = admittedOverview(admission, java.time.Instant.now());
+      var admittedEntry = openedEntry;
+      var actions =
+          openingModel.bindOverviewActions(
+              admission,
+              () -> {
+                if (admittedEntry != null) guidedSourceDetails(admittedEntry);
+              },
+              () -> {
+                retireOpening();
+                navigate("Archive");
+              });
+      overviewPane =
+          new BuildOverviewPane(
+              view,
+              new BuildOverviewPane.Callbacks(
+                  ignored -> {},
+                  ignored -> actions.source().run(),
+                  actions.back(),
+                  () -> {},
+                  () -> {}));
+      overviewScroll = null;
+      // Settings preserves context and never gets interrupted by a completion.
+      if (destination.equals("Archive") && openingModel.overviewRequested()) {
+        destination = "BuildHome";
+        render();
+      }
+    }
+  }
+
+  private void revealOpeningProgress() {
+    if (openingModel == null
+        || !openingModel.state().busy()
+        || !destination.equals("Archive")
+        || guidedScroll == null) return;
+    guidedPane.applyCss();
+    guidedPane.layout();
+    double viewport = guidedScroll.getViewportBounds().getHeight();
+    double extent = guidedPane.getBoundsInLocal().getHeight() - viewport;
+    if (extent > 0) {
+      double bottom =
+          guidedPane
+              .sceneToLocal(openingCancel.localToScene(openingCancel.getBoundsInLocal()))
+              .getMaxY();
+      guidedScroll.setVvalue(Math.max(0, Math.min(1, (bottom - viewport + 16) / extent)));
+    }
+    openingCancel.requestFocus();
+  }
+
+  /** Presentation projection of committed metadata admission, not a payload inventory. */
+  static BuildOverviewPane.ViewData admittedOverview(
+      BuildMetadataAdmission admission, java.time.Instant observedAt) {
+    var reference = admission.reference();
+    var key = reference.key();
+    String edition =
+        WarcraftProductLabels.options().stream()
+            .filter(p -> p.productId().equals(key.productId()))
+            .map(GuidedDiscoveryPane.ProductOption::description)
+            .findFirst()
+            .orElse(key.productId());
+    var empty = java.util.OptionalLong.empty();
+    return new BuildOverviewPane.ViewData(
+        new BuildOverviewPane.Identity(
+            reference.snapshotId() + ":" + admission.locale(),
+            edition,
+            key.productId(),
+            key.channel(),
+            reference.region(),
+            key.versionLabel(),
+            admission.locale()),
+        new BuildOverviewPane.Scope(
+            admission.scopeRevision(),
+            "All declared languages and platforms · research locale " + admission.locale()),
+        BuildOverviewPane.Readiness.PARTIAL,
+        BuildOverviewPane.MetadataState.READY,
+        new BuildOverviewPane.Metrics(
+            admission.scopeRevision(),
+            observedAt,
+            empty,
+            empty,
+            empty,
+            empty,
+            false,
+            empty,
+            empty,
+            empty),
+        BuildOverviewPane.DownloadMode.ON_DEMAND,
+        "No bulk download running",
+        "",
+        List.of(),
+        new BuildOverviewPane.Capabilities(
+            false,
+            false,
+            false,
+            false,
+            "Build inventory and bulk downloading are not connected yet. Retained content"
+                + " coverage is unknown."));
   }
 
   private void guidedSourceDetails(BuildLibraryPage.Entry entry) {
@@ -2981,6 +3220,8 @@ public final class AtlasApplication extends Application {
     if (evidenceDialog != null) evidenceDialog.close();
     if (model != null) model.close();
     if (guidedModel != null) guidedModel.close();
+    if (openingPoll != null) openingPoll.stop();
+    if (openingModel != null) openingModel.close();
     if (workspaceModel != null) workspaceModel.close();
     if (productModel != null) productModel.close();
     if (installModel != null) installModel.close();

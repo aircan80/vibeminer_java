@@ -353,13 +353,29 @@ public final class BuildOverviewPane extends VBox {
       job.getStyleClass().add("overview-job");
       storage.getChildren().add(job);
     }
-    storage.getChildren().add(copy("Measured: " + next.metrics().measuredAt(), "overview-help"));
+    storage.getChildren().add(copy(measurementSummary(next.metrics()), "overview-help"));
     updateReadiness();
     updateAttention();
     if (focusedId != null) {
       Node restored = lookup("#" + focusedId);
       if (restored != null && !restored.isDisabled()) restored.requestFocus();
     }
+  }
+
+  static String measurementSummary(Metrics metrics) {
+    boolean measured =
+        java.util.stream.Stream.of(
+                metrics.distinctFileIds(),
+                metrics.variantMemberships(),
+                metrics.plannedEncodedBytes(),
+                metrics.retainedScopeEncodedBytes(),
+                metrics.localPhysicalBytes(),
+                metrics.sharedPhysicalBytes(),
+                metrics.metadataDerivedBytes())
+            .anyMatch(OptionalLong::isPresent);
+    return measured
+        ? "Measured: " + metrics.measuredAt()
+        : "No inventory or storage measurements yet.";
   }
 
   private void updateReadiness() {
@@ -371,7 +387,7 @@ public final class BuildOverviewPane extends VBox {
             measurement("Required metadata", data.metadata().label),
             measurement(
                 "Content inventory",
-                data.metrics().denominatorComplete() ? "Complete" : "Preparing / unknown"),
+                data.metrics().denominatorComplete() ? "Complete" : "Not measured"),
             copy("Download policy", "overview-eyebrow"));
     ToggleGroup group = new ToggleGroup();
     FlowPane modes = new FlowPane(0, 0);
