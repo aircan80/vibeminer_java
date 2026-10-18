@@ -1,0 +1,53 @@
+{
+  "diagnosticSourceCommit": "0e23621",
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "exactSnapshotId": "924b2b802330d17c06ab43d1398db5a3162a5ba30d0667069ab5bc9ec581457b",
+  "buildConfig": "88d5e8ef05ec5a8446cdec93d142d7c6",
+  "cdnConfig": "f065eade5276a5ac05606e60a4c5a1f7",
+  "rootCKey": "e84483ee756c69a7dc5fbff04af81316",
+  "rootEKey": "1051943fc8cb91a3c88066dc946afc3e",
+  "encodedBytes": 50651441,
+  "decodedBytes": 67292495,
+  "physicalSHA256": "07ac99930560e33ee36c6def613ac9bf27dd045add11b2a003ba75f799d5b826",
+  "fullRootCKeyVerified": true,
+  "structuralEOFVerified": true,
+  "scannedMemberships": 3261808,
+  "selectedVariantCounts": {
+    "841626": 1,
+    "1572924": 11
+  },
+  "freshOfflineInstances": true,
+  "offlineHttpCalls": 0,
+  "physicalObjects": 2,
+  "physicalObjectScope": [
+    "configuration",
+    "encoded root"
+  ],
+  "temporaryPayloadsRemoved": true,
+  "cost": {
+    "conservativeBodyBytes": 52178330,
+    "requests": 271
+  },
+  "resultEvidence": [
+    "PLAN exactSnapshot=924b2b802330d17c06ab43d1398db5a3162a5ba30d0667069ab5bc9ec581457b ckey=e84483ee756c69a7dc5fbff04af81316 decoded=67292495 candidates=[RootCandidate[encodingKey=1051943fc8cb91a3c88066dc946afc3e, encodedBytes=50651441, specificationIndex=316584]]",
+    "SELECT explicit ekey=1051943fc8cb91a3c88066dc946afc3e encoded=50651441",
+    "VERIFIED root=VerifiedSourceAlias[source=ResolvedSourceIdentity[namespace=wow.root.tsfm.v1v2, immutableSourceKey=e84483ee756c69a7dc5fbff04af81316;1051943fc8cb91a3c88066dc946afc3e;67292495;50651441, verificationSemantics=blte-nz-ekey-chunks-full-ckey+tsfm-v1v2-structural-eof-r1], object=StoredObject[digest=ObjectDigest[value=07ac99930560e33ee36c6def613ac9bf27dd045add11b2a003ba75f799d5b826], length=50651441], evidence=SourceVerificationEvidence[verifierSemantics=blte-nz-ekey-chunks-full-ckey+tsfm-v1v2-structural-eof-r1, sourceUrl=https://us.cdn.blizzard.com/tpr/wow/data/10/51/1051943fc8cb91a3c88066dc946afc3e, verifiedAt=2026-10-18T06:31:28.156158743Z]] records=3261808",
+    "VARIANT RootVariant[fileDataId=841626, contentKey=1df6b6dbae36878cea020a62b15b9bd6, localeFlags=127990, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=d63d64b71fcf522e44ee5031b2176888, localeFlags=4, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=842b6c12e5966bd775af52aaee2b9a5f, localeFlags=16, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=7427f6b2e9f1dcd62acf5032b11976ae, localeFlags=32, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=e2da73586386082e6e040d6337e611fd, localeFlags=64, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=ac1e3b7844901639026329905d7d0404, localeFlags=128, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=2285987256838968da916eb4f4847126, localeFlags=256, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=bb0ecbdc2fd4988ddd3c1c5e95c34165, localeFlags=514, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=d11175c3fa6b8b960ea6567f414228d7, localeFlags=4096, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=340d97eb88f0f5a8395ea61a9a2d7ef6, localeFlags=8192, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=1f7277e9ac766c2e32bac8fcda7e8ed7, localeFlags=32768, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "VARIANT RootVariant[fileDataId=1572924, contentKey=3beaa95acbcb3db0d9e4dcc648635ca3, localeFlags=81920, contentFlags=304087040, rawFlagsFirst=0, rawFlagsSecond=301989888, rawFlagsThird=16, nameHash=Optional.empty]",
+    "PASS fresh offline instances; zero HTTP; physicalObjects=2",
+    "TRANSFER conservativeBytes=52178330 requests=271",
+    "Temporary payloads and catalog removed"
+  ]
+}
