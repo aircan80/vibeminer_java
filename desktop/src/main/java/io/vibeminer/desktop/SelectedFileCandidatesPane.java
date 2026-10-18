@@ -131,8 +131,10 @@ public final class SelectedFileCandidatesPane extends VBox {
       table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
       double row = Math.max(43, 16 * scale + 16);
       table.setFixedCellSize(row);
-      table.setPrefHeight(
-          Math.max(42, 13 * scale + 22) + Math.min(4, s.plan().candidates().size()) * row + 2);
+      // Include the scaled header's text, CSS padding and borders. The old estimate
+      // under-allocated at 200%, adding a scrollbar for a two-row candidate list.
+      double headerAllowance = Math.max(44, 20 * scale + 24);
+      table.setPrefHeight(headerAllowance + Math.min(4, s.plan().candidates().size()) * row + 2);
       table.setMinHeight(Region.USE_PREF_SIZE);
       table.setMaxHeight(Region.USE_PREF_SIZE);
       VBox detail = new VBox(8);
