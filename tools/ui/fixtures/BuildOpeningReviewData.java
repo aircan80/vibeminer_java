@@ -166,6 +166,15 @@ public final class BuildOpeningReviewData {
     }
   }
 
+  /** Exact authored encoded-game CAS object identity, for tools-only corruption review. */
+  public String gameObjectDigest() {
+    try {
+      return hash("SHA-256", objects.get(gameEKey));
+    } catch (Exception failure) {
+      throw new AssertionError(failure);
+    }
+  }
+
   public String gameEncodingKey() {
     return gameEKey;
   }

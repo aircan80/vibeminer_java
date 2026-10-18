@@ -1,6 +1,8 @@
 package io.vibeminer.bootstrap;
 
 import io.vibeminer.desktop.*;
+import io.vibeminer.infrastructure.buildopening.BuildOpeningPolicy;
+import io.vibeminer.infrastructure.inventory.SqliteBuildInventory;
 import java.awt.image.BufferedImage;
 import java.nio.file.*;
 import java.time.Duration;
@@ -74,6 +76,8 @@ public final class BuildMiningReviewApp {
           },
           false);
       AtlasApplication.configureBuildLibrary(metadata.library());
+      AtlasApplication.configureBuildReadiness(
+          metadata.readiness(), BuildOpeningPolicy.SCOPE_REVISION, SqliteBuildInventory.REVISION);
       AtlasApplication.configureBuildOpening(opening);
       AtlasApplication.configureBuildMining(
           mining, mining, mining, BuildMiningRuntime.overviewLimits());
@@ -222,6 +226,7 @@ public final class BuildMiningReviewApp {
                     stage.getScene().lookup("#guided-open-build") != null
                         && !node("guided-open-build").isDisabled()));
     check(data.requests() == productRequests, "Selecting exact saved row performs no acquisition");
+    assertChooser(phase.equals("seed") ? "Not ready" : "Fully downloaded", phase.equals("restart"));
     shot(stage, phase + "-selected");
     click("guided-open-build");
     until(
@@ -241,6 +246,42 @@ public final class BuildMiningReviewApp {
       check(
           data.gameObjectRequests() == 0, "Restart verifies retained game object without network");
       shot(stage, "restart-offline-full");
+      check(
+          data.forbiddenOfflineRequests() == offlineDiscoveryAttempts,
+          "Offline Full baseline contains no hidden HTTP attempts after deliberate discovery"
+              + " failure");
+      corruptAuthoredGameObject();
+      int beforeChooser = data.requests(), beforeForbidden = data.forbiddenOfflineRequests();
+      click("overview-back");
+      assertChooser("Fully downloaded", true);
+      check(
+          data.requests() == beforeChooser && data.forbiddenOfflineRequests() == beforeForbidden,
+          "Chooser reads dated historical Full without downloading or revalidating changed"
+              + " payload");
+      shot(stage, "restart-chooser-historical-full-after-corruption");
+      openSelectedAndAwaitCoverage();
+      assertPartial();
+      check(
+          fx(
+              () ->
+                  stage.getScene().getRoot().lookupAll(".overview-problem").stream()
+                      .filter(Label.class::isInstance)
+                      .map(Label.class::cast)
+                      .anyMatch(label -> label.getText().contains("RETAINED_CORRUPT"))),
+          "Current verification reports the changed authored game object as corrupt, separately"
+              + " from metadata");
+      check(
+          data.requests() == beforeChooser && data.forbiddenOfflineRequests() == beforeForbidden,
+          "Corruption assessment remains local and does not silently repair or redownload payload");
+      reveal("overview-identity");
+      shot(stage, "restart-current-partial-corrupt");
+      click("overview-back");
+      assertChooser("Partial", true);
+      check(
+          data.requests() == beforeChooser && data.forbiddenOfflineRequests() == beforeForbidden,
+          "Chooser now shows the newly recorded dated Partial assessment with no HTTP");
+      shot(stage, "restart-chooser-partial");
+      captureChooserReadiness("Partial", "restart-chooser-partial-readiness");
     } else {
       assertPartial();
       assertOnDemand();
@@ -329,6 +370,20 @@ public final class BuildMiningReviewApp {
           "Switching to On demand deletes nothing and starts no transfer");
       reveal("overview-identity");
       shot(stage, "seed-full-on-demand");
+      int beforeChooser = data.requests(), beforeForbidden = data.forbiddenOfflineRequests();
+      click("overview-back");
+      assertChooser("Fully downloaded", true);
+      check(
+          data.requests() == beforeChooser && data.forbiddenOfflineRequests() == beforeForbidden,
+          "Returning to chooser overlays historical readiness by SQL only");
+      shot(stage, "seed-chooser-full");
+      captureChooserReadiness("Fully downloaded", "seed-chooser-full-readiness");
+      openSelectedAndAwaitCoverage();
+      assertFull();
+      assertOnDemand();
+      check(
+          data.requests() == beforeChooser && data.forbiddenOfflineRequests() == beforeForbidden,
+          "Reopening retained Full after chooser adds no HTTP");
       Files.writeString(
           directory.resolve("mining-review-complete.txt"),
           "Successful actual UI Full then On demand; restart must preserve verified bytes.\n");
@@ -340,6 +395,191 @@ public final class BuildMiningReviewApp {
           Platform.exit();
           return null;
         });
+  }
+
+  private static List<Label> chooserStatusLabels(String readiness) {
+    String prefix = "Last checked: " + readiness + " · ";
+    Label row =
+        list().lookupAll(".guided-row-status").stream()
+            .filter(Label.class::isInstance)
+            .map(Label.class::cast)
+            .filter(label -> label.getText().startsWith(prefix))
+            .findFirst()
+            .orElseThrow();
+    Label inspector =
+        node("guided-inspector").lookupAll(".guided-status").stream()
+            .filter(Label.class::isInstance)
+            .map(Label.class::cast)
+            .filter(label -> label.getText().startsWith(prefix))
+            .findFirst()
+            .orElseThrow();
+    return List.of(row, inspector);
+  }
+
+  private static boolean chooserStatusVisible(String readiness) {
+    var scroll = (ScrollPane) node("guided-discovery-scroll");
+    var viewport = scroll.lookup(".viewport");
+    Bounds visible = viewport.localToScene(viewport.getBoundsInLocal());
+    for (Label label : chooserStatusLabels(readiness)) {
+      Bounds bounds = label.localToScene(label.getBoundsInLocal());
+      if (bounds.getMinX() < visible.getMinX() - 1
+          || bounds.getMaxX() > visible.getMaxX() + 1
+          || bounds.getMinY() < visible.getMinY() - 1
+          || bounds.getMaxY() > visible.getMaxY() + 1) return false;
+    }
+    return true;
+  }
+
+  private static void captureChooserReadiness(String readiness, String state) throws Exception {
+    fx(
+        () -> {
+          list().scrollTo(list().getSelectionModel().getSelectedIndex());
+          var root = stage.getScene().getRoot();
+          root.applyCss();
+          root.layout();
+          var scroll = (ScrollPane) node("guided-discovery-scroll");
+          for (int pass = 0; pass < 3; pass++) {
+            root.layout();
+            Bounds viewport =
+                scroll
+                    .lookup(".viewport")
+                    .localToScene(scroll.lookup(".viewport").getBoundsInLocal());
+            double top =
+                chooserStatusLabels(readiness).stream()
+                    .mapToDouble(label -> label.localToScene(label.getBoundsInLocal()).getMinY())
+                    .min()
+                    .orElseThrow();
+            double extent =
+                scroll.getContent().getLayoutBounds().getHeight() - viewport.getHeight();
+            if (extent > 0)
+              scroll.setVvalue(
+                  Math.max(
+                      scroll.getVmin(),
+                      Math.min(
+                          scroll.getVmax(),
+                          scroll.getVvalue()
+                              + (top - viewport.getMinY() - 18)
+                                  / extent
+                                  * (scroll.getVmax() - scroll.getVmin()))));
+          }
+          return null;
+        });
+    until(() -> fx(() -> chooserStatusVisible(readiness)));
+    fx(
+        () -> {
+          for (Label label : chooserStatusLabels(readiness)) {
+            check(
+                label.getText().contains("UTC") && label.getText().endsWith(" · enUS"),
+                "Visible chooser assessment includes its actual dated locale");
+            check(
+                !label.isTextTruncated(), "Visible row and inspector readiness are fully readable");
+          }
+          check(
+              chooserStatusVisible(readiness),
+              "Both dated row and inspector readiness are inside the actual viewport");
+          return null;
+        });
+    shot(stage, state);
+  }
+
+  private static void openSelectedAndAwaitCoverage() throws Exception {
+    until(
+        () ->
+            fx(
+                () ->
+                    stage.getScene().lookup("#guided-open-build") != null
+                        && !node("guided-open-build").isDisabled()));
+    click("guided-open-build");
+    awaitRefresh();
+  }
+
+  private static void assertChooser(String readiness, boolean dated) throws Exception {
+    String prefix = dated ? "Last checked: " + readiness + " · " : readiness;
+    until(
+        () ->
+            fx(
+                () ->
+                    !list().getItems().isEmpty()
+                        && list().getItems().getFirst().status().startsWith(prefix)));
+    fx(
+        () -> {
+          var selected = list().getSelectionModel().getSelectedItem();
+          check(
+              selected != null && selected.status().startsWith(prefix),
+              "Exact selected row receives the supplied readiness overlay");
+          if (dated) {
+            check(
+                selected.status().contains("UTC") && selected.status().endsWith(" · enUS"),
+                "Historical readiness includes assessment time and exact research locale");
+            check(
+                selected.details().stream()
+                    .anyMatch(
+                        detail ->
+                            detail.label().equals("READINESS NOTE")
+                                && detail.value().contains("Files may have changed")),
+                "Historical readiness explicitly distinguishes a saved assessment from current"
+                    + " files");
+          } else
+            check(
+                selected.status().equals("Not ready"),
+                "Absent complete metadata admission is Not ready, not estimated Partial");
+          stage.getScene().getRoot().applyCss();
+          stage.getScene().getRoot().layout();
+          var statusLabels =
+              new HashSet<Node>(stage.getScene().getRoot().lookupAll(".guided-status"));
+          statusLabels.addAll(stage.getScene().getRoot().lookupAll(".guided-row-status"));
+          check(!statusLabels.isEmpty(), "Chooser renders its actual supplied status labels");
+          for (Node status : statusLabels)
+            if (status instanceof Label label) {
+              check(
+                  !label.isTextTruncated(),
+                  "Dated chooser readiness text is readable without ellipsis");
+              check(
+                  label.getHeight() + 1 >= label.prefHeight(label.getWidth()),
+                  "Dated chooser readiness reserves its complete wrapped height");
+              Bounds text = label.localToScene(label.getBoundsInLocal());
+              Bounds container =
+                  label.getParent().localToScene(label.getParent().getBoundsInLocal());
+              check(
+                  text.getMinY() >= container.getMinY() - 1
+                      && text.getMaxY() <= container.getMaxY() + 1,
+                  "Dated readiness remains contained within its actual row or inspector");
+            }
+          return null;
+        });
+  }
+
+  private static void corruptAuthoredGameObject() throws Exception {
+    String digest = data.gameObjectDigest();
+    Path object =
+        directory
+            .toAbsolutePath()
+            .normalize()
+            .resolve("content/objects")
+            .resolve(digest.substring(0, 2))
+            .resolve(digest.substring(2));
+    check(
+        Files.isRegularFile(object, LinkOption.NOFOLLOW_LINKS),
+        "Only the known authored game CAS file is selected for corruption review");
+    check(
+        object.toRealPath().startsWith(directory.toRealPath()),
+        "Corruption remains inside this review's app-owned directory");
+    byte[] bytes = Files.readAllBytes(object);
+    check(
+        bytes.length > 0 && bytes.length < 1024,
+        "Authored game payload has the expected bounded review size");
+    check(
+        java.util.HexFormat.of()
+            .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
+            .equals(digest),
+        "Before mutation the exact authored game object has its expected SHA-256");
+    bytes[bytes.length - 1] ^= 1;
+    Files.write(
+        object,
+        bytes,
+        StandardOpenOption.WRITE,
+        StandardOpenOption.TRUNCATE_EXISTING,
+        LinkOption.NOFOLLOW_LINKS);
   }
 
   private static void assertHeaderGeometry() {
