@@ -8,9 +8,9 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 ## Available now
 
-[v0.1.0-alpha.2](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.2) (`0bba50b`) provides the Atlas JavaFX workbench, official product/build discovery, saved offline metadata workspaces and explicit verified install-list download/inspection. Bundled-runtime packages cover Windows x64, macOS ARM64, macOS x64 and Linux x64; all four native gates passed. Install lists reopen offline with integrity checks and reuse shared verified objects. No separate Java installation is needed.
+[v0.1.0-alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.3) (`2382261`) provides the Atlas JavaFX workbench, official product/build discovery, saved offline metadata workspaces, explicit verified install-list inspection and exact FileDataID root-membership lookup. Review metadata requirements and root transfer cost before downloading; inspect every returned locale/content variant and reopen verified retained metadata offline. Bundled-runtime packages cover Windows x64, macOS ARM64, macOS x64 and Linux x64; all four native gates passed and published assets were independently verified. No separate Java installation is needed.
 
-This alpha covers install-list metadata. Listed file contents, complete game-file catalogs, full archived builds, cleanup, item search, comparisons and exports remain unfinished. Post-release source adds bounded root and partial-manifest lookup foundations; these are not yet an end-to-end file research workflow. See [protocol evidence](docs/PROTOCOL-EVIDENCE.md) and [delivery status](docs/PLAN.md).
+This alpha covers install-list and root membership metadata. Referenced game-file contents, filenames, full archived builds, cleanup, item search, comparisons and exports remain unfinished. Later source adds WDC5 section inspection foundations and exact header experiments; those do not provide decoded item records. See [protocol evidence](docs/PROTOCOL-EVIDENCE.md) and [delivery status](docs/PLAN.md).
 
 ## What it will do
 
