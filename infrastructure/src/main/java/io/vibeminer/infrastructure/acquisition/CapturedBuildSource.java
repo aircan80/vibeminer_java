@@ -117,6 +117,15 @@ public final class CapturedBuildSource {
 
     /** Passive proof URL validation; never authorizes a download from the proof itself. */
     public static void validateConfigurationProof(String url, String key) {
+        validateProof(url, key, "config", "Configuration");
+    }
+
+    /** Passive retained data receipt validation; the receipt URL is never executed. */
+    public static void validateDataProof(String url, String key) {
+        validateProof(url, key, "data", "Data");
+    }
+
+    private static void validateProof(String url, String key, String route, String description) {
         try {
             URI uri = URI.create(url);
             if (!"https".equals(uri.getScheme())
@@ -132,7 +141,9 @@ public final class CapturedBuildSource {
                     || uri.getFragment() != null
                     || !uri.getRawPath()
                             .matches(
-                                    "/tpr/[A-Za-z0-9_-]{1,64}/config/"
+                                    "/tpr/[A-Za-z0-9_-]{1,64}/"
+                                            + route
+                                            + "/"
                                             + key.substring(0, 2)
                                             + "/"
                                             + key.substring(2, 4)
@@ -142,7 +153,7 @@ public final class CapturedBuildSource {
         } catch (IllegalArgumentException invalid) {
             throw new SourceContextException(
                     SourceContextException.Reason.INTEGRITY,
-                    "Configuration proof is not a supported official route for its exact key",
+                    description + " proof is not a supported official route for its exact key",
                     invalid);
         }
     }
