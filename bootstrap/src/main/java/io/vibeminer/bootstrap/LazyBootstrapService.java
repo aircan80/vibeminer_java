@@ -17,6 +17,13 @@ final class LazyBootstrapService implements BootstrapService {
   interface Resources extends AutoCloseable {
     BootstrapService service();
 
+    default io.vibeminer.application.buildopening.BuildOpeningService buildOpening() {
+      throw new io.vibeminer.application.buildopening.BuildOpeningException(
+          io.vibeminer.application.buildopening.BuildOpeningException.Code.UNSUPPORTED_METADATA,
+          "This content runtime does not provide build metadata admission");
+    }
+
+
     default io.vibeminer.application.itemexport.ItemEvidenceService itemEvidence() {
       throw new io.vibeminer.application.itemexport.ItemEvidenceException(
           io.vibeminer.application.itemexport.ItemEvidenceException.Code.UNSUPPORTED,
