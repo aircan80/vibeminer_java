@@ -15,7 +15,10 @@ python3 -m venv /tmp/vibeminer-export-validator
 
 The requirements pin the validator and every transitive dependency. Hashes cover
 all artifacts published for those versions on PyPI, allowing native wheels on
-the supported operating systems. Installation may need a Rust toolchain if a
+the supported operating systems. This includes `typing-extensions`, required by
+`referencing` on Python versions below 3.13; it is pinned explicitly on all
+versions so fresh Python 3.11/3.12 installations remain reproducible.
+Installation may need a Rust toolchain if a
 platform has no matching `rpds-py` wheel. This is not an application dependency.
 
 From the repository root, build coherent production and authored fixture classes,
