@@ -94,3 +94,12 @@ An archive index is required only when needed to authenticate a locator for a re
 - No payload acquisition, delta application, all-index sweep, locale selector, game installation or cache import is hidden in the declaration mapper. All-declared-variant payload inventory remains a separate #101/#102 composition.
 
 This policy complements [build opening](BUILD-OPENING.md), [inventory formats](BUILD-INVENTORY-FORMATS.md) and [metadata reuse](METADATA-DEDUP.md). It is deliberately small enough for a declaration classifier plus existing source adapters/new EN-DL-DS adapters, rather than a new generic product-definition framework.
+
+
+## Warcraft product identity and shared content (#120)
+
+`WarcraftContentProducts` maps explicit reviewed raw Warcraft product IDs to the existing `wow` immutable content namespace. It never rewrites the exact product, edition/build identity, regional observation or source receipt. Friendly labels, prefixes and unknown IDs grant no authority. Namespace membership does not prove a supported metadata grammar, table layout or available upstream object; complete configuration/source/decoded/structural checks still apply independently. Item and other research cohorts retain their separate support rules.
+
+Classic-beta metadata opening previously failed before format inspection because several metadata paths admitted only the raw product `wow`. The classifier, guarded metadata requests/declarations, ROOT/IN acquisition/reuse and recognized legacy reconciliation now share the explicit namespace mapping. Legacy verifier checks remain strict, and existing uncertain/conflicting product blocks are not automatically erased.
+
+A bounded official-source check of `wow_classic_beta` build `1.60.1.70450` successfully verified all seven required roles (build/CDN configurations, EN, ROOT, IN, DL and DS), then reopened the exact admission under a transport that forbids every HTTP attempt. This establishes metadata admission for that specific build, not complete payload inventory, live whole-build retention or all Warcraft formats. Downloaded metadata bodies remain outside the repository.

@@ -12,6 +12,7 @@ import io.vibeminer.application.scheduler.PrioritySourceException;
 import io.vibeminer.application.scheduler.PrioritySourceScheduler;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
+import io.vibeminer.domain.content.WarcraftContentProducts;
 import io.vibeminer.domain.retention.*;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import java.util.*;
@@ -294,7 +295,7 @@ public final class DefaultFileLookupService implements FileLookupService {
       selection = context.selection;
     }
     if (content.isPresent()) {
-      if (!selection.plan().build().productId().equals("wow"))
+      if (!WarcraftContentProducts.usesWowNamespace(selection.plan().build().productId()))
         throw failure(UNSUPPORTED, "Metadata content namespace is not reviewed for this product");
       gateway.validateSelection(selection, token);
       var plan = selection.plan();

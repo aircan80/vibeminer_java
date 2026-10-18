@@ -16,6 +16,10 @@ class CanonicalContentMigrationTest {
   static final String C = "c".repeat(32), A = "a".repeat(32), B = "b".repeat(32);
 
   private Connection fixture(String... keys) throws Exception {
+    return fixtureProduct("wow", keys);
+  }
+
+  private Connection fixtureProduct(String product, String... keys) throws Exception {
     var catalog = new SqliteCatalog(directory.resolve("catalog.sqlite"));
     var connection = catalog.connect();
     connection.setAutoCommit(false);
@@ -24,7 +28,7 @@ class CanonicalContentMigrationTest {
       index++;
       var build =
           new BuildSnapshot(
-              "wow",
+              product,
               "Retail",
               "live",
               "us",
@@ -64,6 +68,76 @@ class CanonicalContentMigrationTest {
     connection.commit();
     connection.setAutoCommit(false);
     return connection;
+  }
+
+  @Test
+  void reviewedClassicBetaLegacyMetadataReopensInSharedWowNamespace() throws Exception {
+    try (var connection = fixtureProduct("wow_classic_beta", A)) {
+      CanonicalContentSchema.migrate(connection);
+      assertEquals(0, count(connection, "canonical_legacy_blocks"));
+      assertEquals(1, count(connection, "canonical_content_slots"));
+      connection.commit();
+    }
+    try (var connection = new SqliteCatalog(directory.resolve("catalog.sqlite")).connect()) {
+      try (var rows =
+          connection
+              .createStatement()
+              .executeQuery(
+                  "SELECT namespace,content_key,encoding_key FROM canonical_content_slots")) {
+        assertTrue(rows.next());
+        assertEquals("wow", rows.getString(1));
+        assertEquals(C, rows.getString(2));
+        assertEquals(A, rows.getString(3));
+        assertFalse(rows.next());
+      }
+      assertEquals(1, count(connection, "build_object_memberships"));
+    }
+  }
+
+  @Test
+  void reviewedClassicInstallRoleKeepsExactLegacyVerifierChecks() throws Exception {
+    try (var connection = fixtureProduct("wow_classic_beta", A)) {
+      try (var statement = connection.createStatement()) {
+        statement.execute("PRAGMA defer_foreign_keys=ON");
+        statement.execute(
+            "UPDATE source_aliases SET"
+                + " namespace='tact.install.v1',verifier_semantics='blte-nz-ekey-header-or-whole-chunk-md5-ckey-md5+in-v1-r1'");
+        statement.execute(
+            "UPDATE build_object_memberships SET"
+                + " role='INSTALL_MANIFEST',namespace='tact.install.v1',verifier_semantics='blte-nz-ekey-header-or-whole-chunk-md5-ckey-md5+in-v1-r1'");
+      }
+      CanonicalContentSchema.migrate(connection);
+      assertEquals(0, count(connection, "canonical_legacy_blocks"));
+      assertEquals(1, count(connection, "canonical_content_slots"));
+      connection.commit();
+    }
+    try (var connection = new SqliteCatalog(directory.resolve("catalog.sqlite")).connect()) {
+      assertEquals(1, count(connection, "canonical_content_slots"));
+      assertEquals(1, count(connection, "build_object_memberships"));
+    }
+  }
+
+  @Test
+  void reviewedClassicProductCannotAdmitUnreviewedVerifier() throws Exception {
+    try (var connection = fixtureProduct("wow_classic_beta", A)) {
+      try (var statement = connection.createStatement()) {
+        statement.execute("PRAGMA defer_foreign_keys=ON");
+        statement.execute("UPDATE source_aliases SET verifier_semantics='unreviewed'");
+        statement.execute("UPDATE build_object_memberships SET verifier_semantics='unreviewed'");
+      }
+      CanonicalContentSchema.migrate(connection);
+      assertEquals(1, count(connection, "canonical_legacy_blocks"));
+      assertEquals(0, count(connection, "canonical_content_slots"));
+    }
+  }
+
+  @Test
+  void unknownProductStillBlocksLegacyMetadata() throws Exception {
+    try (var connection = fixtureProduct("wow_unreviewed", A)) {
+      CanonicalContentSchema.migrate(connection);
+      assertEquals(1, count(connection, "canonical_legacy_blocks"));
+      assertEquals(0, count(connection, "canonical_content_slots"));
+    }
   }
 
   @Test

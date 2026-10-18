@@ -4,6 +4,7 @@ import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.ResolvedSourceIdentity;
 import io.vibeminer.domain.VerifiedSourceAlias;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
+import io.vibeminer.domain.content.WarcraftContentProducts;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import java.util.Locale;
 import java.util.Objects;
@@ -27,9 +28,9 @@ public record MetadataContentRequest(
     Objects.requireNonNull(kind);
     Objects.requireNonNull(slot);
     Objects.requireNonNull(declaredDecodedBytes);
-    if (!build.productId().equals("wow"))
+    if (!WarcraftContentProducts.usesWowNamespace(build.productId()))
       throw new IllegalArgumentException(
-          "Only explicitly reviewed raw wow content namespace is supported");
+          "Only explicitly reviewed Warcraft content products are supported");
     var expected =
         new ResolvedSourceIdentity(
             "tact.config.raw-md5", build.buildConfig(), "tact-config-raw-md5-v1");

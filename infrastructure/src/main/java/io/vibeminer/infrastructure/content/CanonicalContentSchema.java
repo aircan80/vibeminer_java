@@ -66,7 +66,7 @@ public final class CanonicalContentSchema {
                   : namespace.equals("tact.install.v1")
                       && semantics.equals(
                           "blte-nz-ekey-header-or-whole-chunk-md5-ckey-md5+in-v1-r1");
-          if (!product.equals("wow") || !recognized) {
+          if (!WarcraftContentProducts.usesWowNamespace(product) || !recognized) {
             block(connection, product, "Unreviewed legacy metadata namespace or verifier");
             continue;
           }

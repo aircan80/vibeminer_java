@@ -285,4 +285,33 @@ class BuildMetadataDeclarationClassifierTest {
                           CancellationToken.none()))
               .code());
   }
+
+  @Test
+  void classicBetaUsesReviewedWowNamespaceWithoutReplacingExactProductIdentity() throws Exception {
+    var input = input(BASE + "build-product = WoW\nbuild-uid = wow_classic_beta\n");
+    var b = input.build();
+    var beta =
+        new BuildSnapshot(
+            "wow_classic_beta",
+            "Classic beta",
+            b.channel(),
+            b.region(),
+            "1.60.1.70450",
+            b.buildConfig(),
+            b.cdnConfig(),
+            b.observedAt(),
+            b.fixture());
+    var plan =
+        new BuildMetadataDeclarationClassifier()
+            .classify(
+                beta,
+                input.configuration(),
+                input.bytes(),
+                BuildMetadataDeclarationClassifier.Limits.defaults(),
+                CancellationToken.none());
+    assertEquals(beta, plan.build());
+    assertEquals("wow_classic_beta", plan.build().productId());
+    assertEquals(input.configuration(), plan.configuration());
+    assertEquals(3, plan.requiredSources().size());
+  }
 }

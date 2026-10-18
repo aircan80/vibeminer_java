@@ -129,7 +129,7 @@ class MetadataGuardWorkflowTest {
   @ValueSource(booleans = {false, true})
   void unreviewedProductNeverBypassesGuardOrBecomesGenericStorageFailure(boolean root) {
     var f = new Fixture(root);
-    var unreviewed = build("wowf");
+    var unreviewed = build("wow_unknown");
     var original = f.gateway.installPlan;
     f.gateway.installPlan = new InstallPlan(unreviewed, original.configuration(), C, E, 100, 80);
     try {
@@ -146,6 +146,36 @@ class MetadataGuardWorkflowTest {
         assertEquals(BootstrapException.Reason.UNSUPPORTED, ((BootstrapException) failed).reason());
       assertEquals(0, f.authority.reservations);
       assertEquals(0, f.gateway.transfers);
+    } finally {
+      f.close();
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void classicBetaMetadataUsesCanonicalGuardAndRetainsExactMembership(boolean root) {
+    var f = new Fixture(root);
+    var classic = build("wow_classic_beta");
+    var original = f.gateway.installPlan;
+    f.gateway.installPlan = new InstallPlan(classic, original.configuration(), C, E, 100, 80);
+    try {
+      if (root) {
+        var plan =
+            f.lookup.planRoot(classic, LookupBudgets.defaults()).toCompletableFuture().join();
+        f.rootPlan = new RootSelectionPlan(plan, plan.candidates().getFirst());
+      } else f.installPlan = f.install.inspectConfiguration(classic).toCompletableFuture().join();
+      var retained = f.retain();
+      assertEquals(1, f.gateway.transfers);
+      assertEquals(1, f.authority.completions);
+      var membership = f.catalog.references.get(classic.snapshotId() + f.role());
+      assertEquals(classic.snapshotId(), membership.snapshotId());
+      assertEquals(retained.source(), membership.source());
+      assertEquals(retained.object(), membership.object());
+      assertEquals(retained.evidence(), membership.evidence());
+      assertFalse(f.catalog.references.containsKey(build("wow").snapshotId() + f.role()));
+      assertEquals(retained, f.retain());
+      assertEquals(1, f.gateway.transfers);
+      assertEquals(1, f.gateway.replays);
     } finally {
       f.close();
     }

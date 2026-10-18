@@ -331,9 +331,9 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
 
   private static void requireConfigurationOrigin(
       BuildSnapshot build, VerifiedSourceAlias configuration) {
-    if (!build.productId().equals("wow"))
+    if (!WarcraftContentProducts.usesWowNamespace(build.productId()))
       throw failure(
-          UNSUPPORTED_REUSE, "Metadata declarations require the reviewed raw wow namespace");
+          UNSUPPORTED_REUSE, "Metadata declarations require a reviewed Warcraft content product");
     var identity =
         new ResolvedSourceIdentity(
             "tact.config.raw-md5", build.buildConfig(), "tact-config-raw-md5-v1");

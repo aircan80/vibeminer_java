@@ -401,6 +401,79 @@ class InstallMetadataReuseGatewayTest {
   }
 
   @Test
+  void classicBetaDeclarationAndActualLocalReuseKeepExactProductAndOriginalProof()
+      throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var original = setup.declaration();
+      var b = original.build();
+      var documents =
+          b.evidence().documents().stream()
+              .map(
+                  d ->
+                      new SourceDocument(
+                          d.sourceUrl().replace("/products/wow/", "/products/wow_classic_beta/"),
+                          d.capturedAt(),
+                          d.bytes()))
+              .toList();
+      var classic =
+          new BuildSnapshot(
+              "wow_classic_beta",
+              "Classic Beta",
+              b.channel(),
+              b.region(),
+              b.versionLabel(),
+              b.buildConfig(),
+              b.cdnConfig(),
+              b.observedAt(),
+              b.fixture(),
+              new BuildEvidence(
+                  b.evidence().upstreamBuildId(), b.evidence().productConfig(), documents));
+      int requests = setup.requests().get();
+      var declaration =
+          gateway.readDeclaration(
+              classic,
+              original.configuration(),
+              original.kind(),
+              LookupBudgets.defaults(),
+              CancellationToken.none());
+      assertEquals(classic, declaration.build());
+      assertEquals(original.slot(), declaration.slot());
+      var plan =
+          new MetadataReusePlan(UUID.randomUUID(), UUID.randomUUID(), declaration, setup.actual());
+      var result = gateway.replay(plan, LookupBudgets.defaults(), CancellationToken.none());
+      assertEquals(setup.actual(), result);
+      assertEquals(requests, setup.requests().get());
+      for (var product : List.of("d3", "wow_unknown")) {
+        var unsupported =
+            new BuildSnapshot(
+                product,
+                b.editionLabel(),
+                b.channel(),
+                b.region(),
+                b.versionLabel(),
+                b.buildConfig(),
+                b.cdnConfig(),
+                b.observedAt(),
+                b.fixture(),
+                b.evidence());
+        var failure =
+            assertThrows(
+                ContentClaimException.class,
+                () ->
+                    gateway.readDeclaration(
+                        unsupported,
+                        original.configuration(),
+                        original.kind(),
+                        LookupBudgets.defaults(),
+                        CancellationToken.none()));
+        assertEquals(ContentClaimException.Code.UNSUPPORTED_REUSE, failure.code());
+      }
+      assertEquals(requests, setup.requests().get());
+    }
+  }
+
+  @Test
   void readDeclarationRejectsForeignConfigurationIdentityAndWrongRawMd5() throws Exception {
     try (var setup = setup(manifest());
         var gateway = new OfficialMetadataReuseGateway(setup.store())) {

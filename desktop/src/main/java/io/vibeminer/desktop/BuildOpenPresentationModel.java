@@ -195,8 +195,12 @@ public final class BuildOpenPresentationModel implements AutoCloseable {
         && failure.getCause() != null) failure = failure.getCause();
     if (failure instanceof CancellationException)
       return "Opening canceled. Retry Open build when ready.";
-    if (failure instanceof BuildOpeningException typed)
+    if (failure instanceof BuildOpeningException typed) {
+      if (typed.code() == BuildOpeningException.Code.UNSUPPORTED_METADATA)
+        return "This build's required metadata format or product route is not supported yet"
+            + " (UNSUPPORTED_METADATA). Choose another build, or retry after updating VibeMiner.";
       return "Unable to open build (" + typed.code() + "). Retry Open build.";
+    }
     return "Unable to open build. Retry Open build.";
   }
 

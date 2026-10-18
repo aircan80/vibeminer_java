@@ -5,6 +5,7 @@ import io.vibeminer.domain.ResolvedSourceIdentity;
 import io.vibeminer.domain.VerifiedSourceAlias;
 import io.vibeminer.domain.content.MetadataContentProof;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
+import io.vibeminer.domain.content.WarcraftContentProducts;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import java.util.Locale;
 import java.util.Objects;
@@ -31,7 +32,8 @@ public record MetadataDeclaration(
     Objects.requireNonNull(preferredEncodingKey);
     Objects.requireNonNull(declaredEncodedBytes);
     Objects.requireNonNull(declaredDecodedBytes);
-    if (!build.productId().equals("wow") || !slot.namespace().equals(ContentSlotKey.WOW_NAMESPACE))
+    if (!WarcraftContentProducts.usesWowNamespace(build.productId())
+        || !slot.namespace().equals(ContentSlotKey.WOW_NAMESPACE))
       throw new IllegalArgumentException("Metadata reuse requires the reviewed raw wow namespace");
     var expectedConfiguration =
         new ResolvedSourceIdentity(

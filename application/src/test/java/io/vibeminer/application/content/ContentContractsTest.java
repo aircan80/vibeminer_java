@@ -6,6 +6,7 @@ import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.*;
 import io.vibeminer.domain.selectedfile.*;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,7 @@ class ContentContractsTest {
         IllegalArgumentException.class,
         () ->
             new MetadataContentRequest(
-                build("wowf"),
+                build("wow_unknown"),
                 configuration(),
                 MetadataStructureAttestation.Kind.ROOT,
                 new ContentSlotKey("wow", C),
@@ -103,6 +104,35 @@ class ContentContractsTest {
                 E,
                 0,
                 OptionalLong.empty()));
+  }
+
+  @Test
+  void classicBetaMetadataRequestKeepsExactBuildAndSharedContentNamespace() {
+    var classic = build("wow_classic_beta");
+    var request =
+        new MetadataContentRequest(
+            classic,
+            configuration(),
+            MetadataStructureAttestation.Kind.ENCODING,
+            new ContentSlotKey("wow", C),
+            E,
+            80,
+            OptionalLong.of(100));
+    assertEquals(classic, request.build());
+    assertEquals("wow", request.slot().namespace());
+    for (var product : List.of("d3", "wow_unknown")) {
+      assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              new MetadataContentRequest(
+                  build(product),
+                  configuration(),
+                  MetadataStructureAttestation.Kind.ROOT,
+                  new ContentSlotKey("wow", C),
+                  E,
+                  80,
+                  OptionalLong.of(100)));
+    }
   }
 
   @Test

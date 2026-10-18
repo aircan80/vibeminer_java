@@ -78,6 +78,114 @@ class OfficialBuildOpeningGatewayIntegrationTest {
   }
 
   @Test
+  void classicBetaSevenRoleAdmissionSurvivesFreshStoreOfflineReopen() throws Exception {
+    BuildLibraryReference reference;
+    BuildMetadataAdmission opened;
+    try (var f = new Fixture(directory, "wow_classic_beta")) {
+      reference = f.reference;
+      opened =
+          f.service
+              .open(reference, "enUS")
+              .completion()
+              .toCompletableFuture()
+              .get(10, TimeUnit.SECONDS);
+      assertEquals(7, opened.required().size());
+      assertEquals("wow_classic_beta", reference.key().productId());
+      assertEquals(
+          "1.60.1.70450",
+          f.admissions
+              .find(reference, "enUS", BuildOpeningPolicy.SCOPE_REVISION, NONE)
+              .orElseThrow()
+              .declaration()
+              .build()
+              .versionLabel());
+      assertTrue(
+          f.library
+              .findSeen(reference.key().identity(), NONE)
+              .orElseThrow()
+              .acknowledgedAt()
+              .isPresent());
+    }
+    try (var f = new Fixture(directory, "wow_classic_beta")) {
+      f.client.reject = true;
+      var reopened =
+          f.service
+              .open(reference, "enUS")
+              .completion()
+              .toCompletableFuture()
+              .get(10, TimeUnit.SECONDS);
+      assertEquals(opened, reopened);
+      assertEquals(0, f.client.requests.get());
+    }
+  }
+
+  @Test
+  void retailAndClassicPreserveExactAdmissionsWhileSharingCanonicalObjects() throws Exception {
+    for (String firstProduct : List.of("wow", "wow_classic_beta")) {
+      String secondProduct = firstProduct.equals("wow") ? "wow_classic_beta" : "wow";
+      try (var f = new Fixture(directory.resolve(firstProduct), firstProduct)) {
+        var retail =
+            f.service
+                .open(f.reference, "enUS")
+                .completion()
+                .toCompletableFuture()
+                .get(10, TimeUnit.SECONDS);
+        long originalPhysicalObjects;
+        try (var files = Files.walk(directory.resolve(firstProduct).resolve("store/objects"))) {
+          originalPhysicalObjects = files.filter(Files::isRegularFile).count();
+        }
+        var classicReference = f.register(secondProduct);
+        var classic =
+            f.service
+                .open(classicReference, "enUS")
+                .completion()
+                .toCompletableFuture()
+                .get(10, TimeUnit.SECONDS);
+        assertNotEquals(retail.reference().snapshotId(), classic.reference().snapshotId());
+        assertNotEquals(
+            retail.reference().key().productId(), classic.reference().key().productId());
+        assertEquals(
+            retail.verified().stream().map(v -> v.object()).toList(),
+            classic.verified().stream().map(v -> v.object()).toList());
+        var a =
+            f.admissions
+                .find(f.reference, "enUS", BuildOpeningPolicy.SCOPE_REVISION, NONE)
+                .orElseThrow();
+        var b =
+            f.admissions
+                .find(classicReference, "enUS", BuildOpeningPolicy.SCOPE_REVISION, NONE)
+                .orElseThrow();
+        assertEquals(a.metadata(), b.metadata());
+        try (var files = Files.walk(directory.resolve(firstProduct).resolve("store/objects"))) {
+          assertEquals(originalPhysicalObjects, files.filter(Files::isRegularFile).count());
+        }
+        assertEquals(firstProduct, a.declaration().build().productId());
+        assertEquals(secondProduct, b.declaration().build().productId());
+        assertTrue(
+            b.declaration().build().evidence().documents().stream()
+                .allMatch(source -> source.sourceUrl().contains("/" + secondProduct + "/")));
+        int requests = f.client.requests.get();
+        f.client.reject = true;
+        assertEquals(
+            retail,
+            f.service
+                .open(f.reference, "enUS")
+                .completion()
+                .toCompletableFuture()
+                .get(10, TimeUnit.SECONDS));
+        assertEquals(
+            classic,
+            f.service
+                .open(classicReference, "enUS")
+                .completion()
+                .toCompletableFuture()
+                .get(10, TimeUnit.SECONDS));
+        assertEquals(requests, f.client.requests.get());
+      }
+    }
+  }
+
+  @Test
   void authenticatedAbsentOptionalRolesProduceCompleteFiveRoleAdmission() throws Exception {
     try (var f =
         new Fixture(directory, BuildOpeningPolicy.initialCohort(), () -> Long.MAX_VALUE, false)) {
@@ -584,6 +692,9 @@ class OfficialBuildOpeningGatewayIntegrationTest {
     final SqliteCanonicalContentRepository canonical;
     final BuildMetadataAdmissionRepository admissions;
     final BuildLibraryReference reference;
+    final SqliteDiscoveryHistoryRepository history;
+    byte[] versionsBytes;
+    byte[] cdnsBytes;
     final Client client = new Client();
     final ExecutorService sourcePool = Executors.newFixedThreadPool(4);
     final ExecutorService orchestration = Executors.newFixedThreadPool(4);
@@ -593,7 +704,17 @@ class OfficialBuildOpeningGatewayIntegrationTest {
     final DefaultBuildOpeningService service;
 
     Fixture(Path path) throws Exception {
-      this(path, BuildOpeningPolicy.initialCohort(), () -> Long.MAX_VALUE, true);
+      this(path, "wow");
+    }
+
+    Fixture(Path path, String product) throws Exception {
+      this(
+          path,
+          BuildOpeningPolicy.initialCohort(),
+          () -> Long.MAX_VALUE,
+          true,
+          java.util.function.UnaryOperator.identity(),
+          product);
     }
 
     Fixture(
@@ -612,6 +733,17 @@ class OfficialBuildOpeningGatewayIntegrationTest {
         boolean optional,
         java.util.function.UnaryOperator<String> editConfig)
         throws Exception {
+      this(path, policy, usable, optional, editConfig, "wow");
+    }
+
+    Fixture(
+        Path path,
+        BuildOpeningPolicy policy,
+        java.util.function.LongSupplier usable,
+        boolean optional,
+        java.util.function.UnaryOperator<String> editConfig,
+        String product)
+        throws Exception {
       store = new FileObjectStore(path.resolve("store"));
       sql = new SqliteCatalog(path.resolve("catalog.sqlite"));
       var session = store.contentSession();
@@ -619,7 +751,7 @@ class OfficialBuildOpeningGatewayIntegrationTest {
       canonical = new SqliteCanonicalContentRepository(sql, store, session);
       var builds = new SqliteBuildObjectCatalog(sql, store);
       library = new SqliteBuildLibraryRepository(sql);
-      var history = new SqliteDiscoveryHistoryRepository(sql);
+      history = new SqliteDiscoveryHistoryRepository(sql);
       var base = new RootLookupFixture();
       byte[] install = install(), download = download(), size = size();
       var decoded = new LinkedHashMap<String, byte[]>();
@@ -678,30 +810,9 @@ class OfficialBuildOpeningGatewayIntegrationTest {
           ("Name!STRING:0|Path!STRING:0|Hosts!STRING:0|Servers!STRING:0|ConfigPath!STRING:0\n"
                   + "us|tpr/wow|us.cdn.blizzard.com|https://us.cdn.blizzard.com/|tpr/wow\n")
               .getBytes(StandardCharsets.UTF_8);
-      var event =
-          new DiscoveryObservationMapper()
-              .map(
-                  UUID.randomUUID(),
-                  "wow",
-                  "us",
-                  CLOCK.instant(),
-                  new SourceDocument(
-                      "https://us.version.battle.net/v2/products/wow/versions",
-                      CLOCK.instant(),
-                      versions),
-                  new SourceDocument(
-                      "https://us.version.battle.net/v2/products/wow/cdns", CLOCK.instant(), cdns));
-      history.append(event, DiscoveryHistoryLimits.defaults(), NONE);
-      reference =
-          library
-              .recordObservation(
-                  event.eventId(),
-                  BuildLibraryRegistration.Kind.HISTORICAL_IMPORT,
-                  Optional.empty(),
-                  CLOCK.instant(),
-                  NONE)
-              .references()
-              .getFirst();
+      versionsBytes = versions;
+      cdnsBytes = cdns;
+      reference = register(product);
       var configs = new PinnedCdnTransport(client, CLOCK, Duration.ofSeconds(2));
       var ranges = new PinnedCdnRangeTransport(client, CLOCK, Duration.ofSeconds(2));
       roots = new OfficialFileLookupGateway(store, configs, ranges, CLOCK);
@@ -724,6 +835,40 @@ class OfficialBuildOpeningGatewayIntegrationTest {
               policy,
               usable);
       service = new DefaultBuildOpeningService(gateway, orchestration);
+    }
+
+    BuildLibraryReference register(String product) {
+      byte[] productVersions =
+          product.equals("wow_classic_beta")
+              ? new String(versionsBytes, StandardCharsets.UTF_8)
+                  .replace("authored-open", "1.60.1.70450")
+                  .getBytes(StandardCharsets.UTF_8)
+              : versionsBytes;
+      var event =
+          new DiscoveryObservationMapper()
+              .map(
+                  UUID.randomUUID(),
+                  product,
+                  "us",
+                  CLOCK.instant(),
+                  new SourceDocument(
+                      "https://us.version.battle.net/v2/products/" + product + "/versions",
+                      CLOCK.instant(),
+                      productVersions),
+                  new SourceDocument(
+                      "https://us.version.battle.net/v2/products/" + product + "/cdns",
+                      CLOCK.instant(),
+                      cdnsBytes));
+      history.append(event, DiscoveryHistoryLimits.defaults(), NONE);
+      return library
+          .recordObservation(
+              event.eventId(),
+              BuildLibraryRegistration.Kind.HISTORICAL_IMPORT,
+              Optional.empty(),
+              CLOCK.instant(),
+              NONE)
+          .references()
+          .getFirst();
     }
 
     public void close() throws Exception {

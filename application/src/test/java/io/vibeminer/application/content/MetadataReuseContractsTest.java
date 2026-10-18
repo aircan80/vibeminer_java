@@ -164,7 +164,7 @@ class MetadataReuseContractsTest {
                 OptionalLong.empty()));
     var other =
         new BuildSnapshot(
-            "wow_classic",
+            "wow_unknown",
             "Classic",
             "Published",
             "us",
@@ -184,6 +184,34 @@ class MetadataReuseContractsTest {
                 Optional.empty(),
                 OptionalLong.empty(),
                 OptionalLong.empty()));
+  }
+
+  @Test
+  void classicBetaDeclarationPreservesExactProductAndOptionalFacts() {
+    var b = build();
+    var classic =
+        new BuildSnapshot(
+            "wow_classic_beta",
+            "Classic Beta",
+            b.channel(),
+            b.region(),
+            b.versionLabel(),
+            b.buildConfig(),
+            b.cdnConfig(),
+            b.observedAt(),
+            b.fixture());
+    var value =
+        new MetadataDeclaration(
+            classic,
+            configuration(),
+            MetadataStructureAttestation.Kind.INSTALL,
+            new ContentSlotKey("wow", CONTENT),
+            Optional.empty(),
+            OptionalLong.empty(),
+            OptionalLong.empty());
+    assertEquals(classic, value.build());
+    assertEquals("wow", value.slot().namespace());
+    assertTrue(value.declaredEncodedBytes().isEmpty());
   }
 
   @Test

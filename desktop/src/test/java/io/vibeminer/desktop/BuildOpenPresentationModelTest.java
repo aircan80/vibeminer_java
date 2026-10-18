@@ -107,6 +107,58 @@ class BuildOpenPresentationModelTest {
   }
 
   @Test
+  void unsupportedMetadataExplainsFormatOrRouteWithoutLeakingDiagnosticsAndAllowsRetry() {
+    var service = new Service();
+    var model = new BuildOpenPresentationModel(service, Runnable::run, s -> {});
+    model.select(reference("a"), "enUS");
+    model.open();
+    service
+        .operations
+        .getFirst()
+        .done
+        .completeExceptionally(
+            new CompletionException(
+                new BuildOpeningException(
+                    BuildOpeningException.Code.UNSUPPORTED_METADATA,
+                    "secret source payload\n/home/private/catalog.db " + "x".repeat(500),
+                    new IllegalStateException("secret cause"))));
+    String error = model.state().error();
+    assertTrue(error.contains("required metadata format or product route"));
+    assertTrue(error.contains("UNSUPPORTED_METADATA"));
+    assertTrue(error.contains("retry"));
+    assertTrue(error.length() <= 240);
+    assertFalse(error.contains("secret"));
+    assertFalse(error.contains("/home/"));
+    assertFalse(error.chars().anyMatch(Character::isISOControl));
+    assertFalse(model.state().busy());
+    assertNull(model.state().admission());
+    model.open();
+    assertEquals(2, service.operations.size());
+    model.cancel();
+    assertEquals(1, service.operations.getLast().canceled);
+  }
+
+  @Test
+  void otherOpeningFailuresNeverDisplayArbitraryAdapterMessages() {
+    for (var code : BuildOpeningException.Code.values()) {
+      if (code == BuildOpeningException.Code.UNSUPPORTED_METADATA) continue;
+      var service = new Service();
+      var model = new BuildOpenPresentationModel(service, Runnable::run, s -> {});
+      model.select(reference("a"), "enUS");
+      model.open();
+      service
+          .operations
+          .getFirst()
+          .done
+          .completeExceptionally(
+              new BuildOpeningException(code, "secret source payload /home/private/catalog.db"));
+      assertTrue(model.state().error().contains(code.name()));
+      assertFalse(model.state().error().contains("secret"));
+      assertFalse(model.state().error().contains("/home/"));
+    }
+  }
+
+  @Test
   void unknownWireAndKnownRequirementCountsStayDistinctAndPollingDoesNotOpen() {
     var service = new Service();
     var model = new BuildOpenPresentationModel(service, Runnable::run, s -> {});

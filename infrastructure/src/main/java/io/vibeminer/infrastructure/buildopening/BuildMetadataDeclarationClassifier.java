@@ -6,6 +6,7 @@ import io.vibeminer.application.CancellationToken;
 import io.vibeminer.application.buildopening.BuildOpeningException;
 import io.vibeminer.domain.*;
 import io.vibeminer.domain.content.MetadataStructureAttestation.Kind;
+import io.vibeminer.domain.content.WarcraftContentProducts;
 import io.vibeminer.protocol.tact.config.*;
 import java.security.*;
 import java.util.*;
@@ -49,8 +50,8 @@ public final class BuildMetadataDeclarationClassifier {
     Objects.requireNonNull(exactRaw);
     Objects.requireNonNull(limits);
     Objects.requireNonNull(cancellation).throwIfCancellationRequested();
-    if (!build.productId().equals("wow"))
-      throw fail(UNSUPPORTED_METADATA, "Only reviewed raw wow metadata profile is admitted");
+    if (!WarcraftContentProducts.usesWowNamespace(build.productId()))
+      throw fail(UNSUPPORTED_METADATA, "Product has no reviewed Warcraft content namespace");
     var expected =
         new ResolvedSourceIdentity(
             "tact.config.raw-md5", build.buildConfig(), "tact-config-raw-md5-v1");

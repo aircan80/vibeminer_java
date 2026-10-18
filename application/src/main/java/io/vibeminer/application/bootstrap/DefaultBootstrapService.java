@@ -8,6 +8,7 @@ import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.content.*;
 import io.vibeminer.application.lookup.LookupBudgets;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
+import io.vibeminer.domain.content.WarcraftContentProducts;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import io.vibeminer.application.retention.RetentionException;
 import io.vibeminer.application.retention.RetentionRepository;
@@ -346,7 +347,7 @@ public final class DefaultBootstrapService implements BootstrapService {
             plan = context.firstPlan;
         }
         if (content.isPresent()) {
-            if (!plan.build().productId().equals("wow"))
+            if (!WarcraftContentProducts.usesWowNamespace(plan.build().productId()))
                 throw failure(
                         BootstrapException.Reason.UNSUPPORTED,
                         "Metadata content namespace is not reviewed for this product");
