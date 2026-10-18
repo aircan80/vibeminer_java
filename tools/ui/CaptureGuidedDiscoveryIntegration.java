@@ -273,7 +273,7 @@ public final class CaptureGuidedDiscoveryIntegration {
               }
             throw new AssertionError("Missing real application text-scale control");
           });
-      clickText("Discover");
+      clickText("Discover builds");
     }
     fx(
         () -> {
@@ -293,13 +293,16 @@ public final class CaptureGuidedDiscoveryIntegration {
     check(
         fx(
             () ->
-                stage.getScene().getRoot().lookupAll(".nav-button").stream()
+                stage.getScene().getRoot().lookupAll(".guided-main-navigation").stream()
                     .filter(ToggleButton.class::isInstance)
                     .map(ToggleButton.class::cast)
                     .map(ToggleButton::getText)
                     .toList()
-                    .equals(List.of("Discover"))),
+                    .equals(List.of("Discover builds"))),
         "Guided runtime exposes obsolete research destinations");
+    check(
+        fx(() -> stage.getScene().getRoot().lookupAll(".nav-button").isEmpty()),
+        "Guided runtime still exposes the obsolete second navigation bar");
     check(
         fx(
             () ->
@@ -354,7 +357,88 @@ public final class CaptureGuidedDiscoveryIntegration {
     check(
         count("discovery_history_events") == 2, "Regional history was not persisted independently");
     check(count("source_blobs") == 2, "Paired raw documents were duplicated by region");
+    if (scale == 100)
+      fx(
+          () -> {
+            var searchBounds =
+                node("guided-search").localToScene(node("guided-search").getBoundsInLocal());
+            var regionBounds =
+                node("guided-region-filter")
+                    .localToScene(node("guided-region-filter").getBoundsInLocal());
+            var segmentBounds =
+                node("guided-filter-segments")
+                    .localToScene(node("guided-filter-segments").getBoundsInLocal());
+            double center = (searchBounds.getMinY() + searchBounds.getMaxY()) / 2;
+            check(
+                Math.abs(center - (regionBounds.getMinY() + regionBounds.getMaxY()) / 2) < 2
+                    && Math.abs(center - (segmentBounds.getMinY() + segmentBounds.getMaxY()) / 2)
+                        < 2,
+                "Search, region and the complete visibility group share one row at100% text");
+            return null;
+          });
     shot(stage, "grouped");
+    fx(
+        () -> {
+          ((TextField) node("guided-search")).setText("no-such-build");
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () ->
+                    list().getItems().isEmpty()
+                        && !((Button) node("guided-refresh")).isDisabled()));
+    check(captures.get() == 1, "Literal catalog search initiated a remote refresh");
+    shot(stage, "search-no-matches");
+    fx(
+        () -> {
+          ((TextField) node("guided-search")).clear();
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () ->
+                    list().getItems().size() == 1
+                        && !((Button) node("guided-refresh")).isDisabled()));
+    fx(
+        () -> {
+          setCombo((ComboBox<?>) node("guided-region-filter"), "kr");
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () ->
+                    list().getItems().isEmpty()
+                        && !((Button) node("guided-refresh")).isDisabled()));
+    check(captures.get() == 1, "Region filter initiated a remote refresh");
+    fx(
+        () -> {
+          setCombo((ComboBox<?>) node("guided-region-filter"), "us");
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () ->
+                    list().getItems().size() == 1
+                        && !((Button) node("guided-refresh")).isDisabled()));
+    check(
+        fx(() -> list().getItems().getFirst().regions().equals(List.of("eu", "us"))),
+        "Regional filtering rewrote retained grouped provenance");
+    shot(stage, "region-filtered");
+    fx(
+        () -> {
+          setCombo((ComboBox<?>) node("guided-region-filter"), "All regions");
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () ->
+                    list().getItems().size() == 1
+                        && !((Button) node("guided-refresh")).isDisabled()));
     fx(
         () -> {
           Node product = node("guided-product");

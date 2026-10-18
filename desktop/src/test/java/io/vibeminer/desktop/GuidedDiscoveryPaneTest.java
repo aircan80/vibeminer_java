@@ -142,6 +142,88 @@ class GuidedDiscoveryPaneTest {
   }
 
   @Test
+  void queryAndRegionControlsUseSuppliedStateAndRestorationNeverQueries() {
+    var current = new AtomicReference<>(data("wow", "a", false));
+    var calls = new ArrayList<String>();
+    var events =
+        new GuidedDiscoveryPane.Interactions(
+            current::get,
+            new GuidedDiscoveryPane.Callbacks(
+                p -> {},
+                f -> {},
+                b -> {},
+                b -> {},
+                () -> {},
+                () -> {},
+                b -> {},
+                q -> calls.add("query:" + q),
+                r -> calls.add("region:" + r)));
+    events.restore(
+        () -> {
+          events.queryChanged("70448");
+          events.regionChanged("eu");
+        });
+    assertTrue(calls.isEmpty());
+    events.queryChanged("");
+    events.regionChanged("");
+    assertTrue(calls.isEmpty());
+    events.queryChanged("70448");
+    events.regionChanged("eu");
+    assertEquals(List.of("query:70448", "region:eu"), calls);
+  }
+
+  @Test
+  void searchAcceptsBoundedUnicodeButRejectsInvalidOrControlInput() {
+    assertTrue(GuidedDiscoveryPane.validSearch("12.1.5.70448"));
+    assertTrue(GuidedDiscoveryPane.validSearch("版本 😀"));
+    assertTrue(GuidedDiscoveryPane.validSearch("x".repeat(128)));
+    assertFalse(GuidedDiscoveryPane.validSearch("x".repeat(129)));
+    assertFalse(GuidedDiscoveryPane.validSearch("build\nversion"));
+    assertFalse(GuidedDiscoveryPane.validSearch("\uD800"));
+  }
+
+  @Test
+  void conciseReadinessKeepsHistoricalQualifierAndDoesNotHidePendingOrErrorNotes() {
+    assertEquals(
+        "Saved assessment; open to verify current files.",
+        GuidedDiscoveryPane.readinessSummary("Last checked: Fully downloaded", "full warning"));
+    assertEquals(
+        "Open to download and verify build metadata.",
+        GuidedDiscoveryPane.readinessSummary("Not ready", "admission absent"));
+    assertEquals(
+        "Local readiness could not be read.",
+        GuidedDiscoveryPane.readinessSummary(
+            "Local readiness not checked", "Local readiness could not be read."));
+  }
+
+  @Test
+  void inspectorSubtitleUsesSuppliedDescriptionSourceAndRegionsWithoutGuessingLive() {
+    var row =
+        new GuidedDiscoveryPane.BuildRow(
+            "a",
+            "70448",
+            List.of("us", "eu"),
+            "Not ready",
+            false,
+            true,
+            false,
+            List.of(new GuidedDiscoveryPane.Detail("PRODUCT / SOURCE CHANNEL", "wow / Published")),
+            false,
+            "");
+    assertEquals(
+        "World of Warcraft · Retail · Published · us · eu",
+        GuidedDiscoveryPane.inspectorSubtitle(data("wow", "a", false), row));
+  }
+
+  @Test
+  void observationTimeIsHumanUtcWithoutChangingUnknownOriginalValues() {
+    assertEquals(
+        "18 Oct 2026, 20:56 UTC",
+        GuidedDiscoveryPane.observedTime("2026-10-18T20:56:31.483553462Z"));
+    assertEquals("Unknown", GuidedDiscoveryPane.observedTime("Unknown"));
+  }
+
+  @Test
   void projectionsDefensivelyCopyListsAndRejectAmbiguousRowIdentity() {
     var rows = new ArrayList<>(List.of(row("a", true)));
     var value =

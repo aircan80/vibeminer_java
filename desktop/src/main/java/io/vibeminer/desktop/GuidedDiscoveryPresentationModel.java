@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -45,11 +46,12 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   private final Consumer<BuildLibraryPage.Entry> open;
   private final Consumer<BuildLibraryPage.Entry> source;
   private State state;
+  private String searchText = "", regionCode = "";
   private long generation, selectionGeneration;
   private boolean closed;
   private BuildLibraryService.RefreshOperation refreshing;
   private BuildReadinessService readinessService;
-  private String readinessLocale, metadataScopeRevision, inventoryScopeRevision;
+  private String readinessLocale = "enUS", metadataScopeRevision, inventoryScopeRevision;
   private long readinessGeneration;
   private ReadinessFlight readinessFlight;
   private ReadinessRequest pendingReadiness;
@@ -68,6 +70,19 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       this.request = request;
     }
   }
+
+  private record PageRequest(
+      long generation,
+      BuildLibraryQuery query,
+      Optional<BuildLibraryCursor> cursor,
+      String message,
+      String error,
+      Runnable afterPage) {}
+
+  private record PageFlight(PageRequest request) {}
+
+  private final AtomicReference<PageFlight> pageFlight = new AtomicReference<>();
+  private PageRequest pendingPage;
 
   private BuildLibraryService.LocalPreparationOperation preparing;
   private final Map<String, LegacyBuildObservationImporter.Cursor> localCursors =
@@ -125,10 +140,13 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
 
   public void setReadinessLocale(String locale) {
     validateLocale(locale);
-    if (closed || readinessService == null || locale.equals(readinessLocale)) return;
+    if (closed || locale.equals(readinessLocale)) return;
     readinessLocale = locale;
     long request = invalidateReadiness();
-    if (!closed && request == readinessGeneration) requestReadiness();
+    if (!closed && request == readinessGeneration) {
+      if (readinessService == null) notifyReadiness();
+      else requestReadiness();
+    }
   }
 
   private static void validateLocale(String locale) {
@@ -147,7 +165,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
 
   private BuildReadiness.Context readinessContext(BuildLibraryPage.Entry entry) {
     return new BuildReadiness.Context(
-        entry.row().group().preferredReference(),
+        regionalEntry(entry).row().group().preferredReference(),
         readinessLocale,
         metadataScopeRevision,
         inventoryScopeRevision);
@@ -359,6 +377,10 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       GuidedDiscoveryPane.Filter filter,
       boolean remoteAfterPage,
       boolean explicitRemoteRetry) {
+    if (!Objects.equals(product, state.productId())) {
+      searchText = "";
+      regionCode = "";
+    }
     long request = retire();
     if (!current(request)) return;
     migrationIssue = "";
@@ -551,6 +573,98 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       readPage(request, Optional.empty(), "Saved build observations loaded.", "");
   }
 
+  /** Literal saved-catalog search. It never refreshes official publication. */
+  public void search(String value) {
+    Objects.requireNonNull(value);
+    if (closed) return;
+    var checked =
+        new BuildLibraryQuery(
+            "wow", BuildLibraryProjection.Filter.ALL, Optional.of(value), Optional.empty());
+    String normalized = checked.search().orElse("");
+    if (normalized.equals(searchText)) return;
+    searchText = normalized;
+    queryChanged();
+  }
+
+  public void region(String value) {
+    Objects.requireNonNull(value);
+    if (closed) return;
+    new BuildLibraryQuery(
+        "wow",
+        BuildLibraryProjection.Filter.ALL,
+        Optional.empty(),
+        value.isEmpty() ? Optional.empty() : Optional.of(value));
+    if (value.equals(regionCode)) return;
+    regionCode = value;
+    queryChanged();
+  }
+
+  private BuildLibraryQuery query() {
+    return new BuildLibraryQuery(
+        state.productId(),
+        BuildLibraryProjection.Filter.valueOf(state.filter().name()),
+        searchText.isEmpty() ? Optional.empty() : Optional.of(searchText),
+        regionCode.isEmpty() ? Optional.empty() : Optional.of(regionCode));
+  }
+
+  private void queryChanged() {
+    if (state.productId() == null) {
+      publish(state);
+      return;
+    }
+    long request = retire();
+    if (!current(request)) return;
+    publish(
+        new State(
+            state.products(),
+            state.productId(),
+            state.filter(),
+            null,
+            null,
+            true,
+            false,
+            "Searching saved build observations…",
+            ""));
+    if (current(request))
+      readPage(request, Optional.empty(), "Saved build observations loaded.", "");
+  }
+
+  private BuildLibraryPage.Entry regionalEntry(BuildLibraryPage.Entry entry) {
+    if (regionCode.isEmpty()) return entry;
+    var row = entry.row();
+    var group = row.group();
+    var reference =
+        group.references().stream()
+            .filter(r -> r.region().equals(regionCode))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("Selected region is absent"));
+    return new BuildLibraryPage.Entry(
+        entry.firstRegistrationSequence(),
+        new BuildLibraryProjection.Row(
+            new BuildLibraryGrouping.Group(group.key(), group.references(), reference),
+            row.seen(),
+            row.local(),
+            row.advertisement(),
+            row.regionalAdvertisements()));
+  }
+
+  private List<String> availableRegions() {
+    var regions = new TreeSet<>(List.of("us", "eu", "kr", "tw", "cn"));
+    if (!regionCode.isEmpty()) regions.add(regionCode);
+    if (state.page() != null)
+      state
+          .page()
+          .entries()
+          .forEach(
+              entry ->
+                  entry
+                      .row()
+                      .group()
+                      .references()
+                      .forEach(reference -> regions.add(reference.region())));
+    return List.copyOf(regions);
+  }
+
   /**
    * Bounded next-page navigation; it never refreshes publication or accumulates an unbounded list.
    */
@@ -658,50 +772,79 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
             ? error
             : error.isBlank() ? migrationIssue : migrationIssue + " " + error;
     if (!current(request)) return;
-    var query =
-        new BuildLibraryQuery(
-            state.productId(), BuildLibraryProjection.Filter.valueOf(state.filter().name()));
+    pendingPage = new PageRequest(request, query(), cursor, message, combinedError, afterPage);
+    startPage();
+  }
+
+  private void startPage() {
+    if (closed || pendingPage == null || pageFlight.get() != null) return;
+    var request = pendingPage;
+    if (!current(request.generation())) {
+      pendingPage = null;
+      return;
+    }
+    var flight = new PageFlight(request);
+    if (!pageFlight.compareAndSet(null, flight)) return;
+    pendingPage = null;
     try {
-      service
-          .page(query, cursor, 25)
+      Objects.requireNonNull(service.page(request.query(), request.cursor(), 25))
           .whenComplete(
-              (page, failure) ->
-                  presentation.execute(
-                      () -> {
-                        if (!current(request)) return;
-                        if (failure != null
-                            || page == null
-                            || !query.equals(page.query())
-                            || page.pageSize() != 25) {
-                          pageFailure(failure, combinedError);
-                          return;
-                        }
-                        if (cursor.isPresent()
-                            && cursor.orElseThrow().libraryRevision() != page.libraryRevision()) {
-                          pageFailure(
-                              new BuildLibraryException(
-                                  BuildLibraryException.Code.STALE_CURSOR,
-                                  "Page changed the admitted library revision"),
-                              combinedError);
-                          return;
-                        }
-                        selectionGeneration++;
-                        publish(
-                            new State(
-                                state.products(),
-                                state.productId(),
-                                state.filter(),
-                                page,
-                                null,
-                                false,
-                                false,
-                                message,
-                                combinedError));
-                        if (current(request)) requestReadiness();
-                        if (current(request)) afterPage.run();
-                      }));
+              (page, failure) -> {
+                try {
+                  presentation.execute(() -> finishPage(flight, page, failure));
+                } catch (RuntimeException rejected) {
+                  // The actual service stage has retired. No presentation state is touched from
+                  // this
+                  // callback thread; a later presentation action may dispatch its latest desired
+                  // query.
+                  pageFlight.compareAndSet(flight, null);
+                  throw rejected;
+                }
+              });
     } catch (RuntimeException failure) {
-      if (current(request)) pageFailure(failure, combinedError);
+      finishPage(flight, null, failure);
+    }
+  }
+
+  private void finishPage(PageFlight flight, BuildLibraryPage page, Throwable failure) {
+    if (!pageFlight.compareAndSet(flight, null)) return;
+    var request = flight.request();
+    try {
+      if (!current(request.generation())) return;
+      var query = request.query();
+      if (failure != null
+          || page == null
+          || !query.equals(page.query())
+          || page.pageSize() != 25
+          || page.entries().stream().anyMatch(entry -> !query.matches(entry.row()))) {
+        pageFailure(failure, request.error());
+        return;
+      }
+      if (request.cursor().isPresent()
+          && request.cursor().orElseThrow().libraryRevision() != page.libraryRevision()) {
+        pageFailure(
+            new BuildLibraryException(
+                BuildLibraryException.Code.STALE_CURSOR,
+                "Page changed the admitted library revision"),
+            request.error());
+        return;
+      }
+      selectionGeneration++;
+      publish(
+          new State(
+              state.products(),
+              state.productId(),
+              state.filter(),
+              page,
+              null,
+              false,
+              false,
+              request.message(),
+              request.error()));
+      if (current(request.generation())) requestReadiness();
+      if (current(request.generation())) request.afterPage().run();
+    } finally {
+      startPage();
     }
   }
 
@@ -756,7 +899,8 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                         if (!selectionCurrent(request, selection)) return;
                         if (failure != null
                             || entry == null
-                            || !candidate.row().group().key().equals(entry.row().group().key())) {
+                            || !candidate.row().group().key().equals(entry.row().group().key())
+                            || !query().matches(entry.row())) {
                           publish(
                               new State(
                                   state.products(),
@@ -777,7 +921,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                                 state.productId(),
                                 state.filter(),
                                 state.page(),
-                                entry,
+                                regionalEntry(entry),
                                 state.busy(),
                                 false,
                                 "Exact build selected. Opening is a separate action.",
@@ -837,10 +981,14 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
         state.message(),
         readinessError.isBlank()
             ? state.error()
-            : state.error().isBlank() ? readinessError : state.error() + " " + readinessError);
+            : state.error().isBlank() ? readinessError : state.error() + " " + readinessError,
+        searchText,
+        regionCode,
+        availableRegions());
   }
 
   private GuidedDiscoveryPane.BuildRow display(BuildLibraryPage.Entry entry) {
+    entry = regionalEntry(entry);
     var row = entry.row();
     var group = row.group();
     var key = group.key();
@@ -850,6 +998,8 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
         List.of(
             new GuidedDiscoveryPane.Detail(
                 "PRODUCT / SOURCE CHANNEL", key.productId() + " / " + key.channel()),
+            new GuidedDiscoveryPane.Detail("REGION", preferred.region()),
+            new GuidedDiscoveryPane.Detail("RESEARCH LOCALE", readinessLocale),
             new GuidedDiscoveryPane.Detail("BUILD CONFIGURATION", key.buildConfig()),
             new GuidedDiscoveryPane.Detail("CDN CONFIGURATION", key.cdnConfig()),
             new GuidedDiscoveryPane.Detail("UPSTREAM BUILD ID", key.upstreamBuildId()),
@@ -952,6 +1102,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   }
 
   private long retire() {
+    pendingPage = null;
     long request = ++generation;
     selectionGeneration++;
     // Detach all old handles before foreign cancellation can reenter this model.

@@ -8,6 +8,8 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Supplier;
+import javafx.animation.AnimationTimer;
 import javafx.application.*;
 import javafx.geometry.Bounds;
 import javafx.scene.Node;
@@ -189,7 +191,7 @@ public final class BuildMiningReviewApp {
               }
             throw new AssertionError("Missing text scale control");
           });
-      clickText("Discover");
+      clickText("Discover builds");
     }
     fx(
         () -> {
@@ -403,7 +405,7 @@ public final class BuildMiningReviewApp {
         list().lookupAll(".guided-row-status").stream()
             .filter(Label.class::isInstance)
             .map(Label.class::cast)
-            .filter(label -> label.getText().startsWith(prefix))
+            .filter(label -> label.getText().startsWith("Build status: " + prefix))
             .findFirst()
             .orElseThrow();
     Label inspector =
@@ -430,7 +432,99 @@ public final class BuildMiningReviewApp {
     return true;
   }
 
+  private static boolean chooserTargetVisible(Node target) {
+    var scroll = (ScrollPane) node("guided-discovery-scroll");
+    var viewport = scroll.lookup(".viewport");
+    Bounds visible = viewport.localToScene(viewport.getBoundsInLocal());
+    Bounds bounds = target.localToScene(target.getBoundsInLocal());
+    return bounds.getMinX() >= visible.getMinX() - 1
+        && bounds.getMaxX() <= visible.getMaxX() + 1
+        && bounds.getMinY() >= visible.getMinY() - 1
+        && bounds.getMaxY() <= visible.getMaxY() + 1;
+  }
+
+  private static void scrollChooserTarget(Node target) {
+    var root = stage.getScene().getRoot();
+    var scroll = (ScrollPane) node("guided-discovery-scroll");
+    for (int pass = 0; pass < 3; pass++) {
+      root.applyCss();
+      root.layout();
+      var viewport = scroll.lookup(".viewport");
+      Bounds visible = viewport.localToScene(viewport.getBoundsInLocal());
+      Bounds bounds = target.localToScene(target.getBoundsInLocal());
+      double extent = scroll.getContent().getLayoutBounds().getHeight() - visible.getHeight();
+      if (extent > 0)
+        scroll.setVvalue(
+            Math.max(
+                scroll.getVmin(),
+                Math.min(
+                    scroll.getVmax(),
+                    scroll.getVvalue()
+                        + (bounds.getMinY() - visible.getMinY() - 18)
+                            / extent
+                            * (scroll.getVmax() - scroll.getVmin()))));
+    }
+  }
+
   private static void captureChooserReadiness(String readiness, String state) throws Exception {
+    if (scale == 200) {
+      // At large text the approved readable layout stacks the inspector below the catalog.
+      // Verify actual scrolling to each status independently instead of requiring two distant
+      // sections to fit one viewport. Neither an offscreen lookup nor a tooltip is evidence here.
+      for (int index = 0; index < 2; index++) {
+        int selected = index;
+        fx(
+            () -> {
+              scrollChooserTarget(chooserStatusLabels(readiness).get(selected));
+              return null;
+            });
+        until(() -> fx(() -> chooserTargetVisible(chooserStatusLabels(readiness).get(selected))));
+        fx(
+            () -> {
+              var label = chooserStatusLabels(readiness).get(selected);
+              check(
+                  label.getText().contains("UTC") && label.getText().endsWith(" · enUS"),
+                  "Visible stacked chooser assessment includes its actual dated locale");
+              check(!label.isTextTruncated(), "Stacked dated readiness is completely readable");
+              check(chooserTargetVisible(label), "Stacked readiness is inside the real viewport");
+              return null;
+            });
+        shotChooserTarget(
+            state + (index == 0 ? "-row" : "-inspector"),
+            () -> chooserStatusLabels(readiness).get(selected),
+            () -> {
+              var label = chooserStatusLabels(readiness).get(selected);
+              check(!label.isTextTruncated(), "Snapshot readiness is fully readable");
+              check(
+                  label.getText().contains("UTC") && label.getText().endsWith(" · enUS"),
+                  "Snapshot contains the intended dated readiness");
+              if (selected == 0) assertCardBadges();
+            });
+      }
+      fx(
+          () -> {
+            scrollChooserTarget(node("guided-open-build"));
+            return null;
+          });
+      until(() -> fx(() -> chooserTargetVisible(node("guided-open-build"))));
+      fx(
+          () -> {
+            check(
+                chooserTargetVisible(node("guided-open-build")),
+                "Stacked primary Open action is reachable");
+            check(
+                !node("guided-open-build").isDisabled(), "Stacked retained build remains openable");
+            return null;
+          });
+      shotChooserTarget(
+          state + "-action",
+          () -> node("guided-open-build"),
+          () ->
+              check(
+                  !node("guided-open-build").isDisabled(),
+                  "Snapshot contains the enabled primary Open action"));
+      return;
+    }
     fx(
         () -> {
           list().scrollTo(list().getSelectionModel().getSelectedIndex());
@@ -479,7 +573,73 @@ public final class BuildMiningReviewApp {
               "Both dated row and inspector readiness are inside the actual viewport");
           return null;
         });
-    shot(stage, state);
+    shot(
+        stage,
+        state,
+        () -> {
+          check(
+              chooserStatusVisible(readiness),
+              "Snapshot contains both intended dated row and inspector assessments");
+          assertCardBadges();
+          for (var label : chooserStatusLabels(readiness))
+            check(!label.isTextTruncated(), "Snapshot dated readiness is fully readable");
+        });
+  }
+
+  private static void shotChooserTarget(String state, Supplier<Node> target, Runnable verification)
+      throws Exception {
+    // Resolve again after the list's layout/virtualization, then wait for actual rendered frames.
+    fx(
+        () -> {
+          scrollChooserTarget(target.get());
+          return null;
+        });
+    shot(
+        stage,
+        state,
+        () -> {
+          check(
+              chooserTargetVisible(target.get()),
+              "Snapshot target is inside the actual chooser viewport: " + state);
+          verification.run();
+        });
+  }
+
+  private static void assertCardBadges() {
+    var selected = list().getSelectionModel().getSelectedItem();
+    check(selected != null, "Actual selected build supplies card membership badges");
+    var cell =
+        list().lookupAll(".list-cell").stream()
+            .filter(node -> node instanceof ListCell<?> value && selected.equals(value.getItem()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Selected build cell is not materialized"));
+    var card = cell.lookup(".guided-build-card");
+    check(card != null, "Actual selected build card is materialized");
+    Bounds bounds = card.localToScene(card.getBoundsInLocal());
+    var expected =
+        Map.of(
+            "guided-current",
+            selected.currentlyAdvertised() ? 1 : 0,
+            "guided-local",
+            selected.local() ? 1 : 0,
+            "guided-new",
+            selected.newToVibeMiner() ? 1 : 0,
+            "guided-region",
+            selected.regions().size());
+    for (var entry : expected.entrySet()) {
+      var badges = card.lookupAll("." + entry.getKey());
+      check(
+          badges.size() == entry.getValue(),
+          "Rendered badges match actual membership: " + entry.getKey());
+      for (var badge : badges) {
+        var label = (Label) badge;
+        Bounds actual = label.localToScene(label.getBoundsInLocal());
+        check(!label.isTextTruncated(), "Card badge is not truncated: " + label.getText());
+        check(
+            actual.getMinX() >= bounds.getMinX() - 1 && actual.getMaxX() <= bounds.getMaxX() + 1,
+            "Card badge stays within tile horizontal bounds: " + label.getText());
+      }
+    }
   }
 
   private static void openSelectedAndAwaitCoverage() throws Exception {
@@ -545,6 +705,7 @@ public final class BuildMiningReviewApp {
                       && text.getMaxY() <= container.getMaxY() + 1,
                   "Dated readiness remains contained within its actual row or inspector");
             }
+          assertCardBadges();
           return null;
         });
   }
@@ -755,10 +916,53 @@ public final class BuildMiningReviewApp {
   }
 
   private static void shot(Window window, String state) throws Exception {
+    shot(window, state, () -> {});
+  }
+
+  private static void awaitRenderedPulses() throws Exception {
+    if (Platform.isFxApplicationThread())
+      throw new IllegalStateException("Rendered-frame wait must stay outside the FX thread");
+    var rendered = new CountDownLatch(1);
+    var timer =
+        fx(
+            () -> {
+              var animation =
+                  new AnimationTimer() {
+                    int pulses;
+
+                    @Override
+                    public void handle(long now) {
+                      // A third pulse guarantees the two preceding layout/render cycles had time to
+                      // finish.
+                      if (++pulses >= 3) {
+                        stop();
+                        rendered.countDown();
+                      } else Platform.requestNextPulse();
+                    }
+                  };
+              animation.start();
+              Platform.requestNextPulse();
+              return animation;
+            });
+    try {
+      if (!rendered.await(5, TimeUnit.SECONDS))
+        throw new AssertionError("JavaFX did not render three capture pulses");
+    } finally {
+      fx(
+          () -> {
+            timer.stop();
+            return null;
+          });
+    }
+  }
+
+  private static void shot(Window window, String state, Runnable verification) throws Exception {
+    awaitRenderedPulses();
     fx(
         () -> {
           window.getScene().getRoot().applyCss();
           window.getScene().getRoot().layout();
+          verification.run();
           WritableImage image = window.getScene().snapshot(null);
           BufferedImage png =
               new BufferedImage(

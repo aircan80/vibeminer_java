@@ -45,7 +45,8 @@ class GuidedDiscoveryPresentationModelTest {
     final Queue<CompletableFuture<BuildLibraryPage.Entry>> selections = new ArrayDeque<>();
     final List<String> refreshProducts = new ArrayList<>();
     final List<String> selectedIds = new ArrayList<>();
-    int closes;
+    int closes, activePages, maximumActivePages;
+    boolean throwNextPage, completeNextPage;
 
     public RefreshOperation refreshProduct(String product) {
       refreshProducts.add(product);
@@ -57,9 +58,24 @@ class GuidedDiscoveryPresentationModelTest {
     public CompletionStage<BuildLibraryPage> page(
         BuildLibraryQuery query, Optional<BuildLibraryCursor> cursor, int size) {
       assertEquals(25, size);
+      if (throwNextPage) {
+        throwNextPage = false;
+        throw new BuildLibraryException(
+            BuildLibraryException.Code.STORAGE_UNAVAILABLE, "Authored failure");
+      }
+      if (completeNextPage) {
+        completeNextPage = false;
+        return CompletableFuture.completedStage(
+            new BuildLibraryPage(query, size, 1, List.of(), Optional.empty()));
+      }
+      if (activePages == 4)
+        return CompletableFuture.failedFuture(
+            new BuildLibraryException(BuildLibraryException.Code.BUSY, "Four actual reads held"));
+      activePages++;
+      maximumActivePages = Math.max(maximumActivePages, activePages);
       var future = new CompletableFuture<BuildLibraryPage>();
       pages.add(new PageRequest(query, cursor, future));
-      return future;
+      return future.whenComplete((page, failure) -> activePages--);
     }
 
     public CompletionStage<BuildLibraryPage.Entry> select(String id) {
@@ -84,12 +100,18 @@ class GuidedDiscoveryPresentationModelTest {
     }
 
     Harness(java.util.concurrent.Executor executor) {
+      this(executor, state -> {});
+    }
+
+    Harness(
+        java.util.concurrent.Executor executor,
+        java.util.function.Consumer<GuidedDiscoveryPresentationModel.State> observer) {
       model =
           new GuidedDiscoveryPresentationModel(
               service,
               PRODUCTS,
               executor,
-              s -> {},
+              observer,
               e ->
                   new GuidedDiscoveryPresentationModel.OpenAdmission(
                       true, "Prepare exact metadata"),
@@ -200,7 +222,8 @@ class GuidedDiscoveryPresentationModelTest {
 
   static final class ReadinessService implements BuildReadinessService {
     final List<ReadinessOperation> operations = new ArrayList<>();
-    int closes;
+    int closes, activePages, maximumActivePages;
+    boolean throwNextPage, completeNextPage;
 
     public Operation read(List<BuildReadiness.Context> contexts) {
       assertTrue(contexts.size() <= BuildReadiness.MAXIMUM_CONTEXTS);
@@ -252,6 +275,218 @@ class GuidedDiscoveryPresentationModelTest {
                                 "c".repeat(64)))
                         : Optional.empty()));
     return new BuildReadiness.Status(context, admission, observation);
+  }
+
+  @Test
+  void rapidSearchesCoalesceBehindActualPageRetirementWithoutBusy() {
+    var h = new Harness();
+    h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
+    var held = h.service.pages.remove();
+    for (int n = 0; n < 8; n++) h.model.search(Integer.toString(n));
+    h.model.region("eu");
+    assertTrue(h.service.pages.isEmpty(), "Only one actual read; latest desired query is pending");
+    assertEquals(1, h.service.maximumActivePages);
+    complete(held);
+    var latest = h.service.pages.remove();
+    assertEquals(Optional.of("7"), latest.query().search());
+    assertEquals(Optional.of("eu"), latest.query().region());
+    complete(latest);
+    assertEquals(latest.query(), h.model.state().page().query());
+    assertFalse(h.model.state().busy());
+    assertFalse(h.model.state().error().contains("could not be read"));
+    assertEquals(1, h.service.maximumActivePages);
+    assertEquals(0, h.service.activePages);
+    assertTrue(h.service.refreshProducts.isEmpty());
+  }
+
+  @Test
+  void duplicateOldCompletionCannotReleaseSuccessorAndCloseSuppressesPendingRead() {
+    var ui = new ArrayDeque<Runnable>();
+    var h = new Harness(ui::add);
+    h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
+    while (!ui.isEmpty()) ui.remove().run();
+    var held = h.service.pages.remove();
+    h.model.search("70448");
+    complete(held);
+    var callback = ui.remove();
+    callback.run();
+    var successor = h.service.pages.remove();
+    callback.run();
+    h.model.region("eu");
+    assertTrue(h.service.pages.isEmpty());
+    h.model.close();
+    complete(successor);
+    while (!ui.isEmpty()) ui.remove().run();
+    assertTrue(h.service.pages.isEmpty());
+    assertEquals(0, h.service.activePages);
+    assertEquals(0, h.service.closes);
+  }
+
+  @Test
+  void synchronousCompletionThrowAndRejectedPresentationDoNotStrandPageOwnership() {
+    var reject = new java.util.concurrent.atomic.AtomicBoolean();
+    var h =
+        new Harness(
+            action -> {
+              if (reject.get()) throw new RejectedExecutionException("Authored UI rejection");
+              action.run();
+            });
+    h.service.completeNextPage = true;
+    h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
+    assertNotNull(h.model.state().page());
+    h.service.throwNextPage = true;
+    h.model.search("one");
+    assertFalse(h.model.state().busy());
+    h.model.search("two");
+    var held = h.service.pages.remove();
+    reject.set(true);
+    complete(held);
+    assertEquals(0, h.service.activePages);
+    reject.set(false);
+    h.model.search("three");
+    var latest = h.service.pages.remove();
+    complete(latest);
+    assertEquals(Optional.of("three"), h.model.state().page().query().search());
+    assertFalse(h.model.state().busy());
+    assertTrue(h.service.pages.isEmpty());
+  }
+
+  @Test
+  void pageObserverReentryCannotLetOldFinallyClearTheNewActualFlight() {
+    var model = new java.util.concurrent.atomic.AtomicReference<GuidedDiscoveryPresentationModel>();
+    var h =
+        new Harness(
+            Runnable::run,
+            state -> {
+              if (!state.busy()
+                  && state.page() != null
+                  && state.page().query().search().equals(Optional.of("one")))
+                model.get().search("two");
+            });
+    model.set(h.model);
+    h.restore();
+    h.model.search("one");
+    complete(h.service.pages.remove());
+    var two = h.service.pages.remove();
+    h.model.search("three");
+    assertTrue(h.service.pages.isEmpty());
+    complete(two);
+    var three = h.service.pages.remove();
+    complete(three);
+    assertEquals(Optional.of("three"), h.model.state().page().query().search());
+    assertEquals(1, h.service.maximumActivePages);
+    assertEquals(0, h.service.activePages);
+  }
+
+  @Test
+  void researchLocaleIsFactualWithoutReadinessAndUpdatesWithoutChangingOpenReference() {
+    var h = new Harness();
+    var row = entry("wow", "a", 1, true, false);
+    h.restore(row);
+    h.model.select(row.row().group().key().identity());
+    h.service.selections.remove().complete(row);
+    assertTrue(
+        h.model
+            .viewData()
+            .rows()
+            .getFirst()
+            .details()
+            .contains(new GuidedDiscoveryPane.Detail("RESEARCH LOCALE", "enUS")));
+    h.model.setReadinessLocale("deDE");
+    assertTrue(
+        h.model
+            .viewData()
+            .rows()
+            .getFirst()
+            .details()
+            .contains(new GuidedDiscoveryPane.Detail("RESEARCH LOCALE", "deDE")));
+    assertEquals(row, h.model.state().selected());
+    h.model.openSelected();
+    assertEquals(row, h.opens.getFirst());
+    assertTrue(h.service.pages.isEmpty());
+    assertTrue(h.service.refreshProducts.isEmpty());
+  }
+
+  @Test
+  void searchAndRegionQueryWholeCatalogAndRejectStaleCompletionsWithoutRefresh() {
+    var h = new Harness();
+    h.restore(entry("wow", "a", 1, true, false));
+    h.model.search("70448");
+    var older = h.service.pages.remove();
+    assertEquals(Optional.of("70448"), older.query().search());
+    assertTrue(older.cursor().isEmpty());
+    h.model.region("eu");
+    assertTrue(h.service.pages.isEmpty());
+    complete(older, entry("wow", "b", 2, true, false));
+    var current = h.service.pages.remove();
+    assertEquals(Optional.of("eu"), current.query().region());
+    assertEquals(Optional.of("70448"), current.query().search());
+    assertTrue(current.cursor().isEmpty());
+    current
+        .future()
+        .complete(new BuildLibraryPage(current.query(), 25, 1, List.of(), Optional.empty()));
+    assertTrue(h.model.state().page().entries().isEmpty());
+    assertNull(h.model.state().selected());
+    assertEquals("70448", h.model.viewData().query());
+    assertEquals("eu", h.model.viewData().region());
+    assertTrue(
+        h.model.viewData().availableRegions().containsAll(List.of("us", "eu", "kr", "tw", "cn")));
+    assertTrue(h.service.refreshProducts.isEmpty());
+  }
+
+  @Test
+  void selectedRegionalReferenceDrivesDetailsAndOpenWithoutDiscardingProvenance() {
+    var h = new Harness();
+    var us = entry("wow", "a", 1, true, false);
+    var group = us.row().group();
+    var original = group.preferredReference();
+    var eu =
+        new BuildLibraryReference(
+            group.key(),
+            UUID.randomUUID(),
+            2,
+            group.key().snapshotIdFor("eu"),
+            0,
+            "eu",
+            NOW,
+            original.versions(),
+            original.cdns(),
+            new DiscoveryEvent.CdnRow(
+                0, Map.of("Name", "eu", "Path", "tpr/wow", "Hosts", "cdn.blizzard.com")));
+    var merged =
+        new BuildLibraryPage.Entry(
+            1,
+            new BuildLibraryProjection.Row(
+                new BuildLibraryGrouping.Group(group.key(), List.of(original, eu), original),
+                us.row().seen(),
+                us.row().local(),
+                us.row().advertisement()));
+    h.restore(merged);
+    h.model.region("eu");
+    var request = h.service.pages.remove();
+    complete(request, merged);
+    h.model.select(group.key().identity());
+    h.service.selections.remove().complete(merged);
+    assertEquals(eu, h.model.state().selected().row().group().preferredReference());
+    assertEquals(List.of(original, eu), h.model.state().selected().row().group().references());
+    h.model.openSelected();
+    assertEquals(eu, h.opens.getFirst().row().group().preferredReference());
+    assertTrue(
+        h.model
+            .viewData()
+            .rows()
+            .getFirst()
+            .details()
+            .contains(new GuidedDiscoveryPane.Detail("REGION", "eu")));
+    assertTrue(
+        h.model.viewData().rows().getFirst().details().stream()
+            .anyMatch(
+                d ->
+                    d.label().equals("PREFERRED METADATA REFERENCE")
+                        && d.value().startsWith("eu")));
+    h.model.search("nonmatching");
+    assertNull(h.model.state().selected());
+    assertTrue(h.service.refreshProducts.isEmpty());
   }
 
   @Test
@@ -534,9 +769,11 @@ class GuidedDiscoveryPresentationModelTest {
     h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
     var old = h.service.pages.remove();
     h.model.filter(GuidedDiscoveryPane.Filter.LOCAL);
+    assertTrue(h.service.pages.isEmpty());
+    complete(old, entry("wow", "a", 1, false, false));
+    assertNull(h.model.state().page());
     var latest = h.service.pages.remove();
     complete(latest, entry("wow", "b", 2, true, false));
-    complete(old, entry("wow", "a", 1, false, false));
     assertEquals(GuidedDiscoveryPane.Filter.LOCAL, h.model.state().filter());
     assertEquals(
         "b".repeat(32),

@@ -184,7 +184,7 @@ public final class CaptureBuildOpeningIntegration {
               }
             throw new AssertionError("Missing scale control");
           });
-      clickText("Discover");
+      clickText("Discover builds");
     }
     fx(
         () -> {

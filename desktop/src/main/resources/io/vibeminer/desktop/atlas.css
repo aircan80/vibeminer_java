@@ -89,3 +89,69 @@
 .install-operation-title { -fx-font-weight: bold; -fx-text-fill: #27796e; }
 .titled-pane > .title { -fx-background-color: #eef1e8; -fx-border-color: #dcded4; -fx-padding: 9 12; }
 .titled-pane > .content { -fx-background-color: #fffef9; -fx-border-color: #dcded4; -fx-padding: 14; }
+
+/* Approved guided B shell: application chrome excludes prototype review/demo bars. */
+.root.guided-shell {
+    -fx-font-family: "System";
+    -fx-font-size: 15px;
+    -fx-text-fill: #243b3a;
+    -fx-background-color: #f5f3ed;
+    -fx-accent: #176e66;
+    -fx-focus-color: #e6ad46;
+}
+.guided-shell .label { -fx-text-fill: #243b3a; }
+.guided-shell .content-host,
+.guided-shell .workspace-scroll,
+.guided-shell .workspace-scroll > .viewport { -fx-background-color: #f5f3ed; -fx-padding: 0; }
+.guided-mainbar {
+    -fx-background-color: #fffefa;
+    -fx-padding: 24 34 18 34;
+    -fx-border-color: transparent transparent #dce2d9 transparent;
+}
+.guided-shell .guided-wordmark,
+.guided-shell .guided-wordmark-accent {
+    -fx-font-family: "System";
+    -fx-font-size: 1.5333em;
+    -fx-font-weight: bold;
+}
+.guided-shell .guided-wordmark-accent { -fx-text-fill: #287f70; }
+.guided-shell .guided-main-navigation {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-border-radius: 0;
+    -fx-background-radius: 0;
+    -fx-border-width: 0 0 2 0;
+    -fx-padding: 4 0 8 0;
+    -fx-text-fill: #697b76;
+    -fx-font-size: 1em;
+}
+.guided-shell .guided-main-navigation:selected {
+    -fx-border-color: transparent transparent #176e66 transparent;
+    -fx-text-fill: #176e66;
+    -fx-font-weight: bold;
+}
+.guided-shell .guided-main-navigation:hover { -fx-text-fill: #176e66; }
+.guided-shell .guided-standalone { -fx-font-size: 0.8em; -fx-text-fill: #697b76; }
+.guided-shell .guided-settings {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-padding: 6 8;
+    -fx-font-size: 0.8em;
+    -fx-text-fill: #697b76;
+}
+.guided-shell .guided-settings:hover { -fx-background-color: #edf5ef; -fx-text-fill: #176e66; }
+.guided-shell .button:focused,
+.guided-shell .toggle-button:focused,
+.guided-shell .combo-box:focused {
+    -fx-border-color: #e6ad46;
+    -fx-border-width: 2;
+    -fx-border-insets: -2;
+}
+.guided-shell .footer {
+    -fx-background-color: #fffefa;
+    -fx-border-color: #dce2d9 transparent transparent transparent;
+    -fx-padding: 15 30;
+}
+.guided-shell .status-text { -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
+.guided-shell .connection-dot { -fx-font-size: 0.7333em; -fx-text-fill: #176e66; }
+.guided-shell .secondary { -fx-text-fill: #697b76; }

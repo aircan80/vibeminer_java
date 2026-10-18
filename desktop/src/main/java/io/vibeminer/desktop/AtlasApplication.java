@@ -401,11 +401,13 @@ public final class AtlasApplication extends Application {
     if (configuredBuildLibrary != null) destination = "Archive";
     stage.getIcons().setAll(BrandingImages.ICONS);
     root = new BorderPane();
+    if (configuredBuildLibrary != null) root.getStyleClass().add("guided-shell");
     content = new StackPane();
     content.getStyleClass().add("content-host");
     root.setCenter(content);
     chrome = new VBox();
-    chrome.getChildren().addAll(header(), navigationBar());
+    chrome.getChildren().add(header());
+    if (configuredBuildLibrary == null) chrome.getChildren().add(navigationBar());
     context = new FlowPane(16, 8);
     context.getStyleClass().add("context-strip");
     chrome.getChildren().add(context);
@@ -586,7 +588,15 @@ public final class AtlasApplication extends Application {
                     retireOpening();
                     guidedModel.more();
                   },
-                  ignored -> guidedModel.sourceDetails()));
+                  ignored -> guidedModel.sourceDetails(),
+                  query -> {
+                    retireOpening();
+                    guidedModel.search(query);
+                  },
+                  region -> {
+                    retireOpening();
+                    guidedModel.region(region);
+                  }));
       if (openingModel != null) {
         openingProgress = wrap("");
         openingProgress.setId("guided-opening-progress");
@@ -651,6 +661,7 @@ public final class AtlasApplication extends Application {
     mark.setPreserveRatio(true);
     mark.setSmooth(true);
     mark.setAccessibleText("VibeMiner Excavate logo");
+    if (configuredBuildLibrary != null) return guidedHeader(mark);
     VBox brand =
         new VBox(label("VibeMiner", "brand"), label("ATLAS RESEARCH WORKBENCH", "brand-subtitle"));
     mode = label("", "mode-badge");
@@ -667,6 +678,46 @@ public final class AtlasApplication extends Application {
     header.setAlignment(Pos.CENTER_LEFT);
     header.getStyleClass().add("header");
     return header;
+  }
+
+  private Node guidedHeader(ImageView mark) {
+    Label vibe = label("Vibe", "guided-wordmark");
+    HBox wordmark = new HBox(0, vibe, label("Miner", "guided-wordmark-accent"));
+    // Match the reference's 23px wordmark with its inherited 1.5 line height.
+    wordmark
+        .prefHeightProperty()
+        .bind(
+            javafx.beans.binding.Bindings.createDoubleBinding(
+                () -> vibe.getFont().getSize() * 1.5, vibe.fontProperty()));
+    wordmark.setMinHeight(Region.USE_PREF_SIZE);
+    wordmark.setAlignment(Pos.CENTER_LEFT);
+    wordmark.setAccessibleText("VibeMiner");
+    HBox brand = new HBox(9, mark, wordmark);
+    brand.setAlignment(Pos.CENTER_LEFT);
+    brand.setMinWidth(Region.USE_PREF_SIZE);
+    ToggleButton discover = new ToggleButton("Discover builds");
+    discover.setId("guided-discover-navigation");
+    discover.setToggleGroup(navigation);
+    discover.setUserData("Archive");
+    discover.setSelected(destination.equals("Archive"));
+    discover.getStyleClass().add("guided-main-navigation");
+    discover.setOnAction(event -> navigate("Archive"));
+    Label standalone = label("Standalone research · official CDN sources", "guided-standalone");
+    standalone.setWrapText(true);
+    standalone.setMinHeight(Region.USE_PREF_SIZE);
+    Button settings = button("Settings", () -> navigate("Settings"), "guided-settings");
+    settings.setId("guided-settings");
+    settings.setMinWidth(Region.USE_PREF_SIZE);
+    HBox utilities = new HBox(12, standalone, settings);
+    utilities.setAlignment(Pos.CENTER_RIGHT);
+    utilities.setMinWidth(0);
+    HBox.setHgrow(standalone, Priority.ALWAYS);
+    HBox mainbar = new HBox(35, brand, discover, spacer(), utilities);
+    mainbar.setAlignment(Pos.CENTER_LEFT);
+    mainbar.getStyleClass().add("guided-mainbar");
+    mainbar.setId("guided-mainbar");
+    mode = label("", "mode-badge"); // Legacy status updates are not application navigation.
+    return mainbar;
   }
 
   private Node navigationBar() {
@@ -1350,6 +1401,7 @@ public final class AtlasApplication extends Application {
       if (guidedScroll == null) {
         guidedScroll = new ScrollPane(guidedPane);
         guidedScroll.setFitToWidth(true);
+        guidedScroll.setFitToHeight(true);
         guidedScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         guidedScroll.getStyleClass().add("workspace-scroll");
         guidedScroll.setId("guided-discovery-scroll");
@@ -3020,7 +3072,10 @@ public final class AtlasApplication extends Application {
         e -> {
           selectedScale = scale.getValue();
           String value = scale.getValue().replace("%", "");
-          root.setStyle("-fx-font-size: " + (14 * Integer.parseInt(value) / 100.0) + "px;");
+          root.setStyle(
+              "-fx-font-size: "
+                  + ((configuredBuildLibrary == null ? 14 : 15) * Integer.parseInt(value) / 100.0)
+                  + "px;");
         });
     page.getChildren()
         .add(

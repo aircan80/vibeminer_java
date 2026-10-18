@@ -1,24 +1,45 @@
-.guided-discovery { -fx-spacing: 16; -fx-padding: 25 28 30 28; -fx-background-color: #f5f3ed; }
-.guided-discovery .guided-heading { -fx-font-size: 2.1429em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
-.guided-discovery .guided-subtitle, .guided-discovery .guided-message { -fx-font-size: 0.9286em; -fx-text-fill: #657870; }
-.guided-discovery .guided-eyebrow { -fx-font-size: 0.7143em; -fx-font-weight: bold; -fx-text-fill: #657870; }
-.guided-discovery .guided-product-actions { -fx-padding: 0 0 6 0; }
-.guided-discovery .guided-error { -fx-padding: 13 15; -fx-background-color: #fff6e5; -fx-border-color: #e7d4ae; -fx-background-radius: 7; -fx-border-radius: 7; -fx-text-fill: #775a2a; }
+.guided-discovery .button, .guided-discovery .toggle-button { -fx-background-color: #fffefa; -fx-text-fill: #243b3a; -fx-border-color: #dce2d9; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 9 13; }
+.guided-discovery { -fx-spacing: 0; -fx-padding: 0; -fx-background-color: #f5f3ed; }
+.guided-discovery .guided-main { -fx-padding: 28 30; -fx-spacing: 0; }
+.guided-discovery .guided-heading { -fx-font-size: 2em; -fx-font-weight: bold; -fx-text-fill: #243b3a; -fx-padding: 5 0; }
+.guided-discovery .guided-subtitle, .guided-discovery .guided-message { -fx-font-size: 0.8667em; -fx-text-fill: #697b76; }
+.guided-discovery .guided-eyebrow { -fx-font-size: 0.6667em; -fx-font-weight: bold; -fx-text-fill: #697b76; }
+.guided-discovery .guided-product-panel { -fx-padding: 18 20; -fx-spacing: 9; -fx-background-color: #edf3e9; -fx-border-color: #dce2d9; -fx-background-radius: 10; -fx-border-radius: 10; }
+.guided-discovery .guided-product-help { -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
+.guided-discovery .guided-product-actions { -fx-padding: 0; }
+.guided-discovery .guided-product-actions .combo-box { -fx-background-color: #fffefa; -fx-border-color: #dce2d9; -fx-border-radius: 7; -fx-background-radius: 7; -fx-font-weight: bold; }
+.guided-discovery .guided-builds-heading { -fx-padding: 0; }
+.guided-discovery .guided-section-heading { -fx-font-size: 1.2667em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.guided-discovery .guided-error { -fx-padding: 12 15; -fx-background-color: #fff7e6; -fx-border-color: #e0c38f; -fx-background-radius: 8; -fx-border-radius: 8; -fx-text-fill: #775a2a; }
 .guided-discovery .guided-results { -fx-background-color: transparent; -fx-padding: 0; }
-.guided-discovery .guided-results > .split-pane-divider { -fx-background-color: #f5f3ed; -fx-padding: 0 9; }
-.guided-discovery .guided-inspector { -fx-padding: 21; -fx-background-color: #fffefa; -fx-border-color: #dce2d9; -fx-background-radius: 9; -fx-border-radius: 9; }
-.guided-discovery .guided-version { -fx-font-size: 1.5714em; -fx-font-weight: bold; }
-.guided-discovery .guided-detail-value { -fx-font-size: 0.8571em; -fx-text-fill: #243b3a; }
-.guided-discovery .guided-status { -fx-text-fill: #176e66; -fx-font-size: 0.9286em; }
+.guided-discovery .guided-results > .split-pane-divider { -fx-background-color: #dce2d9; -fx-padding: 0 0.5; }
+.guided-discovery .guided-inspector { -fx-padding: 28 23; -fx-spacing: 12; -fx-background-color: #fafaf4; }
+.guided-discovery .guided-version { -fx-font-size: 1.5333em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.guided-discovery .guided-detail-value { -fx-font-size: 0.8667em; -fx-text-fill: #243b3a; }
+.guided-discovery .guided-status-block { -fx-padding: 12; -fx-background-color: #e4f1e9; -fx-background-radius: 7; }
+.guided-discovery .guided-status { -fx-text-fill: #243b3a; -fx-font-size: 0.8em; -fx-font-weight: bold; }
 .guided-discovery .guided-primary { -fx-background-color: #176e66; -fx-border-color: #176e66; -fx-text-fill: white; }
 .guided-discovery .toggle-button:selected { -fx-background-color: #e4f1e9; -fx-text-fill: #176e66; -fx-border-color: #176e66; }
-.guided-discovery .list-view { -fx-background-color: #fffefa; -fx-border-color: #dce2d9; -fx-background-radius: 9; -fx-border-radius: 9; -fx-padding: 3; }
-.guided-discovery .list-cell { -fx-background-color: #fffefa; -fx-padding: 5; }
-.guided-discovery .list-cell:selected { -fx-background-color: #edf5ef; }
-.guided-discovery .list-cell:filled:hover { -fx-background-color: #f1f6ef; }
-.guided-discovery .guided-build-card { -fx-padding: 15; -fx-border-color: transparent transparent #dce2d9 transparent; }
-.guided-discovery .guided-row-version { -fx-font-size: 1.1429em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
-.guided-discovery .guided-row-status { -fx-font-size: 0.8571em; -fx-text-fill: #657870; }
-.guided-discovery .guided-region, .guided-discovery .guided-local, .guided-discovery .guided-current { -fx-font-size: 0.7857em; -fx-text-fill: #176e66; -fx-padding: 3 7; -fx-background-color: #edf4eb; -fx-background-radius: 5; }
-.guided-discovery .guided-new { -fx-font-size: 0.7143em; -fx-text-fill: #83602c; -fx-padding: 3 7; -fx-background-color: #fbf1d9; -fx-background-radius: 5; }
-.guided-discovery .guided-empty { -fx-padding: 25; -fx-text-fill: #657870; }
+.guided-discovery .list-view { -fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0; }
+.guided-discovery .list-view .virtual-flow, .guided-discovery .list-view .clipped-container, .guided-discovery .list-view .sheet { -fx-background-color: transparent; }
+.guided-discovery .list-cell { -fx-background-color: transparent; -fx-padding: 0 0 10 0; }
+.guided-discovery .list-cell:selected { -fx-background-color: transparent; }
+.guided-discovery .guided-build-card { -fx-padding: 18 14; -fx-background-color: #fffefa; -fx-border-color: #dce2d9; -fx-border-width: 1; -fx-border-radius: 10; -fx-background-radius: 10; }
+.guided-discovery .list-cell:selected .guided-build-card { -fx-padding: 18 14; -fx-border-color: #176e66; -fx-border-width: 1; -fx-background-color: #176e66, #f1f7f0; -fx-background-insets: 0, 1 1 1 4; -fx-background-radius: 10, 9 9 9 6; -fx-border-radius: 10; }
+.guided-discovery .list-cell:filled:hover .guided-build-card { -fx-border-color: #176e66; }
+.guided-discovery .guided-row-version { -fx-font-size: 1.0667em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.guided-discovery .guided-row-status { -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
+.guided-discovery .guided-region { -fx-font-size: 0.7333em; -fx-text-fill: #176e66; -fx-padding: 2 5; -fx-background-color: #e4f1e9; -fx-background-radius: 4; }
+.guided-discovery .guided-local, .guided-discovery .guided-current, .guided-discovery .guided-new { -fx-font-size: 0.6667em; -fx-padding: 2 6; -fx-border-radius: 12; -fx-background-radius: 12; -fx-border-width: 1; }
+.guided-discovery .guided-current { -fx-text-fill: #176e66; -fx-background-color: #edf5ed; -fx-border-color: #d4e4d5; }
+.guided-discovery .guided-local { -fx-text-fill: #76632e; -fx-background-color: #f5efd9; -fx-border-color: #e7dfc3; }
+.guided-discovery .guided-new { -fx-text-fill: #83602c; -fx-background-color: #fbf1d9; -fx-border-color: #e7dfc3; }
+.guided-discovery .guided-empty { -fx-padding: 25; -fx-text-fill: #697b76; }
+
+.guided-discovery .guided-product-label { -fx-font-size: 1em; -fx-font-weight: bold; -fx-text-fill: #243b3a; }
+.guided-discovery .guided-detail-label { -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
+.guided-discovery .guided-mono { -fx-font-family: monospace; -fx-font-size: 0.7333em; }
+
+.guided-discovery .guided-row-meta { -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
+
+.guided-discovery #guided-alias-attribution { -fx-padding: 15 30; -fx-font-size: 0.7333em; -fx-text-fill: #697b76; }
