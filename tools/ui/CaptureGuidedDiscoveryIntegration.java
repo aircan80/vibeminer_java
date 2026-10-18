@@ -455,11 +455,7 @@ public final class CaptureGuidedDiscoveryIntegration {
               !cell.isTextTruncated(), "Normal product ID and Retail alias are visually truncated");
           return null;
         });
-    fx(
-        () -> {
-          list().getSelectionModel().select(0);
-          return null;
-        });
+    mouseSelectBuild(0);
     until(() -> fx(() -> stage.getScene().lookup("#guided-open-build") != null));
     check(
         fx(() -> ((Button) node("guided-open-build")).isDisabled()),
@@ -717,6 +713,65 @@ public final class CaptureGuidedDiscoveryIntegration {
   @SuppressWarnings({"unchecked", "rawtypes"})
   private static void setCombo(ComboBox<?> c, Object value) {
     ((ComboBox) c).setValue(value);
+  }
+
+  /** Exercise the native mouse/JavaFX selected-indices path, not programmatic select(). */
+  private static void mouseSelectBuild(int index) throws Exception {
+    fx(
+        () -> {
+          list().scrollTo(index);
+          stage.getScene().getRoot().applyCss();
+          stage.getScene().getRoot().layout();
+          var cell = buildCell(index);
+          var scroll = (ScrollPane) node("guided-discovery-scroll");
+          var viewport = scroll.lookup(".viewport");
+          Bounds visible = viewport.localToScene(viewport.getBoundsInLocal());
+          Bounds target = cell.localToScene(cell.getBoundsInLocal());
+          double extent = scroll.getContent().getBoundsInLocal().getHeight() - visible.getHeight();
+          if (extent > 0)
+            scroll.setVvalue(
+                Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        scroll.getVvalue()
+                            + ((target.getMinY() + target.getMaxY()) / 2
+                                    - (visible.getMinY() + visible.getMaxY()) / 2)
+                                / extent)));
+          return null;
+        });
+    until(
+        () ->
+            fx(
+                () -> {
+                  var cell = buildCell(index);
+                  var scroll = (ScrollPane) node("guided-discovery-scroll");
+                  var viewport = scroll.lookup(".viewport");
+                  Bounds visible = viewport.localToScene(viewport.getBoundsInLocal());
+                  Bounds target = cell.localToScene(cell.getBoundsInLocal());
+                  return target.getMinY() >= visible.getMinY() - 1
+                      && target.getMaxY() <= visible.getMaxY() + 1;
+                }));
+    fx(
+        () -> {
+          var cell = buildCell(index);
+          Bounds target = cell.localToScreen(cell.getBoundsInLocal());
+          check(
+              target != null && !cell.isDisabled(), "Native mouse target is a visible build cell");
+          var robot = new javafx.scene.robot.Robot();
+          robot.mouseMove(target.getMinX() + 20, target.getMinY() + 20);
+          robot.mouseClick(MouseButton.PRIMARY);
+          return null;
+        });
+    until(() -> fx(() -> list().getSelectionModel().getSelectedIndex() == index));
+  }
+
+  private static ListCell<?> buildCell(int index) {
+    return list().lookupAll(".list-cell").stream()
+        .filter(n -> n instanceof ListCell<?> cell && cell.getIndex() == index && !cell.isEmpty())
+        .map(n -> (ListCell<?>) n)
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("Native mouse build cell is not materialized"));
   }
 
   private static void click(String id) throws Exception {

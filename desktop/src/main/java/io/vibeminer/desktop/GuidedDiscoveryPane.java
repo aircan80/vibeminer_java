@@ -263,6 +263,7 @@ public final class GuidedDiscoveryPane extends VBox {
   }
 
   private ViewData data;
+  private long selectionChange;
   private final Interactions events;
   private final ComboBox<ProductOption> products = new ComboBox<>();
   private final Button refresh = button("↻ Refresh builds", "guided-refresh");
@@ -393,7 +394,19 @@ public final class GuidedDiscoveryPane extends VBox {
     rows.getSelectionModel()
         .selectedItemProperty()
         .addListener(
-            (o, before, after) -> events.buildSelected(after == null ? null : after.groupId()));
+            (o, before, after) -> {
+              long change = ++selectionChange;
+              if (events.restoring != 0 || after == null) return;
+              // A model callback can synchronously render a loading state. Wait until JavaFX has
+              // finished notifying its selected-indices change before that render mutates
+              // selection.
+              javafx.application.Platform.runLater(
+                  () -> {
+                    if (selectionChange == change
+                        && Objects.equals(rows.getSelectionModel().getSelectedItem(), after))
+                      events.buildSelected(after.groupId());
+                  });
+            });
     inspector.setId("guided-inspector");
     inspector.getStyleClass().add("guided-inspector");
     inspector.setMinWidth(0);
@@ -499,10 +512,12 @@ public final class GuidedDiscoveryPane extends VBox {
           regions.setValue(next.region().isEmpty() ? "All regions" : next.region());
           setNotice(message, next.busy() || next.rows().isEmpty() ? next.message() : "");
           setNotice(error, next.error());
-          rows.getItems().setAll(next.rows());
+          if (!rows.getItems().equals(next.rows())) rows.getItems().setAll(next.rows());
           var selection = selected(next);
-          if (selection == null) rows.getSelectionModel().clearSelection();
-          else rows.getSelectionModel().select(selection);
+          if (!Objects.equals(rows.getSelectionModel().getSelectedItem(), selection)) {
+            if (selection == null) rows.getSelectionModel().clearSelection();
+            else rows.getSelectionModel().select(selection);
+          }
           rows.setPlaceholder(
               copy(
                   next.busy() ? "Checking official metadata…" : "No builds match this view.",

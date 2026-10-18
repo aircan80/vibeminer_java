@@ -255,4 +255,142 @@ class GuidedDiscoveryPaneTest {
                 "",
                 ""));
   }
+
+  @Test
+  void mouseSelectionSurvivesSynchronousModelRenderWithoutInvalidatingJavaFxChange()
+      throws Exception {
+    org.junit.jupiter.api.Assumptions.assumeTrue(
+        "1".equals(System.getenv("VIBEMINER_FX_SELECTION_TEST"))
+            && System.getenv("DISPLAY") != null,
+        "Run the Robot regression explicitly on an isolated display");
+    var started = new java.util.concurrent.CountDownLatch(1);
+    try {
+      javafx.application.Platform.startup(started::countDown);
+    } catch (IllegalStateException alreadyStarted) {
+      started.countDown();
+    }
+    assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS));
+    var failure = new AtomicReference<Throwable>();
+    var previousHandler = new AtomicReference<Thread.UncaughtExceptionHandler>();
+    var previousImplicitExit = new java.util.concurrent.atomic.AtomicBoolean();
+    var listChanges = new java.util.concurrent.atomic.AtomicInteger();
+    var selected = new ArrayList<String>();
+    var selectionObserved = new java.util.concurrent.CountDownLatch(1);
+    var setup =
+        new java.util.concurrent.FutureTask<javafx.stage.Stage>(
+            () -> {
+              previousImplicitExit.set(javafx.application.Platform.isImplicitExit());
+              javafx.application.Platform.setImplicitExit(false);
+              previousHandler.set(Thread.currentThread().getUncaughtExceptionHandler());
+              Thread.currentThread()
+                  .setUncaughtExceptionHandler(
+                      (thread, error) -> failure.compareAndSet(null, error));
+              var holder = new GuidedDiscoveryPane[1];
+              holder[0] =
+                  new GuidedDiscoveryPane(
+                      data("wow", "a", false),
+                      new GuidedDiscoveryPane.Callbacks(
+                          p -> {},
+                          f -> {},
+                          id -> {
+                            selected.add(id);
+                            selectionObserved.countDown();
+                            // The real model publishes an intermediate selection-loading state
+                            // synchronously.
+                            holder[0].update(data("wow", null, false));
+                          },
+                          id -> {},
+                          () -> {},
+                          () -> {},
+                          id -> {}));
+              var stage = new javafx.stage.Stage();
+              stage.setScene(new javafx.scene.Scene(holder[0], 1280, 900));
+              stage.show();
+              stage.getScene().getRoot().applyCss();
+              stage.getScene().getRoot().layout();
+              var list = (javafx.scene.control.ListView<?>) holder[0].lookup("#guided-builds");
+              list.getItems()
+                  .addListener(
+                      (javafx.collections.ListChangeListener<Object>)
+                          change -> listChanges.incrementAndGet());
+              return stage;
+            });
+    javafx.application.Platform.runLater(setup);
+    var stage = setup.get(5, java.util.concurrent.TimeUnit.SECONDS);
+    try {
+      var click =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                var list =
+                    (javafx.scene.control.ListView<?>) stage.getScene().lookup("#guided-builds");
+                var cell =
+                    list.lookupAll(".list-cell").stream()
+                        .filter(
+                            n ->
+                                n instanceof javafx.scene.control.ListCell<?> c
+                                    && c.getIndex() == 1)
+                        .findFirst()
+                        .orElseThrow();
+                var bounds = cell.localToScreen(cell.getBoundsInLocal());
+                var robot = new javafx.scene.robot.Robot();
+                robot.mouseMove(bounds.getMinX() + 20, bounds.getMinY() + 20);
+                robot.mouseClick(javafx.scene.input.MouseButton.PRIMARY);
+                return null;
+              });
+      javafx.application.Platform.runLater(click);
+      click.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertTrue(
+          selectionObserved.await(5, java.util.concurrent.TimeUnit.SECONDS),
+          "Actual mouse selected the second row");
+      var drained = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(drained);
+      drained.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(List.of("b"), selected);
+      assertEquals(0, listChanges.get(), "Selection-only loading renders preserve the item list");
+      var restore =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                ((GuidedDiscoveryPane) stage.getScene().getRoot()).update(data("wow", "b", false));
+                return null;
+              });
+      javafx.application.Platform.runLater(restore);
+      restore.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      var restored = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(restored);
+      restored.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(
+          List.of("b"),
+          selected,
+          "Programmatic restored selection cannot emit another user request");
+      var supersede =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                var list =
+                    (javafx.scene.control.ListView<?>) stage.getScene().lookup("#guided-builds");
+                list.getSelectionModel().clearAndSelect(0);
+                // A different product render wins before that deferred selection can be dispatched.
+                ((GuidedDiscoveryPane) stage.getScene().getRoot()).update(data("wowt", "b", false));
+                return null;
+              });
+      javafx.application.Platform.runLater(supersede);
+      supersede.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      var superseded = new java.util.concurrent.FutureTask<Void>(() -> null);
+      javafx.application.Platform.runLater(superseded);
+      superseded.get(5, java.util.concurrent.TimeUnit.SECONDS);
+      assertEquals(
+          List.of("b"), selected, "Superseded deferred selection cannot select another product");
+      assertNull(failure.get(), () -> "JavaFX mouse selection failed: " + failure.get());
+    } finally {
+      var close =
+          new java.util.concurrent.FutureTask<Void>(
+              () -> {
+                Thread.currentThread().setUncaughtExceptionHandler(previousHandler.get());
+                stage.close();
+                javafx.application.Platform.setImplicitExit(previousImplicitExit.get());
+                return null;
+              });
+      javafx.application.Platform.runLater(close);
+      close.get(5, java.util.concurrent.TimeUnit.SECONDS);
+    }
+  }
 }
