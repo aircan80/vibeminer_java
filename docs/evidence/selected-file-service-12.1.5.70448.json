@@ -1,0 +1,98 @@
+{
+  "issue": 79,
+  "result": "PASS",
+  "observedAt": "2026-10-18T08:15:41.979199548Z",
+  "diagnosticSourceCommit": "1aa7dc650952600883be3c520988d500bc49996e",
+  "productionSourceCommit": "12b93aba0a463fd4f7de75fd98d107b02d7e430f",
+  "product": "wow",
+  "region": "us",
+  "version": "12.1.5.70448",
+  "buildConfig": "88d5e8ef05ec5a8446cdec93d142d7c6",
+  "cdnConfig": "f065eade5276a5ac05606e60a4c5a1f7",
+  "root": {
+    "contentKey": "e84483ee756c69a7dc5fbff04af81316",
+    "encodingKey": "1051943fc8cb91a3c88066dc946afc3e",
+    "encodedBytes": 50651441,
+    "decodedBytes": 67292495,
+    "freshCompleteDecodedContentKeyVerified": true
+  },
+  "selected": {
+    "fileDataId": 841626,
+    "slotNamespace": "wow",
+    "declaredContentKey": "1df6b6dbae36878cea020a62b15b9bd6",
+    "sourceNamespace": "wow.blte.encoded",
+    "encodingKey": "a928b6c9c7ce92d85b638400f81b2fc2",
+    "verificationSemantics": "blte-complete-encoded-v1",
+    "scope": "HEADER_AND_ALL_ENCODED_CHUNKS",
+    "encodedBytes": 738344,
+    "encodedSha256": "970c5a67c7c056195b27c39108c9b5faff56a9d5ad32eb22990178efb8c30af3",
+    "verifiedAt": "2026-10-18T08:15:41.979199548Z"
+  },
+  "sourceReceipt": {
+    "kind": "ARCHIVE",
+    "actualResourceUrl": "https://us.cdn.blizzard.com/tpr/wow/data/31/23/31236b924da7e06973fb5603c537fa7b",
+    "resourceKey": "31236b924da7e06973fb5603c537fa7b",
+    "parentWholeBytes": 55261444,
+    "childOffset": 45153828,
+    "childEncodedBytes": 738344,
+    "observedAt": "2026-10-18T08:15:41.979199548Z",
+    "payloadRequestCount": 1,
+    "payloadResponseBytes": 738344,
+    "observationDigest": "8b11054a5a57533565db5bc1ae334382b52168405c79aa5f87af24922a144c9c",
+    "archiveMapping": {
+      "indexIdentity": "31236b924da7e06973fb5603c537fa7b",
+      "footerSha256": "19b52d451dde3d35cbe702ad5ebb1c535d8a396c1f3e6d68f1ece948d933f50a",
+      "tocSha256": "95a04b6d922df3119dd3faecf0cf33a1e69d3f40bdb3a374c7ceacdc24f85dc4",
+      "pageSha256": "a63b1a858cca40de07a8129205d0b555221682df9d15ae86573a682e869fa5fe",
+      "verifierRevision": "archive-index-footer-toc-page-v1",
+      "advertisedIndexBytes": 12388,
+      "authenticatedIndexBytes": 4148
+    }
+  },
+  "archiveSearch": {
+    "typedLoose404Required": true,
+    "checkedArchives": 277,
+    "advertisedArchives": 1424,
+    "exhaustive": false,
+    "maximumArchives": 512,
+    "maximumWireBytes": 16777216,
+    "maximumRequests": 1600,
+    "maximumDurationSeconds": 120,
+    "maximumArchiveBytes": 8589934592
+  },
+  "payloadCost": {
+    "encodedTransferBytes": 738344,
+    "maximumAdditionalPhysicalBytes": 738344
+  },
+  "globalCost": {
+    "requests": 1115,
+    "successfulBodyReceipts": 1114,
+    "conservativeBodyBytes": 55691434,
+    "observedBodyBytes": 55691434,
+    "maximumBodyBytes": 83886080,
+    "maximumRequests": 2048,
+    "maximumDurationSeconds": 180,
+    "includesDiscoveryConfigurationsRootEncodingArchiveAndPayload": true,
+    "excludesHeadersAndTlsOverhead": true
+  },
+  "offlineInspection": {
+    "entryPoint": "inspectOffline(retained.descriptor(), FILE_LIMITS)",
+    "freshStoreCatalogGatewaysAndServices": true,
+    "httpRequests": 0,
+    "sameAssociationAndActualSourceReceipt": true,
+    "freshRawVariantPlanningTested": false
+  },
+  "cleanup": {
+    "temporaryPayloadsAndCatalogRemoved": true,
+    "preserveIfWorkersActiveGuardEnabled": true
+  },
+  "scope": {
+    "completeSelectedEncodedRepresentationVerified": true,
+    "selectedDecodedContentKeyVerified": false,
+    "rowsDecoded": false,
+    "schemaOrNamesVerified": false,
+    "wholeArchiveVerified": false,
+    "payloadContentIncludedInEvidence": false,
+    "additionalLiveAttemptsForEvidenceCuration": 0
+  }
+}
