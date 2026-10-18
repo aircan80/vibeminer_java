@@ -105,6 +105,7 @@ public final class SqliteBuildInventory {
       throw new IllegalArgumentException("Aggregate inventory replay work exceeds budget");
     var leases = new ArrayList<ObjectReadLease>();
     String ownGeneration = null;
+    Throwable primaryFailure = null;
     try (var en = encoding.open(reference, locale, scopeRevision, budgets, encodingLimits, token)) {
       var sources =
           facts.metadata().stream()
@@ -114,6 +115,16 @@ public final class SqliteBuildInventory {
                       new InventoryStaging.Source(
                           m.role().name(), CanonicalContentRecords.encode(m.proof())))
               .toList();
+      var sourceLeases = new EnumMap<Role, ObjectReadLease>(Role.class);
+      for (var source : facts.metadata()) {
+        if (source.role() == Role.ENCODING) continue;
+        token.throwIfCancellationRequested();
+        var lease = store.openRead(source.proof().object().digest(), token);
+        leases.add(lease);
+        if (!lease.object().equals(source.proof().object()))
+          throw new IOException("Inventory source geometry changed");
+        sourceLeases.put(source.role(), lease);
+      }
       var existing =
           staging.findReady(
               reference.snapshotId(),
@@ -150,10 +161,7 @@ public final class SqliteBuildInventory {
         if (source.role() == Role.ENCODING) continue;
         token.throwIfCancellationRequested();
         var proof = source.proof();
-        var lease = store.openRead(proof.object().digest(), token);
-        leases.add(lease);
-        if (!lease.object().equals(proof.object()))
-          throw new IOException("Inventory source geometry changed");
+        var lease = sourceLeases.get(source.role());
         var batch = new Batch(id, source.role().name(), limits, token);
         try (var decoded =
             new StreamingDecodedBlteInputStream(
@@ -372,16 +380,31 @@ public final class SqliteBuildInventory {
               },
               token);
       return new Prepared(id, members, REVISION);
-    } catch (IOException | RuntimeException failure) {
+    } catch (IOException | RuntimeException | Error failure) {
+      primaryFailure = failure;
       if (ownGeneration != null)
         try {
           staging.discard(ownGeneration);
-        } catch (RuntimeException cleanup) {
-          failure.addSuppressed(cleanup);
+        } catch (RuntimeException | Error cleanup) {
+          if (failure != cleanup) failure.addSuppressed(cleanup);
         }
       throw failure;
     } finally {
-      for (var lease : leases) lease.close();
+      Throwable closeFailure = null;
+      for (var lease : leases) {
+        try {
+          lease.close();
+        } catch (RuntimeException | Error failed) {
+          if (primaryFailure != null) {
+            if (primaryFailure != failed) primaryFailure.addSuppressed(failed);
+          } else if (closeFailure == null) closeFailure = failed;
+          else if (closeFailure != failed) closeFailure.addSuppressed(failed);
+        }
+      }
+      if (primaryFailure == null && closeFailure != null) {
+        if (closeFailure instanceof RuntimeException runtime) throw runtime;
+        throw (Error) closeFailure;
+      }
     }
   }
 

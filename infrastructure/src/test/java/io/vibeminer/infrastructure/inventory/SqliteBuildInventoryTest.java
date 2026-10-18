@@ -382,6 +382,192 @@ class SqliteBuildInventoryTest {
     }
   }
 
+  @Test
+  void readyReuseHoldsAllVerifiedMetadataLeasesThroughAuthorityReplay() throws Exception {
+    try (var f = new Fixture(false, false, false)) {
+      var ready = f.prepare();
+      var active = new java.util.concurrent.atomic.AtomicInteger();
+      var peak = new java.util.concurrent.atomic.AtomicInteger();
+      var opens = new java.util.concurrent.atomic.AtomicInteger();
+      ObjectStore observed =
+          new ObjectStore() {
+            public StoredObject publish(
+                InputStream input,
+                ExpectedObjectChecksum checksum,
+                long maximum,
+                CancellationToken token) {
+              throw new AssertionError("No publication on reuse");
+            }
+
+            public StoredObject publishVerified(
+                InputStream input,
+                long expected,
+                long maximum,
+                CompletionVerification verify,
+                CancellationToken token) {
+              throw new AssertionError("No publication on reuse");
+            }
+
+            public Optional<StoredObject> verify(ObjectDigest digest, CancellationToken token) {
+              return f.store.verify(digest, token);
+            }
+
+            public ObjectReadLease openRead(ObjectDigest digest, CancellationToken token) {
+              var held = f.store.openRead(digest, token);
+              opens.incrementAndGet();
+              peak.accumulateAndGet(active.incrementAndGet(), Math::max);
+              return new ObjectReadLease() {
+                boolean closed;
+
+                public StoredObject object() {
+                  return held.object();
+                }
+
+                public InputStream stream() {
+                  return held.stream();
+                }
+
+                public void close() {
+                  if (!closed) {
+                    closed = true;
+                    active.decrementAndGet();
+                    held.close();
+                  }
+                }
+              };
+            }
+
+            public void close() {
+              throw new AssertionError("Borrowed store");
+            }
+          };
+      var index = new SqliteEncodingLookupIndex(f.sql, f.store, f.admissions, UUID.randomUUID());
+      var reusable = new SqliteBuildInventory(f.sql, observed, f.admissions, index, f.canonical);
+      assertEquals(
+          ready,
+          reusable.prepare(
+              f.facts.reference(),
+              f.facts.locale(),
+              f.facts.scopeRevision(),
+              budgets(),
+              EN_LIMITS,
+              LIMITS,
+              NONE));
+      assertEquals(4, opens.get());
+      assertEquals(4, peak.get());
+      assertEquals(0, active.get());
+      assertEquals(1, f.count("build_inventory_generations", "1=1"));
+    }
+  }
+
+  @Test
+  void closeFailureRetiresEveryReadyReuseLeaseAndPreservesOtherFailures() throws Exception {
+    try (var f = new Fixture(false, false, false)) {
+      f.prepare();
+      var active = new java.util.concurrent.atomic.AtomicInteger();
+      var custom =
+          new SqliteBuildInventory(
+              f.sql,
+              closeFailingStore(f, active),
+              f.admissions,
+              new SqliteEncodingLookupIndex(f.sql, f.store, f.admissions, UUID.randomUUID()),
+              f.canonical);
+      var failure =
+          assertThrows(
+              IllegalStateException.class,
+              () ->
+                  custom.prepare(
+                      f.facts.reference(),
+                      f.facts.locale(),
+                      f.facts.scopeRevision(),
+                      budgets(),
+                      EN_LIMITS,
+                      LIMITS,
+                      NONE));
+      assertEquals("lease close fault", failure.getMessage());
+      assertEquals(3, failure.getSuppressed().length);
+      assertEquals(0, active.get());
+    }
+  }
+
+  @Test
+  void parseFailureRemainsPrimaryWhileEveryLeaseCloseFailureIsSuppressed() throws Exception {
+    try (var f = new Fixture(true, false, false)) {
+      var active = new java.util.concurrent.atomic.AtomicInteger();
+      var custom =
+          new SqliteBuildInventory(
+              f.sql,
+              closeFailingStore(f, active),
+              f.admissions,
+              new SqliteEncodingLookupIndex(f.sql, f.store, f.admissions, UUID.randomUUID()),
+              f.canonical);
+      var failure =
+          assertThrows(
+              IOException.class,
+              () ->
+                  custom.prepare(
+                      f.facts.reference(),
+                      f.facts.locale(),
+                      f.facts.scopeRevision(),
+                      budgets(),
+                      EN_LIMITS,
+                      LIMITS,
+                      NONE));
+      assertTrue(failure.getMessage().contains("inventory source"));
+      assertEquals(4, failure.getSuppressed().length);
+      assertEquals(0, active.get());
+      assertEquals(0, f.count("build_inventory_generations", "1=1"));
+    }
+  }
+
+  static ObjectStore closeFailingStore(
+      Fixture f, java.util.concurrent.atomic.AtomicInteger active) {
+    return new ObjectStore() {
+      public StoredObject publish(
+          InputStream i, ExpectedObjectChecksum e, long m, CancellationToken t) {
+        throw new AssertionError();
+      }
+
+      public StoredObject publishVerified(
+          InputStream i, long e, long m, CompletionVerification v, CancellationToken t) {
+        throw new AssertionError();
+      }
+
+      public Optional<StoredObject> verify(ObjectDigest d, CancellationToken t) {
+        return f.store.verify(d, t);
+      }
+
+      public ObjectReadLease openRead(ObjectDigest d, CancellationToken t) {
+        var held = f.store.openRead(d, t);
+        active.incrementAndGet();
+        return new ObjectReadLease() {
+          boolean closed;
+
+          public StoredObject object() {
+            return held.object();
+          }
+
+          public InputStream stream() {
+            return held.stream();
+          }
+
+          public void close() {
+            if (!closed) {
+              closed = true;
+              active.decrementAndGet();
+              held.close();
+              throw new IllegalStateException("lease close fault");
+            }
+          }
+        };
+      }
+
+      public void close() {
+        throw new AssertionError();
+      }
+    };
+  }
+
   static byte[] root(String key, boolean malformed) {
     var b = ByteBuffer.allocate(20 + 2 * (12 + 4 + 16)).order(ByteOrder.LITTLE_ENDIAN);
     b.put(new byte[] {'T', 'S', 'F', 'M'}).putInt(20).putInt(1).putInt(2).putInt(0);
