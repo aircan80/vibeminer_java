@@ -33,6 +33,7 @@ public final class Main {
           new LazyItemNamesService(content),
           new LazyItemEvidenceService(content),
           List.of(args).contains("--fixtures"));
+      AtlasApplication.configureBuildLibrary(metadata.library());
       AtlasApplication.configureItemEvidenceDestinationChooser(
           (owner, suggestedFileName) -> {
             var chooser = new javafx.stage.FileChooser();

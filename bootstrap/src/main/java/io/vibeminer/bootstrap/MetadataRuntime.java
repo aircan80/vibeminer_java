@@ -1,10 +1,11 @@
 package io.vibeminer.bootstrap;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.buildlibrary.*;
 import io.vibeminer.application.discoveryhistory.*;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.infrastructure.discovery.OfficialDiscoveryService;
-import io.vibeminer.infrastructure.discoveryhistory.SqliteDiscoveryHistoryRepository;
+import io.vibeminer.infrastructure.discoveryhistory.*;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.workspace.SqliteWorkspaceRepository;
 import java.net.http.HttpClient;
@@ -21,6 +22,7 @@ final class MetadataRuntime implements AutoCloseable {
   private final ExecutorService workers;
   private final DiscoveryHistoryService history;
   private final WorkspaceService workspaces;
+  private final BuildLibraryService library;
   private final DiscoveryService discovery;
   private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -28,11 +30,13 @@ final class MetadataRuntime implements AutoCloseable {
       HttpClient client,
       ExecutorService workers,
       DiscoveryHistoryService history,
-      WorkspaceService workspaces) {
+      WorkspaceService workspaces,
+      BuildLibraryService library) {
     this.client = client;
     this.workers = workers;
     this.history = history;
     this.workspaces = workspaces;
+    this.library = library;
     discovery =
         new DiscoveryService() {
           public List<BuildSnapshot> fixtureBuilds() {
@@ -78,6 +82,15 @@ final class MetadataRuntime implements AutoCloseable {
       Path dataDirectory,
       Supplier<HttpClient> clients,
       UnaryOperator<DiscoveryObservationGateway> decorator) {
+    return open(dataDirectory, clients, decorator, gateway -> gateway);
+  }
+
+  /** Both observation facades borrow the same official source, client, catalog and worker. */
+  static MetadataRuntime open(
+      Path dataDirectory,
+      Supplier<HttpClient> clients,
+      UnaryOperator<DiscoveryObservationGateway> decorator,
+      UnaryOperator<BuildLibraryProductGateway> productDecorator) {
     var workers =
         new ThreadPoolExecutor(
             1,
@@ -96,15 +109,24 @@ final class MetadataRuntime implements AutoCloseable {
       var catalog = new SqliteCatalog(dataDirectory.resolve("catalog.sqlite"));
       client = Objects.requireNonNull(clients.get());
       var official = new OfficialDiscoveryService(client);
+      var historyRepository = new SqliteDiscoveryHistoryRepository(catalog);
       var history =
           new DefaultDiscoveryHistoryService(
-              Objects.requireNonNull(decorator.apply(official)),
-              new SqliteDiscoveryHistoryRepository(catalog),
-              workers);
+              Objects.requireNonNull(decorator.apply(official)), historyRepository, workers);
+      var libraryRepository = new SqliteBuildLibraryRepository(catalog);
+      var library =
+          new DefaultBuildLibraryService(
+              Objects.requireNonNull(productDecorator.apply(official)),
+              historyRepository,
+              libraryRepository,
+              libraryRepository,
+              new SqliteBuildLibraryReader(catalog),
+              workers,
+              Clock.systemUTC());
       var workspaces =
           new DefaultWorkspaceService(
               new SqliteWorkspaceRepository(catalog), workers, Clock.systemUTC());
-      return new MetadataRuntime(client, workers, history, workspaces);
+      return new MetadataRuntime(client, workers, history, workspaces, library);
     } catch (RuntimeException | Error failure) {
       workers.shutdown();
       if (client != null)
@@ -115,6 +137,10 @@ final class MetadataRuntime implements AutoCloseable {
         }
       throw failure;
     }
+  }
+
+  BuildLibraryService library() {
+    return library;
   }
 
   DiscoveryHistoryService history() {
@@ -132,6 +158,7 @@ final class MetadataRuntime implements AutoCloseable {
   @Override
   public void close() {
     if (!closed.compareAndSet(false, true)) return;
+    library.close();
     history.close();
     // Preserve accepted queued runnables: each sees the closed service and settles without I/O.
     // shutdownNow would discard their commit-aware completion stages indefinitely.
