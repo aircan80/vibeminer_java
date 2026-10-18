@@ -48,6 +48,7 @@ Current implementation is [milestone 5](https://github.com/aircan80/vibeminer/mi
 - [Approved bounded literal Item-name search](ITEM-NAME-SEARCH.md)
 - [Literal name-search native visual references](design/item-name-search/README.md)
 - [Bounded Item name projection and exact-context joins](ITEM-NAMES.md)
+- [Discover mockup parity and local native evidence](design/build-discovery-native/README.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
 - [Test strategy and quality gates](TESTING.md)
