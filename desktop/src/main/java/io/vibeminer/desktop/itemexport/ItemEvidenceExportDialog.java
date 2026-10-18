@@ -104,13 +104,13 @@ public final class ItemEvidenceExportDialog extends Dialog<Void> {
     pathScroll.setFitToWidth(true);
     pathScroll.setPrefHeight(54 * scale);
     pathScroll.setMaxHeight(72 * scale);
+    FlowPane destinationActions = new FlowPane(10, 10, copyPath, choose);
     VBox consent =
         new VBox(
             10,
             label("Destination · JSON ceiling 2 MiB; no truncation", "export-limit"),
             pathScroll,
-            copyPath,
-            choose,
+            destinationActions,
             authorize,
             save);
     VBox body =
