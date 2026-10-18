@@ -4,6 +4,7 @@ import io.vibeminer.application.*;
 import io.vibeminer.application.acquisition.*;
 import io.vibeminer.application.catalog.*;
 import io.vibeminer.application.content.*;
+import io.vibeminer.application.lookup.LookupBudgets;
 import io.vibeminer.domain.content.MetadataStructureAttestation;
 import io.vibeminer.domain.selectedfile.ContentSlotKey;
 import io.vibeminer.application.retention.RetentionException;
@@ -29,6 +30,8 @@ public final class DefaultBootstrapService implements BootstrapService {
     private final Optional<RetentionRepository> retention;
     private final Optional<MetadataContentAcquisition> content;
     private final BuildObjectCatalog catalog;
+    private final Optional<MetadataAssociationRepository> metadataAssociations;
+    private final Optional<MetadataReuseGateway> metadataReuse;
     private final Executor executor;
     private final CoalescingAcquisitionService acquisitions;
     private final Set<CompletableFuture<?>> active = ConcurrentHashMap.newKeySet();
@@ -78,6 +81,24 @@ public final class DefaultBootstrapService implements BootstrapService {
             Executor acquisitionExecutor,
             RetentionRepository retention,
             CanonicalContentRepository content) {
+        this(gateway, catalog, store, executor, acquisitionExecutor, retention, content, null, null);
+    }
+
+    /** Local associated reopen is opt-in; both collaborators remain caller-owned. */
+    public DefaultBootstrapService(
+            BootstrapArtifactGateway gateway,
+            BuildObjectCatalog catalog,
+            ObjectStore store,
+            Executor executor,
+            Executor acquisitionExecutor,
+            RetentionRepository retention,
+            CanonicalContentRepository content,
+            MetadataAssociationRepository metadataAssociations,
+            MetadataReuseGateway metadataReuse) {
+        if ((metadataAssociations == null) != (metadataReuse == null))
+            throw new IllegalArgumentException("Associated reopen requires repository and verifier");
+        this.metadataAssociations = Optional.ofNullable(metadataAssociations);
+        this.metadataReuse = Optional.ofNullable(metadataReuse);
         this.content = Optional.ofNullable(content).map(MetadataContentAcquisition::new);
         this.retention = Optional.ofNullable(retention);
         this.gateway = Objects.requireNonNull(gateway);
@@ -234,6 +255,31 @@ public final class DefaultBootstrapService implements BootstrapService {
                                 BootstrapException.Reason.INTEGRITY,
                                 "Retained configuration identity mismatch");
                     var plan = gateway.restoreConfiguration(build, receipt(config), token);
+                    if (metadataAssociations.isPresent()) {
+                        var association =
+                                metadataAssociations
+                                        .get()
+                                        .find(build.snapshotId(), MetadataStructureAttestation.Kind.INSTALL, token);
+                        if (association.isPresent()) {
+                            var historical = association.get();
+                            validateAssociatedContext(build, plan, receipt(config), historical);
+                            var inspection =
+                                    metadataReuse
+                                            .orElseThrow()
+                                            .inspectAssociatedInstall(plan, historical, LookupBudgets.defaults(), token);
+                            token.throwIfCancellationRequested();
+                            if (!inspection.plan().equals(plan)
+                                    || !inspection.object().equals(historical.actualRepresentation().object())
+                                    || !inspection
+                                            .verification()
+                                            .equals(historical.actualRepresentation().originalAlias().evidence())
+                                    || !inspection.association().equals(Optional.of(historical)))
+                                throw failure(
+                                        BootstrapException.Reason.INTEGRITY,
+                                        "Associated inspection changed declared or actual source facts");
+                            return inspection;
+                        }
+                    }
                     var manifest =
                             catalog.findVerifiedObject(build.snapshotId(), INSTALL_ROLE, token)
                                     .orElseThrow(
@@ -248,6 +294,29 @@ public final class DefaultBootstrapService implements BootstrapService {
                                 "Retained install-manifest identity mismatch");
                     return gateway.inspectRetained(plan, receipt(manifest), token);
                 });
+    }
+
+    private static void validateAssociatedContext(
+            BuildSnapshot build,
+            InstallPlan plan,
+            VerifiedSourceAlias configuration,
+            MetadataBuildAssociation association) {
+        var declaration = association.declaration();
+        var actual = association.actualRepresentation();
+        if (!plan.build().equals(build)
+                || !declaration.build().snapshotId().equals(plan.build().snapshotId())
+                || declaration.kind() != MetadataStructureAttestation.Kind.INSTALL
+                || !declaration.configuration().equals(configuration)
+                || !declaration.slot().contentKey().equals(plan.contentKey())
+                || !declaration.preferredEncodingKey().equals(Optional.of(plan.encodingKey()))
+                || declaration.declaredEncodedBytes().orElse(-1) != plan.encodedBytes()
+                || declaration.declaredDecodedBytes().orElse(-1) != plan.decodedBytes()
+                || actual.decodedAttestation().isEmpty()
+                || actual.structuralAttestation().isEmpty()
+                || actual.structuralAttestation().get().kind() != MetadataStructureAttestation.Kind.INSTALL)
+            throw failure(
+                    BootstrapException.Reason.INTEGRITY,
+                    "Historical association differs from exact declared install configuration");
     }
 
     private VerifiedSourceAlias acquireVerified(

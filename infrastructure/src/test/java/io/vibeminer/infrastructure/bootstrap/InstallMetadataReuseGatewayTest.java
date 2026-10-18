@@ -471,4 +471,182 @@ class InstallMetadataReuseGatewayTest {
                   b, d.configuration(), d.kind(), LookupBudgets.defaults(), () -> true));
     }
   }
+
+  static io.vibeminer.application.bootstrap.InstallPlan declaredPlan(Setup setup) throws Exception {
+    var d = setup.declaration();
+    var config = d.configuration();
+    try (var lease = setup.store().openRead(config.object().digest(), CancellationToken.none())) {
+      var document =
+          new SourceDocument(
+              config.evidence().sourceUrl(),
+              config.evidence().verifiedAt(),
+              lease.stream().readAllBytes());
+      return new io.vibeminer.application.bootstrap.InstallPlan(
+          d.build(),
+          document,
+          d.slot().contentKey(),
+          d.preferredEncodingKey().orElseThrow(),
+          d.declaredDecodedBytes().orElseThrow(),
+          d.declaredEncodedBytes().orElseThrow());
+    }
+  }
+
+  static MetadataBuildAssociation association(Setup setup) {
+    return new MetadataBuildAssociation(
+        setup.declaration(), UUID.randomUUID(), setup.actual(), NOW.plusSeconds(1));
+  }
+
+  @Test
+  void associatedInstallReturnsDeclaredBAndActualAEntriesWithoutAnyTransferOrWrites()
+      throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var plan = declaredPlan(setup);
+      var association = association(setup);
+      int requests = setup.requests().get();
+      long before = objects(directory);
+      var result =
+          gateway.inspectAssociatedInstall(
+              plan, association, LookupBudgets.defaults(), CancellationToken.none());
+      assertEquals(plan, result.plan());
+      assertEquals(setup.actual().object(), result.object());
+      assertEquals(setup.actual().originalAlias().evidence(), result.verification());
+      assertEquals(Optional.of(association), result.association());
+      assertNotEquals(plan.encodingKey(), association.actualRepresentation().actualEncodingKey());
+      assertEquals("Interface/readme.txt", result.entries().getFirst().name());
+      assertEquals("Windows", result.entries().getFirst().tags().getFirst().name());
+      assertEquals(requests, setup.requests().get());
+      assertEquals(before, objects(directory));
+    }
+  }
+
+  @Test
+  void associatedInstallRejectsWrongPlanContextAndOriginalSource() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var plan = declaredPlan(setup);
+      var a = association(setup);
+      var wrongDocument =
+          new SourceDocument(
+              plan.configuration().sourceUrl(),
+              plan.configuration().capturedAt(),
+              new byte[] {1, 2, 3});
+      var wrongPlan =
+          new io.vibeminer.application.bootstrap.InstallPlan(
+              plan.build(),
+              wrongDocument,
+              plan.contentKey(),
+              plan.encodingKey(),
+              plan.decodedBytes(),
+              plan.encodedBytes());
+      assertThrows(
+          IllegalArgumentException.class,
+          () ->
+              gateway.inspectAssociatedInstall(
+                  wrongPlan, a, LookupBudgets.defaults(), CancellationToken.none()));
+      var original = setup.actual();
+      var alias = original.originalAlias();
+      var badAlias =
+          new VerifiedSourceAlias(
+              alias.source(),
+              alias.object(),
+              new SourceVerificationEvidence(
+                  alias.evidence().verifierSemantics(),
+                  "https://example.invalid/not-an-official-data-source",
+                  alias.evidence().verifiedAt()));
+      var badProof =
+          new MetadataContentProof(
+              badAlias,
+              original.actualEncodingKey(),
+              original.contentKey(),
+              original.declaredDecodedBytes(),
+              original.decodedAttestation(),
+              original.structuralAttestation());
+      var badAssociation =
+          new MetadataBuildAssociation(
+              a.declaration(), a.canonicalReservationToken(), badProof, a.associatedAt());
+      assertThrows(
+          io.vibeminer.infrastructure.acquisition.SourceContextException.class,
+          () ->
+              gateway.inspectAssociatedInstall(
+                  plan, badAssociation, LookupBudgets.defaults(), CancellationToken.none()));
+    }
+  }
+
+  @Test
+  void associatedInstallDoesNotTrustGrammarAndCannotFetchMissingA() throws Exception {
+    byte[] invalid = manifest();
+    invalid[0] = 'X';
+    try (var setup = setup(invalid, true);
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var plan = declaredPlan(setup);
+      var a = association(setup);
+      int requests = setup.requests().get();
+      assertThrows(
+          io.vibeminer.application.bootstrap.BootstrapException.class,
+          () ->
+              gateway.inspectAssociatedInstall(
+                  plan, a, LookupBudgets.defaults(), CancellationToken.none()));
+      var digest = setup.actual().object().digest().value();
+      Files.delete(
+          directory
+              .resolve("objects")
+              .resolve(digest.substring(0, 2))
+              .resolve(digest.substring(2)));
+      assertThrows(
+          ObjectStoreException.class,
+          () ->
+              gateway.inspectAssociatedInstall(
+                  plan, a, LookupBudgets.defaults(), CancellationToken.none()));
+      assertEquals(requests, setup.requests().get());
+    }
+  }
+
+  @Test
+  void associatedInstallEnforcesBoundsCancellationAndWholePhysicalIntegrity() throws Exception {
+    try (var setup = setup(manifest());
+        var gateway = new OfficialMetadataReuseGateway(setup.store())) {
+      var plan = declaredPlan(setup);
+      var a = association(setup);
+      var b = LookupBudgets.defaults();
+      var narrow =
+          new LookupBudgets(
+              b.maximumConfigurationBytes(),
+              b.maximumMetadataWireBytes(),
+              b.maximumMetadataRequests(),
+              b.maximumMetadataDecodedBytes(),
+              b.maximumIndexBytes(),
+              b.maximumPageBytes(),
+              b.maximumCandidates(),
+              1,
+              b.maximumRootDecodedBytes(),
+              b.maximumHeaderBytes(),
+              b.maximumChunks(),
+              b.maximumEncodedChunkBytes(),
+              b.maximumDecodedChunkBytes(),
+              b.maximumDecodedWorkBytes(),
+              b.maximumSelectedIds(),
+              b.maximumMatches(),
+              b.maximumRootRecords());
+      assertThrows(
+          ContentClaimException.class,
+          () -> gateway.inspectAssociatedInstall(plan, a, narrow, CancellationToken.none()));
+      assertThrows(
+          CancellationException.class,
+          () -> gateway.inspectAssociatedInstall(plan, a, b, () -> true));
+      var digest = setup.actual().object().digest().value();
+      var file =
+          directory.resolve("objects").resolve(digest.substring(0, 2)).resolve(digest.substring(2));
+      var bytes = Files.readAllBytes(file);
+      bytes[bytes.length - 1] ^= 1;
+      Files.write(file, bytes);
+      int requests = setup.requests().get();
+      var failure =
+          assertThrows(
+              ObjectStoreException.class,
+              () -> gateway.inspectAssociatedInstall(plan, a, b, CancellationToken.none()));
+      assertEquals(ObjectStoreException.Code.INTEGRITY_FAILURE, failure.code());
+      assertEquals(requests, setup.requests().get());
+    }
+  }
 }

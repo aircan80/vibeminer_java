@@ -3,6 +3,8 @@ package io.vibeminer.infrastructure.lookup;
 import static io.vibeminer.application.content.ContentClaimException.Code.*;
 
 import io.vibeminer.application.*;
+import io.vibeminer.application.bootstrap.InstallInspection;
+import io.vibeminer.application.bootstrap.InstallPlan;
 import io.vibeminer.application.content.*;
 import io.vibeminer.application.lookup.*;
 import io.vibeminer.domain.*;
@@ -77,6 +79,77 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
   }
 
   @Override
+  public InstallInspection inspectAssociatedInstall(
+      InstallPlan declaredPlanB,
+      MetadataBuildAssociation association,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
+    ensureOpen();
+    Objects.requireNonNull(association);
+    Objects.requireNonNull(budgets);
+    Objects.requireNonNull(cancellation);
+    cancellation.throwIfCancellationRequested();
+    var actual = association.actualRepresentation();
+    var alias = actual.originalAlias();
+    // Validate the DTO projection before reading bytes; this temporary shape is never returned.
+    new InstallInspection(
+        declaredPlanB,
+        alias.object(),
+        alias.evidence(),
+        List.of(),
+        List.of(),
+        Optional.of(association));
+    CapturedBuildSource.resolve(declaredPlanB.build());
+    requireSupported(actual, MetadataStructureAttestation.Kind.INSTALL);
+    long decoded = actual.decodedAttestation().orElseThrow().actualDecodedBytes();
+    checkInstallBudget(actual, decoded, budgets);
+    CapturedBuildSource.validateDataProof(alias.evidence().sourceUrl(), actual.actualEncodingKey());
+    try (var configLease =
+        store.openRead(association.declaration().configuration().object().digest(), cancellation)) {
+      validateConfiguration(association.declaration(), budgets, cancellation, configLease);
+      try (var actualLease = store.openRead(alias.object().digest(), cancellation)) {
+        byte[] encoded =
+            read(
+                actualLease,
+                alias.object(),
+                InstallMetadataVerifier.MAXIMUM_ENCODED_BYTES,
+                cancellation);
+        var manifest =
+            new InstallMetadataVerifier()
+                .decodeAndParse(
+                    encoded,
+                    decoded,
+                    actual.actualEncodingKey(),
+                    actual.contentKey(),
+                    cancellation);
+        var entries = new ArrayList<InstallInspection.Entry>();
+        for (int i = 0; i < manifest.entries().size(); i++) {
+          cancellation.throwIfCancellationRequested();
+          var entry = manifest.entries().get(i);
+          entries.add(
+              new InstallInspection.Entry(
+                  entry.name(),
+                  entry.contentKey(),
+                  entry.decodedSize(),
+                  manifest.tagsForEntry(i).stream()
+                      .map(tag -> new InstallInspection.Tag(tag.name(), tag.type()))
+                      .toList()));
+        }
+        cancellation.throwIfCancellationRequested();
+        return new InstallInspection(
+            declaredPlanB,
+            alias.object(),
+            alias.evidence(),
+            entries,
+            manifest.tags().stream()
+                .map(tag -> new InstallInspection.Tag(tag.name(), tag.type()))
+                .toList(),
+            Optional.of(association));
+      }
+    }
+  }
+
+  @Override
   public MetadataContentProof replay(
       MetadataReusePlan plan, LookupBudgets budgets, CancellationToken cancellation) {
     ensureOpen();
@@ -129,14 +202,7 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
         }
       }
       long decoded = actual.decodedAttestation().orElseThrow().actualDecodedBytes();
-      if (actual.object().length()
-              > Math.min(
-                  budgets.maximumRootEncodedBytes(), InstallMetadataVerifier.MAXIMUM_ENCODED_BYTES)
-          || decoded
-              > Math.min(
-                  budgets.maximumRootDecodedBytes(), InstallMetadataVerifier.MAXIMUM_DECODED_BYTES)
-          || decoded > budgets.maximumDecodedWorkBytes())
-        throw failure(UNSUPPORTED_REUSE, "Install replay exceeds bounded work");
+      checkInstallBudget(actual, decoded, budgets);
       CapturedBuildSource.validateDataProof(
           actual.originalAlias().evidence().sourceUrl(), actual.actualEncodingKey());
       try (var lease = store.openRead(actual.object().digest(), cancellation)) {
@@ -159,6 +225,18 @@ public final class OfficialMetadataReuseGateway implements MetadataReuseGateway,
         return finish(actual, replayed, cancellation);
       }
     }
+  }
+
+  private static void checkInstallBudget(
+      MetadataContentProof actual, long decoded, LookupBudgets budgets) {
+    if (actual.object().length()
+            > Math.min(
+                budgets.maximumRootEncodedBytes(), InstallMetadataVerifier.MAXIMUM_ENCODED_BYTES)
+        || decoded
+            > Math.min(
+                budgets.maximumRootDecodedBytes(), InstallMetadataVerifier.MAXIMUM_DECODED_BYTES)
+        || decoded > budgets.maximumDecodedWorkBytes())
+      throw failure(UNSUPPORTED_REUSE, "Install replay exceeds bounded work");
   }
 
   private static MetadataContentProof finish(

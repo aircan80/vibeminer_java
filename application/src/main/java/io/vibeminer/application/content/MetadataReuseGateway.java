@@ -1,6 +1,8 @@
 package io.vibeminer.application.content;
 
 import io.vibeminer.application.CancellationToken;
+import io.vibeminer.application.bootstrap.InstallInspection;
+import io.vibeminer.application.bootstrap.InstallPlan;
 import io.vibeminer.application.lookup.LookupBudgets;
 import io.vibeminer.domain.BuildSnapshot;
 import io.vibeminer.domain.VerifiedSourceAlias;
@@ -35,4 +37,15 @@ public interface MetadataReuseGateway {
    */
   MetadataContentProof replay(
       MetadataReusePlan plan, LookupBudgets budgets, CancellationToken cancellation);
+
+  /** Dedicated local associated path; ordinary tuple-strict install inspection is unchanged. */
+  default InstallInspection inspectAssociatedInstall(
+      InstallPlan declaredPlanB,
+      MetadataBuildAssociation association,
+      LookupBudgets budgets,
+      CancellationToken cancellation) {
+    throw new ContentClaimException(
+        ContentClaimException.Code.UNSUPPORTED_REUSE,
+        "Associated install inspection is unsupported");
+  }
 }
