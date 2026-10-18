@@ -15,7 +15,7 @@ This release adds explicit local retained-metadata reuse: replay canonical A, pr
 Names, general search/filtering, metadata repair execution, GC, comparisons, exports and complete historical archives remain unfinished. Complete encoded verification does not establish a full decoded Item CKey. Later read-only/repair-integration foundations are not included in the release. See [delivery status](docs/PLAN.md), [physical Item scope](docs/ITEM-PROJECTION.md) and [names design](docs/ITEM-NAMES.md).
 
 
-Later accepted local `c17ec25` adds literal-name-search controls and repair qualification (1,333 Java cases, verified Linux package 24, Noto/DejaVu search and repair native checks). Its new four-platform/eleven-workflow gate is pending; #83/#89 remain open, broad #21 retains relations/official-run work and #91 export is planning-only. These features are not in alpha.5. See the [current checkpoint](docs/PLAN.md).
+Later accepted local `c17ec25` adds literal-name-search controls and repair qualification (1,333 Java cases, verified Linux package 24, Noto/DejaVu search and repair native checks). The `62513a2` four-platform/eleven-workflow gate passed and scoped #83/#89 are closed; broad #21 retains relations/official-run work and #91 export/#92 metadata history remain planning-only until the next alpha checkpoint. These features are not in alpha.5. See the [current checkpoint](docs/PLAN.md).
 
 ## What it will do
 
