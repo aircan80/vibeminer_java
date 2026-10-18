@@ -19,6 +19,28 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
   private final FileObjectStore.StoreSession session;
   private final BuildRetentionInventory inventory;
 
+  /** Concrete SQL authority extension; application inventory ports remain SQL-free. */
+  public interface TransactionalInventory extends BuildRetentionInventory {
+    void validateInTransaction(
+        Connection connection,
+        BuildRetentionInventory.Opened opened,
+        CancellationToken cancellation);
+  }
+
+  private <T> T authorityTransaction(
+      CancellationToken token, BuildRetentionInventory.Opened opened, Work<T> work) {
+    return transaction(
+        token,
+        c -> {
+          if (inventory instanceof TransactionalInventory authority)
+            authority.validateInTransaction(c, opened, token);
+          T result = work.run(c);
+          if (inventory instanceof TransactionalInventory authority)
+            authority.validateInTransaction(c, opened, token);
+          return result;
+        });
+  }
+
   @FunctionalInterface
   private interface Work<T> {
     T run(Connection connection) throws SQLException;
@@ -95,6 +117,24 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
   }
 
   @Override
+  public boolean hasPending(Target target, CancellationToken cancellation) {
+    return transaction(
+        cancellation,
+        c -> {
+          require(c, target);
+          try (var q =
+              c.prepareStatement(
+                  "SELECT EXISTS(SELECT 1 FROM build_retention_jobs WHERE state IN"
+                      + " ('QUEUED','RUNNING') AND target_id=?)")) {
+            q.setString(1, target.identity());
+            try (var r = q.executeQuery()) {
+              return r.next() && r.getInt(1) == 1;
+            }
+          }
+        });
+  }
+
+  @Override
   public Intent setMode(
       Target target,
       long expectedGeneration,
@@ -112,8 +152,9 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
     if (mode == Mode.DOWNLOAD_ALL)
       try (var opened = inventory.openSealed(target, cancellation)) {
         var seal = checkedSeal(target, opened);
-        return transaction(
+        return authorityTransaction(
             cancellation,
+            opened,
             connection ->
                 setMode(connection, target, expectedGeneration, mode, policy, authorizedAt, seal));
       }
@@ -222,8 +263,9 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
     gate(cancellation);
     try (var opened = inventory.openSealed(target, cancellation)) {
       var seal = checkedSeal(target, opened);
-      return transaction(
+      return authorityTransaction(
           cancellation,
+          opened,
           connection -> {
             var current = require(connection, target);
             requireActive(current, generation);
@@ -266,8 +308,9 @@ public final class SqliteBuildRetentionRepository implements BuildRetentionRepos
     gate(cancellation);
     try (var opened = inventory.openSealed(target, cancellation)) {
       var seal = checkedSeal(target, opened);
-      return transaction(
+      return authorityTransaction(
           cancellation,
+          opened,
           connection -> {
             var current = require(connection, target);
             requireActive(current, generation);

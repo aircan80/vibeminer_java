@@ -10,6 +10,13 @@ import java.util.*;
 public interface BuildRetentionRepository {
   Optional<Intent> readIntent(Target target, CancellationToken cancellation);
 
+  /** Bounded current-target queue state, not a fulfillment/readiness or success assertion. */
+  default boolean hasPending(Target target, CancellationToken cancellation) {
+    throw new BuildRetentionException(
+        BuildRetentionException.Code.NOT_READY,
+        "Pending-job projection is not supported by this repository");
+  }
+
   /**
    * expectedGeneration0 creates ONLY a verified sealed Download all intent; committed result wins
    * late cancel.
