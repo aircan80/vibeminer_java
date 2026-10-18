@@ -309,4 +309,31 @@ class SelectedFilePresentationModelTest {
       assertFalse(m.state().message().contains("diagnostic"));
     }
   }
+
+  @Test
+  void rawRootSelectionPreservesAllTupleFieldsAndUnsupportedProductsStayMetadataOnly() {
+    var b = build("A");
+    var source = alias("root").source();
+    var v =
+        new io.vibeminer.application.lookup.RootVariant(
+            4294967295L, "c".repeat(32), 2, 3, 4, 5, 6, Optional.of("a".repeat(16)));
+    var a = FileLookupPane.variantAssociation(b, source, v);
+    assertEquals(v.fileDataId(), a.fileDataId());
+    assertEquals(v.rawFlagsFirst(), a.rawFlagsFirst());
+    assertEquals(v.rawFlagsSecond(), a.rawFlagsSecond());
+    assertEquals(v.rawFlagsThird(), a.rawFlagsThird());
+    assertEquals(v.nameHash(), a.nameHash());
+    var unsupported =
+        new BuildSnapshot(
+            "wowt",
+            b.editionLabel(),
+            b.channel(),
+            b.region(),
+            b.versionLabel(),
+            b.buildConfig(),
+            b.cdnConfig(),
+            java.time.Instant.EPOCH,
+            true);
+    assertNull(FileLookupPane.variantAssociation(unsupported, source, v));
+  }
 }

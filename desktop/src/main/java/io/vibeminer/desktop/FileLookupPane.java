@@ -23,13 +23,26 @@ final class FileLookupPane extends VBox {
   private final double scale;
   private final Consumer<String> selectionChanged;
   private String selectedKey;
+  private final SelectedFilePresentationModel selectedModel;
+  private SelectedFileCandidatesPane candidatesPane;
 
   FileLookupPane(
       FileLookupPresentationModel model,
       double scale,
       String selectedKey,
       Consumer<String> selectionChanged) {
+    this(model, scale, selectedKey, selectionChanged, null);
+  }
+
+  FileLookupPane(
+      FileLookupPresentationModel model,
+      double scale,
+      String selectedKey,
+      Consumer<String> selectionChanged,
+      SelectedFilePresentationModel selectedModel) {
     super(10);
+    this.selectedModel = selectedModel;
+
     this.model = model;
     this.state = model.state();
     this.scale = scale;
@@ -84,6 +97,29 @@ final class FileLookupPane extends VBox {
                 "secondary"));
     getChildren().add(body);
     refreshState();
+  }
+
+  void refreshSelectedFileState() {
+    if (candidatesPane == null) return;
+    Node focused = getScene() == null ? null : getScene().getFocusOwner();
+    String id = focused == null ? null : focused.getId();
+    candidatesPane.refreshState();
+    if (id != null
+        && java.util.Set.of("selected-file-check", "selected-file-cancel").contains(id)) {
+      String target =
+          selectedModel.state().busy()
+              ? "selected-file-cancel"
+              : selectedModel.state().plan() != null
+                  ? "selected-file-candidates"
+                  : "selected-file-check";
+      javafx.application.Platform.runLater(
+          () -> {
+            if (candidatesPane != null && candidatesPane.getScene() != null) {
+              Node control = candidatesPane.lookup("#" + target);
+              if (control != null) control.requestFocus();
+            }
+          });
+    }
   }
 
   void refreshState() {
@@ -288,6 +324,12 @@ final class FileLookupPane extends VBox {
 
   private void showVariant(VBox detail, RootVariant variant) {
     detail.getChildren().clear();
+    candidatesPane = null;
+    if (selectedModel != null) {
+      var association = variantAssociation(state.build(), state.result().root().source(), variant);
+      selectedModel.select(association, state.locale());
+    }
+
     if (variant == null) {
       detail
           .getChildren()
@@ -329,6 +371,19 @@ final class FileLookupPane extends VBox {
                 "No filename or item record is inferred. File-content acquisition, encryption"
                     + " interpretation and asset previews are outside this view.",
                 "secondary"));
+    if (selectedModel != null && !state.build().productId().equals("wow")) {
+      detail
+          .getChildren()
+          .add(
+              copy(
+                  "Representation lookup is not supported for this exact product. Root membership"
+                      + " metadata remains available.",
+                  "body-copy"));
+    }
+    if (selectedModel != null && state.build().productId().equals("wow")) {
+      candidatesPane = new SelectedFileCandidatesPane(selectedModel, scale);
+      detail.getChildren().add(candidatesPane);
+    }
   }
 
   private TitledPane evidence() {
@@ -410,6 +465,24 @@ final class FileLookupPane extends VBox {
     a.setAccessibleText(accessible);
     a.getStyleClass().add("identity-value");
     return a;
+  }
+
+  static io.vibeminer.domain.selectedfile.FileVariantAssociation variantAssociation(
+      io.vibeminer.domain.BuildSnapshot build,
+      io.vibeminer.domain.ResolvedSourceIdentity source,
+      RootVariant variant) {
+    if (variant == null || !build.productId().equals("wow")) return null;
+    return new io.vibeminer.domain.selectedfile.FileVariantAssociation(
+        build,
+        source,
+        variant.fileDataId(),
+        variant.contentKey(),
+        variant.localeFlags(),
+        variant.contentFlags(),
+        variant.rawFlagsFirst(),
+        variant.rawFlagsSecond(),
+        variant.rawFlagsThird(),
+        variant.nameHash());
   }
 
   private static String key(RootVariant v) {
