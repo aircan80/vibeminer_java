@@ -292,7 +292,10 @@ class MetadataRepairPresentationModelTest {
               ContentClaimException.Code.INTEGRITY_FAILURE, "old selected source"));
       m.selectContext(MetadataRepairFixture.build("two"), "frFR");
       while (!queue.isEmpty()) queue.removeFirst().run();
-      assertTrue(revoked.isEmpty());
+      assertEquals(1, revoked.size());
+      assertEquals(
+          MetadataRepairPresentationModel.Reason.REPAIR_REQUIRED, revoked.getFirst().reason());
+      assertNull(revoked.getFirst().code());
       assertNull(m.state().result());
       assertNull(m.state().plan());
       assertEquals("frFR", m.state().locale());
@@ -522,7 +525,10 @@ class MetadataRepairPresentationModelTest {
       f.checking.complete(MetadataRepairFixture.plan(b, Kind.ROOT));
       m.download();
       f.executing.completeExceptionally(new MetadataAcquisitionFailure(publication, cause));
-      assertTrue(revoked.isEmpty());
+      assertEquals(1, revoked.size());
+      assertEquals(
+          MetadataRepairPresentationModel.Reason.REPAIR_REQUIRED, revoked.getFirst().reason());
+      assertNull(revoked.getFirst().code());
       assertNull(m.state().plan());
       assertNull(m.state().result());
       assertEquals(MetadataRepairPresentationModel.Stage.FAILED, m.state().stage());

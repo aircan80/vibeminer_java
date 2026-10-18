@@ -33,8 +33,39 @@ public final class MetadataRepairPresentationModel implements AutoCloseable {
     CLOSED
   }
 
+  public enum Reason {
+    CONFIRMED_MISSING,
+    CONFIRMED_CORRUPT,
+    REPAIR_REQUIRED
+  }
+
   public record ReadinessRevocation(
-      String snapshotId, Kind kind, String locale, ContentClaimException.Code code) {}
+      String snapshotId, Kind kind, String locale, ContentClaimException.Code code, Reason reason) {
+    public ReadinessRevocation(
+        String snapshotId, Kind kind, String locale, ContentClaimException.Code code) {
+      this(
+          snapshotId,
+          kind,
+          locale,
+          code,
+          code == ContentClaimException.Code.MISSING_LOCAL
+              ? Reason.CONFIRMED_MISSING
+              : Reason.CONFIRMED_CORRUPT);
+    }
+
+    public ReadinessRevocation {
+      Objects.requireNonNull(snapshotId);
+      Objects.requireNonNull(kind);
+      Objects.requireNonNull(locale);
+      Objects.requireNonNull(reason);
+      if ((reason == Reason.REPAIR_REQUIRED && code != null)
+          || (reason == Reason.CONFIRMED_MISSING
+              && code != ContentClaimException.Code.MISSING_LOCAL)
+          || (reason == Reason.CONFIRMED_CORRUPT
+              && code != ContentClaimException.Code.INTEGRITY_FAILURE))
+        throw new IllegalArgumentException("Scoped readiness reason/code mismatch");
+    }
+  }
 
   /** Historical original proof, HEAD and completed repair audit remain separate DTOs. */
   public record State(
@@ -210,6 +241,14 @@ public final class MetadataRepairPresentationModel implements AutoCloseable {
               expire();
               return;
             }
+            revoke.accept(
+                new ReadinessRevocation(
+                    state.build().snapshotId(),
+                    kind,
+                    state.locale(),
+                    null,
+                    Reason.REPAIR_REQUIRED));
+            if (!current(ticket)) return;
             update(
                 Stage.PLAN_READY,
                 plan,
@@ -421,11 +460,11 @@ public final class MetadataRepairPresentationModel implements AutoCloseable {
           acquisition.publication()
                   == MetadataAcquisitionFailure.Publication.CONCLUSIVELY_UNPUBLISHED
               ? "Repair failed before a replacement was promoted. Payload may have been requested"
-                    + " or received. No new repair completion is established. Review the exact"
-                    + " source before a fresh explicit repair."
+                  + " or received. No new repair completion is established. Review the exact"
+                  + " source before a fresh explicit repair."
               : "Repair did not complete. Local bytes may be present or restored; their current"
-                    + " readiness is unknown. Verify retained bytes explicitly before checking a"
-                    + " fresh repair plan. No automatic retry or offline opening was started.";
+                  + " readiness is unknown. Verify retained bytes explicitly before checking a"
+                  + " fresh repair plan. No automatic retry or offline opening was started.";
       publish(
           new State(
               state.build(),

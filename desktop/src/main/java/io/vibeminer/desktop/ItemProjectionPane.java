@@ -295,7 +295,7 @@ public final class ItemProjectionPane extends VBox {
         .addAll(copy("Item record " + row.recordId() + " · Physical row", "section-heading"), full);
   }
 
-  private static TitledPane proof(PreparedItemProjection h) {
+  static TitledPane proof(PreparedItemProjection h) {
     var e = h.evidence();
     var a = e.association();
     var i = h.definition().interpretation();

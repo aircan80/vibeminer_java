@@ -9,6 +9,7 @@ import java.util.*;
 public final class ItemSourceReadiness {
   private final Map<String, SelectedFileAssociation> contexts = new LinkedHashMap<>();
   private final Map<String, ItemProjectionException.Code> failures = new LinkedHashMap<>();
+  private final Set<String> verificationRequired = new HashSet<>();
 
   public void observe(SelectedFileAssociation source) {
     if (source == null || source.descriptor().association().fileDataId() != 841626) return;
@@ -27,12 +28,25 @@ public final class ItemSourceReadiness {
     if (source == null) return;
     observe(source);
     failures.remove(source.role());
+    verificationRequired.remove(source.role());
   }
 
   public Optional<ItemProjectionException.Code> failureFor(BuildSnapshot build) {
     if (build == null) return Optional.empty();
     var context = contexts.get(build.snapshotId());
     return context == null ? Optional.empty() : Optional.ofNullable(failures.get(context.role()));
+  }
+
+  public void requiresVerification(SelectedFileAssociation source) {
+    if (source == null || source.descriptor().association().fileDataId() != 841626) return;
+    observe(source);
+    verificationRequired.add(source.role());
+  }
+
+  public boolean verificationRequiredFor(BuildSnapshot build) {
+    if (build == null) return false;
+    var source = contexts.get(build.snapshotId());
+    return source != null && verificationRequired.contains(source.role());
   }
 
   public Optional<SelectedFileAssociation> historicalFor(BuildSnapshot build) {

@@ -158,6 +158,19 @@ public final class ItemPresentationModel implements AutoCloseable {
     emit();
   }
 
+  public void invalidateForRepair(String snapshotId) {
+    if (closed || source == null || !source.snapshotId().equals(snapshotId)) return;
+    retire();
+    clearReady();
+    stage = Stage.FAILED;
+    code = ItemProjectionException.Code.NOT_READY;
+    message =
+        "Required retained metadata needs verification or repair. Current Item readiness is"
+            + " cleared; the failing component is not identified. Historical receipts remain"
+            + " inspectable.";
+    emit();
+  }
+
   public void prepare() {
     if (closed || state().busy() || !eligible()) return;
     clearReady();

@@ -79,6 +79,29 @@ public final class FileLookupPresentationModel implements AutoCloseable {
     return java.util.Optional.ofNullable(historicalRoot);
   }
 
+  /**
+   * A positive repair proposal disproves current readiness without identifying a physical cause.
+   */
+  public void invalidateForRepair() {
+    if (closed) return;
+    retire();
+    if (state.result() != null) historicalRoot = state.result().root();
+    publish(
+        new State(
+            state.build(),
+            state.locale(),
+            state.input(),
+            state.fileDataId(),
+            Stage.FAILED,
+            state.plan(),
+            state.candidate(),
+            null,
+            "Original retained root metadata needs verification or repair; historical receipts do"
+                + " not establish current readiness.",
+            null,
+            null));
+  }
+
   public void invalidateRetainedEvidence(ContentClaimException.Code code) {
     if (closed
         || code != ContentClaimException.Code.MISSING_LOCAL

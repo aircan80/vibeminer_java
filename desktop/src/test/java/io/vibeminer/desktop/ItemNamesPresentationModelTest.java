@@ -493,4 +493,39 @@ class ItemNamesPresentationModelTest {
     assertEquals(ItemNamesException.Code.CORRUPT, m.state().code());
     assertNull(m.state().pair());
   }
+
+  @Test
+  void revokedSameContextPrerequisiteKeepsHistoricalProofButCannotPrepare() {
+    var f = new Fake();
+    var m = model(f);
+    ready(m, f);
+    m.selectContext(m.state().build(), "enUS", null, m.state().sparseSource());
+    assertNull(m.state().pair());
+    assertSame(PAIR, m.state().historicalPair());
+    m.prepare();
+    assertEquals(1, f.prepares);
+  }
+
+  @Test
+  void canonicalSparseObservationKeepsOriginalProofWithoutRejectingSameRole() {
+    var f = new Fake();
+    var m = model(f);
+    var later = ItemNamesPresentationFixture.names(Instant.EPOCH.plusSeconds(100));
+    m.selectContext(
+        m.state().build(), "enUS", PAIR.item(), later.evidence().association().descriptor());
+    m.prepare();
+    f.preparing.complete(PAIR);
+    assertSame(PAIR, m.state().pair());
+    assertEquals(
+        Instant.EPOCH,
+        m.state()
+            .pair()
+            .names()
+            .evidence()
+            .association()
+            .descriptor()
+            .association()
+            .build()
+            .observedAt());
+  }
 }

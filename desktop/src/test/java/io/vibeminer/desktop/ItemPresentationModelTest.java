@@ -494,4 +494,20 @@ class ItemPresentationModelTest {
     assertTrue(m.state().message().contains("root/configuration evidence needs re-verification"));
     assertEquals(0, f.pages + f.lookups);
   }
+
+  @Test
+  void repairRequiredRevokesOnlyCurrentReadinessWithoutClaimingMissingOrCorrupt() {
+    var f = new Fake();
+    var m = model(f);
+    ready(m, f);
+    var original = m.state().handle();
+    m.invalidateForRepair("other-snapshot");
+    assertSame(original, m.state().handle());
+    m.invalidateForRepair(original.snapshotId());
+    assertNull(m.state().handle());
+    assertNotNull(m.state().source());
+    assertEquals(ItemProjectionException.Code.NOT_READY, m.state().code());
+    assertTrue(m.state().message().contains("component is not identified"));
+    assertEquals(0, f.pages + f.lookups);
+  }
 }

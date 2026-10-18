@@ -27,6 +27,7 @@ final class FileLookupPane extends VBox {
   private SelectedFileCandidatesPane candidatesPane;
   private final SelectedFileRetentionPresentationModel retentionModel;
   private MetadataReusePane metadataReusePane;
+  private MetadataRepairPane metadataRepairPane;
 
   FileLookupPane(
       FileLookupPresentationModel model,
@@ -63,6 +64,26 @@ final class FileLookupPane extends VBox {
       SelectedFilePresentationModel selectedModel,
       SelectedFileRetentionPresentationModel retentionModel,
       MetadataReusePresentationModel metadataReuseModel) {
+    this(
+        model,
+        scale,
+        selectedKey,
+        selectionChanged,
+        selectedModel,
+        retentionModel,
+        metadataReuseModel,
+        null);
+  }
+
+  FileLookupPane(
+      FileLookupPresentationModel model,
+      double scale,
+      String selectedKey,
+      Consumer<String> selectionChanged,
+      SelectedFilePresentationModel selectedModel,
+      SelectedFileRetentionPresentationModel retentionModel,
+      MetadataReusePresentationModel metadataReuseModel,
+      MetadataRepairPresentationModel metadataRepairModel) {
     super(10);
     this.retentionModel = retentionModel;
     this.selectedModel = selectedModel;
@@ -126,6 +147,15 @@ final class FileLookupPane extends VBox {
       metadataReusePane = new MetadataReusePane(metadataReuseModel, model::lookupOffline);
       getChildren().add(metadataReusePane);
     }
+    if (metadataRepairModel != null) {
+      metadataRepairPane =
+          new MetadataRepairPane(metadataRepairModel, model::lookupOffline, model::lookupOffline);
+      getChildren().add(metadataRepairPane);
+    }
+  }
+
+  void refreshMetadataRepairState() {
+    if (metadataRepairPane != null) metadataRepairPane.refreshState();
   }
 
   void refreshMetadataReuseState() {

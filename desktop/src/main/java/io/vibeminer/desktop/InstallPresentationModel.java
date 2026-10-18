@@ -85,6 +85,26 @@ public final class InstallPresentationModel implements AutoCloseable {
     return java.util.Optional.ofNullable(historicalInspection);
   }
 
+  /**
+   * A positive repair proposal disproves current readiness without identifying a physical cause.
+   */
+  public void invalidateForRepair() {
+    if (closed) return;
+    retire();
+    if (state.inspection() != null) historicalInspection = state.inspection();
+    publish(
+        new State(
+            state.build(),
+            Stage.FAILED,
+            state.plan(),
+            null,
+            "Original retained install metadata needs verification or repair; historical receipts"
+                + " do not establish current readiness.",
+            null,
+            state.stage(),
+            null));
+  }
+
   public void invalidateRetainedEvidence(ContentClaimException.Code code) {
     if (closed
         || code != ContentClaimException.Code.MISSING_LOCAL

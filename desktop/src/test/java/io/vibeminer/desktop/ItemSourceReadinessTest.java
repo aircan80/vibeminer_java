@@ -57,4 +57,19 @@ class ItemSourceReadinessTest {
         "Item evidence verification failed",
         ItemSourceReadiness.message(ItemProjectionException.Code.CORRUPT));
   }
+
+  @Test
+  void repairRequirementIsNotFabricatedCorruptionAndClearsOnlyOnFreshSourceVerification() {
+    var health = new ItemSourceReadiness();
+    var source = ItemPresentationFixture.handle().evidence().association();
+    var build = source.descriptor().association().build();
+    health.requiresVerification(source);
+    assertTrue(health.verificationRequiredFor(build));
+    assertTrue(health.failureFor(build).isEmpty());
+    health.observe(source);
+    health.verified(ItemPresentationFixture.association("other", java.time.Instant.EPOCH));
+    assertTrue(health.verificationRequiredFor(build));
+    health.verified(source);
+    assertFalse(health.verificationRequiredFor(build));
+  }
 }

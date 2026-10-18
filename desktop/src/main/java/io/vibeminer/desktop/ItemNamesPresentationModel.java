@@ -123,13 +123,19 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
             && this.locale.equals(locale)
             && Objects.equals(this.item, item)
             && Objects.equals(sparseSource, sparse)) return;
+    boolean retainHistory =
+        build != null
+            && b != null
+            && build.snapshotId().equals(b.snapshotId())
+            && this.locale.equals(locale)
+            && (item == null || sparse == null);
     retire();
     build = b;
     this.locale = locale;
     this.item = item;
     this.sparseSource = sparse;
     clearReady();
-    historicalPair = null;
+    if (!retainHistory) historicalPair = null;
     input = "";
     mode = "No query";
     code = null;
@@ -199,7 +205,7 @@ public final class ItemNamesPresentationModel implements AutoCloseable {
     if (p == null
         || !p.snapshotId().equals(build.snapshotId())
         || !p.locale().equals(locale)
-        || !p.names().evidence().association().descriptor().equals(r.sparseSource())
+        || !p.names().sourceRole().equals(r.sparseSource().role())
         || !sameItemProof(r.item(), p.item())) return false;
     var n = p.names();
     if (n.evidence().chunks().size() > limits.maxChunks()) return false;
