@@ -6,24 +6,82 @@ import io.vibeminer.domain.BuildSnapshot;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.RepeatedTest;
+import java.util.function.BiConsumer;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LazyBootstrapServiceTest {
     private static final BuildSnapshot BUILD = FixtureDiscovery.builds().getFirst();
-    @Test void metadataOnlyConstructionDoesNotInitializeContentAndCancellationReachesActualJob() throws Exception {
+    @RepeatedTest(20) void metadataOnlyConstructionDoesNotInitializeContentAndCancellationReachesActualJob() throws Exception {
+        verifyCancellationHandshake(true);
+    }
+    @RepeatedTest(20) void cancellationAfterDelegateRegistrationReachesActualJob() throws Exception {
+        verifyCancellationHandshake(false);
+    }
+    private void verifyCancellationHandshake(boolean cancelBeforeRegistration) throws Exception {
         var factoryCalls = new AtomicInteger(); var closed = new AtomicInteger();
-        var job = new CompletableFuture<InstallPlan>(); var called = new CountDownLatch(1);
-        var service = new FakeService(job, called);
+        var releaseFactory = new CountDownLatch(1);
+        var actionEntered = new CountDownLatch(1); var releaseDelegate = new CountDownLatch(1);
+        var job = new ObservedJob();
+        var service = new FakeService(job, actionEntered) {
+            @Override public CompletionStage<InstallPlan> inspectConfiguration(BuildSnapshot build) {
+                actionEntered.countDown();
+                await(releaseDelegate, "delegate return was not released");
+                return job;
+            }
+        };
         var caller = Thread.currentThread(); var worker = new AtomicReference<Thread>();
         var lazy = new LazyBootstrapService(() -> {
             factoryCalls.incrementAndGet(); worker.set(Thread.currentThread());
+            await(releaseFactory, "factory was not released");
             return resource(service, closed);
         });
-        assertEquals(0, factoryCalls.get());
-        var future = lazy.inspectConfiguration(BUILD).toCompletableFuture();
-        assertTrue(called.await(2, TimeUnit.SECONDS)); assertNotSame(caller, worker.get());
-        future.cancel(true); assertTrue(job.isCancelled());
-        lazy.close(); lazy.close(); assertEquals(1, closed.get());
+        try {
+            assertEquals(0, factoryCalls.get());
+            // Keep initialization pending until dispatch has returned its cancellable wrapper.
+            var future = lazy.inspectConfiguration(BUILD).toCompletableFuture();
+            releaseFactory.countDown();
+            assertTrue(actionEntered.await(2, TimeUnit.SECONDS));
+            assertNotSame(caller, worker.get());
+            if (cancelBeforeRegistration) {
+                assertTrue(future.cancel(true));
+                // The action cannot return its delegate until explicitly released below.
+                assertFalse(job.isCancelled());
+                releaseDelegate.countDown();
+            } else {
+                releaseDelegate.countDown();
+                // dispatch installs its delegate reference before subscribing to completion.
+                assertTrue(job.registered.await(2, TimeUnit.SECONDS));
+                assertTrue(future.cancel(true));
+            }
+            assertTrue(job.cancelled.await(2, TimeUnit.SECONDS));
+            assertTrue(job.isCancelled());
+            assertEquals(1, factoryCalls.get());
+        } finally {
+            releaseFactory.countDown(); releaseDelegate.countDown();
+            lazy.close(); lazy.close();
+        }
+        assertEquals(1, closed.get());
+    }
+    private static void await(CountDownLatch latch, String message) {
+        try { if (!latch.await(2, TimeUnit.SECONDS)) throw new AssertionError(message); }
+        catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); throw new AssertionError(message, interrupted);
+        }
+    }
+    private static final class ObservedJob extends CompletableFuture<InstallPlan> {
+        final CountDownLatch registered = new CountDownLatch(1);
+        final CountDownLatch cancelled = new CountDownLatch(1);
+        @Override public CompletableFuture<InstallPlan> whenComplete(BiConsumer<? super InstallPlan, ? super Throwable> action) {
+            var completion = super.whenComplete(action);
+            registered.countDown();
+            return completion;
+        }
+        @Override public boolean cancel(boolean mayInterruptIfRunning) {
+            boolean result = super.cancel(mayInterruptIfRunning);
+            if (isCancelled()) cancelled.countDown();
+            return result;
+        }
     }
     @Test void concurrentActionsShareOneInitializationAndCloseCancelsWaiters() throws Exception {
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
@@ -72,7 +130,7 @@ class LazyBootstrapServiceTest {
             public void close() { service.close(); closed.incrementAndGet(); }
         };
     }
-    private static final class FakeService implements BootstrapService {
+    private static class FakeService implements BootstrapService {
         final CompletableFuture<InstallPlan> job; final CountDownLatch called;
         FakeService(CompletableFuture<InstallPlan> job, CountDownLatch called) { this.job=job; this.called=called; }
         public CompletionStage<InstallPlan> inspectConfiguration(BuildSnapshot build) { called.countDown(); return job; }
