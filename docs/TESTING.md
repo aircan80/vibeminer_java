@@ -118,3 +118,10 @@ Pin dependencies/plugins, verify provenance/checksums as tooling permits, invent
 - Select dependency/license/vulnerability scanning tools and release signing availability. A skipped check must stay visible.
 
 Independent review should focus on boundary violations, fake completeness, hidden duplicate storage and destructive cleanup as strongly as happy-path screenshots.
+
+
+## Subsequent partial-resolution foundations
+
+Committed snapshot `1272c62` passed 290 Java tests from a clean checkout and an actual Linux bundled-runtime SQLite/CAS/JavaFX package launch. This includes independently reviewed exact-range HTTP transport (#41), authenticated BLTE chunk plans (#42) and bounded EN page lookup (#43). These checks establish their scoped contracts, not a complete live file resolver. Streaming root lookup (#44) then passed its 13 new tests and independent fragmented-stream comparisons before integration. The separate opt-in item-header cohort (#45) must compose and verify these pieces against exact data before broader support claims.
+
+Alpha.2 at `0bba50b` passed all four native gates and publication in [run 39100990190](https://github.com/aircan80/vibeminer/actions/runs/39100990190). Its user-facing scope is install-list metadata; the subsequent partial-resolution foundations are not included in that prerelease.

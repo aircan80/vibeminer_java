@@ -4,12 +4,11 @@ Formal implementation plan, 2026-10-18. GitHub Issues owns scope and delivery st
 
 ## Delivered baseline and current work
 
-- Released: [v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) at `42b8be9`, with verified Windows x64, macOS ARM64/x64 and Linux x64 packages. User-facing scope is Atlas metadata discovery plus saved offline metadata workspaces, not the complete research MVP.
-- Committed after release: official product catalogue and published-pointer inspection in `971862b`, followed by compact workspace correction `5f1dfb0` (#14). Final geometry verification passed with production workspace controls; these changes are not included in alpha.1.
-- Closed backend slices: #31–#35 provide bounded BLTE decoding, independently cancellable shared acquisition, pinned configuration/loose-object transport and bounded IN inspection. Recorded live evidence covers one small BLTE/IN object. The separate #38 header gate is not decoded item support.
-- Implemented and reviewed: #36 durable aliases/build memberships, including canonical actual-source evidence and schema migrations. Forty focused tests and a clean-checkout 188-test baseline passed.
-- In progress: #37 install-list UI/package acceptance over application-owned policy and a protocol gateway. Nineteen backend and six lifecycle checks passed review; the real scoped download/reopen check and two-JVM synthetic UI flow passed. Final UI refinements and a Linux bundled-runtime package check passed; new all-platform packages remain to verify. This is selected list retention, not full archive or item research acceptance.
-- Remaining: complete verified acquisition/offline reopening UI, selected-content retention and safe cleanup, exact-layout DB2 records/schema/item research, comparisons, findings and research exports. Preserve each issue's remaining acceptance; an early packaged alpha does not close the final research-MVP release gate.
+- Released: [v0.1.0-alpha.2](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.2) at `0bba50b`, with all four native package/runtime gates passed. Scope is Atlas official product/build discovery, saved offline metadata workspaces and explicit verified install-list download/inspection. This is not the complete research MVP.
+- Closed foundations: #31–#39 provide bounded BLTE/config/IN parsing, structural WDC5 header inspection, official transport, shared acquisition, durable actual-source aliases/build memberships and the retained-list workflow. No item records are decoded by these slices.
+- Post-release source: #40 adds bounded explicit WoW root v1/v2 membership parsing; #41–#43 add exact range transport, authenticated BLTE chunk plans and bounded EN page lookup. Clean snapshot `1272c62` passed 290 Java tests and a Linux bundled-runtime check.
+- Current integration: #44 streams selected root IDs without building millions of membership objects. #45 will compose exact source proofs and inspect actual Item/ItemSparse headers. Schema candidates remain pinned metadata until actual bytes agree.
+- Remaining: complete verified raw-file browsing/offline UI, selected-content retention and safe cleanup, exact-layout DB2 records/schema/item research, comparisons, findings and research exports. Preserve each issue's remaining acceptance; early packaged alphas do not close the final research-MVP release gate.
 
 ## Agreed product and engineering contract
 

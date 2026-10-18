@@ -8,9 +8,9 @@ It requires no installed Blizzard game, Battle.net client, external database or 
 
 ## Available now
 
-[v0.1.0-alpha.1](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.1) (`42b8be9`) provides the Atlas JavaFX shell, official build-metadata discovery and saved exact-build workspaces that reopen their metadata offline. Verified bundled-runtime packages cover Windows x64, macOS ARM64, macOS x64 and Linux x64. This is a metadata research alpha; it does not yet provide an end-to-end game-content download, retained archive or item-search workflow.
+[v0.1.0-alpha.2](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alpha.2) (`0bba50b`) provides the Atlas JavaFX workbench, official product/build discovery, saved offline metadata workspaces and explicit verified install-list download/inspection. Bundled-runtime packages cover Windows x64, macOS ARM64, macOS x64 and Linux x64; all four native gates passed. Install lists reopen offline with integrity checks and reuse shared verified objects. No separate Java installation is needed.
 
-Post-release source adds an official product catalog and a scoped install-list workflow backed by shared verified storage. Backend tests, bounded real-CDN checks, two-process UI checks and a Linux package check passed; new cross-platform package validation is in progress. These changes are not part of alpha.1. They do not yet provide a complete game-file catalog, item search or a full archived build. See [protocol evidence](docs/PROTOCOL-EVIDENCE.md) and [delivery status](docs/PLAN.md).
+This alpha covers install-list metadata. Listed file contents, complete game-file catalogs, full archived builds, cleanup, item search, comparisons and exports remain unfinished. Post-release source adds bounded root and partial-manifest lookup foundations; these are not yet an end-to-end file research workflow. See [protocol evidence](docs/PROTOCOL-EVIDENCE.md) and [delivery status](docs/PLAN.md).
 
 ## What it will do
 

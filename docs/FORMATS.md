@@ -96,3 +96,25 @@ Twelve synthetic tests and independent review passed against the pinned [TACT.Ne
 The pure `format-wow` module parses explicit TSFM versions 1 and 2 with bounded complete inputs. Version 2 uses packed 17-byte block headers; original flag components remain separate from their lossy legacy OR. It preserves every FileDataID variant, CKey, locale/content flags and optional name hash without selecting a preferred platform or locale. A present zero name hash differs from an absent hash; neither supplies a filename.
 
 Twelve synthetic tests and independent review passed, including variants, counts, truncation, unsigned delta overflow, cancellation and unsupported headers/flags. Header counts describe memberships, not distinct IDs. The pinned [TACTSharp reader](https://github.com/wowdev/TACTSharp/blob/67fd53ac852ca297e9bf95bb41d1a97da202eba4/TACTSharp/RootInstance.cs) supplies primary framing evidence. A separately authenticated live prefix confirms the observed version-2 header and first block grammar, but is incomplete and cannot pass the complete-root parser. Complete live-root compatibility, bounded streaming lookup, item table acquisition and absent-file conclusions remain unverified.
+
+## Pinned item cohort and header acquisition (#28, #45)
+
+The reviewed WoWDBDefs revision is `b9a63096cdd99b26967f17f9515377ae62cadfd7`. Its [manifest](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/manifest.json), [Item definition](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/Item.dbd) and [ItemSparse definition](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/ItemSparse.dbd) provide these community metadata candidates for exact version `12.1.5.70448`:
+
+| Table | FileDataID | Table hash | Candidate layout hash |
+| --- | ---: | --- | --- |
+| Item | 841626 | `50238EC2` | `996192AA` |
+| ItemSparse | 1572924 | `919BE54E` | `1C17D17F` |
+
+The separately listed legacy `Item-sparse` (FileDataID 841677, table hash `6A7C6E76`) is not an interchangeable fallback. Independently checked SHA-256 values for the two definition files are `076ea4c7e80c891b399cc77f285c807071080c0fed95701e447f7c98024ae120` (Item) and `8664c3b5862dfe4c3a4322941b48b032c57b90412c070deb2028f3e448cf674a` (ItemSparse). No downloaded definition content is bundled by this documentation change.
+
+The next bounded acquisition outcome is two exact table-header results with source identities, locale/content variants, requested transfer cost and verification scope. Resolve the selected FileDataIDs through authenticated root/EN evidence, verify each consumed BLTE chunk, and inspect the 204-byte prefix only if its observed magic is WDC5. A partial search nonmatch remains indeterminate. Header inspection does not establish full decoded CKey verification, schema semantics or row support. The candidate table/layout identities above must agree with actual bytes before enabling a matching decoder; no actual table header has yet been validated by this decision.
+
+The minimum subsequent item projection combines Item's noninline ID and supported class/subclass/inventory/icon identifiers with ItemSparse's noninline ID and localized base display name, joined only within the same exact edition/build. The pinned sparse definition requires sparse record handling; fixed record offsets cannot locate its name safely. Implement the observed ID maps, string and field-storage modes before claiming name/ID search. Missing names or paired rows retain their identities and explicit reasons; richer tooltips, effects and acquisition sources remain separate capabilities.
+
+The pinned [license](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/LICENSE.md) assigns definitions/data **CC BY-SA 4.0** and designated code **BSD-3-Clause**. Preserve contributor attribution, source/revision, license references and modification notices when distributing schema artifacts; review applicable share-alike requirements before adapting/distributing definitions. Parser-reference licensing does not replace schema licensing. The [pinned README](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/README.md) also identifies unverified column markers: retain that uncertainty and the pinned interpretation revision in findings and exports.
+
+
+## Streaming selected root lookup (#44)
+
+`SelectedRootLookup` consumes a caller-owned decoded stream using a fixed 8 KiB buffer and bounded requested-ID/matching-membership collections. It retains all selected variants while skipping unrequested key/hash arrays, validates total/named counts and complete EOF, and leaves stream ownership with the caller. Thirteen new tests plus independent fragmented-stream differential checks passed. Structural success establishes neither source authenticity nor complete decoded CKey verification; a composition layer must establish those before publishing verified membership or absence.
