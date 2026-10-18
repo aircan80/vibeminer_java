@@ -45,6 +45,16 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   private long generation, selectionGeneration;
   private boolean closed;
   private BuildLibraryService.RefreshOperation refreshing;
+  private BuildLibraryService.LocalPreparationOperation preparing;
+  private final Map<String, LegacyBuildObservationImporter.Cursor> localCursors =
+      new LinkedHashMap<>();
+  private String migrationIssue = "";
+  private Throwable migrationFailure;
+
+  /** The typed entry migration issue is retained separately from remote-check diagnostics. */
+  public Optional<Throwable> localPreparationFailure() {
+    return Optional.ofNullable(migrationFailure);
+  }
 
   public GuidedDiscoveryPresentationModel(
       BuildLibraryService service,
@@ -88,6 +98,9 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   public void setProducts(List<GuidedDiscoveryPane.ProductOption> products) {
     if (closed) return;
     products = checkedProducts(products);
+    var suppliedIds = new HashSet<String>();
+    for (var product : products) suppliedIds.add(product.productId());
+    localCursors.keySet().retainAll(suppliedIds);
     if (state.productId() != null
         && products.stream().noneMatch(p -> p.productId().equals(state.productId()))) {
       retire();
@@ -128,24 +141,149 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       invalidProduct();
       return;
     }
+    beginEntry(product, filter, false);
+  }
+
+  private void beginEntry(
+      String product, GuidedDiscoveryPane.Filter filter, boolean remoteAfterPage) {
+    beginEntry(product, filter, remoteAfterPage, false);
+  }
+
+  private void beginEntry(
+      String product,
+      GuidedDiscoveryPane.Filter filter,
+      boolean remoteAfterPage,
+      boolean explicitRemoteRetry) {
     long request = retire();
+    migrationIssue = "";
+    migrationFailure = null;
+    var prior = product.equals(state.productId()) ? state.page() : null;
     publish(
         new State(
             state.products(),
             product,
             filter,
-            null,
+            prior,
             null,
             true,
             false,
-            "Reading saved build observations…",
+            "Preparing saved local build observations…",
             ""));
-    if (current(request))
+    if (!current(request)) return;
+    try {
+      var operation =
+          Objects.requireNonNull(
+              service.prepareLocal(product, Optional.ofNullable(localCursors.get(product))));
+      if (!current(request)) {
+        operation.requestCancellation();
+        return;
+      }
+      preparing = operation;
+      Objects.requireNonNull(operation.completion())
+          .whenComplete(
+              (result, failure) ->
+                  presentation.execute(
+                      () -> {
+                        if (!current(request)) return;
+                        preparing = null;
+                        Throwable cause = unwrap(failure);
+                        if (cause instanceof UnsupportedOperationException) {
+                          migrationFailure = cause;
+                          migrationIssue =
+                              "Older local builds have not been imported by this library service.";
+                          // Compatibility harnesses cannot migrate; keep their existing explicit
+                          // refresh usable.
+                          if (remoteAfterPage) beginRefresh(product, true);
+                          else
+                            readPage(
+                                request,
+                                Optional.empty(),
+                                "Showing saved build observations. Publication has not been"
+                                    + " refreshed.",
+                                "");
+                          return;
+                        }
+                        boolean cancelled = cause instanceof CancellationException;
+                        if (cause == null
+                            && (result == null || !result.progress().productId().equals(product)))
+                          cause =
+                              new BuildLibraryException(
+                                  BuildLibraryException.Code.CORRUPT_LIBRARY,
+                                  "Local preparation returned another product");
+                        if (cause == null) {
+                          rememberProgress(product, result.progress());
+                          cancelled = result.cancellationRequested();
+                          if (!result.progress().complete())
+                            migrationIssue =
+                                "Older local build import is incomplete. Retry the local"
+                                    + " preparation to continue.";
+                          if (cancelled)
+                            migrationIssue =
+                                "Local preparation stopped. Saved progress remains available.";
+                        } else {
+                          migrationFailure = cause;
+                          if (cause instanceof LegacyBuildImportException typed)
+                            rememberProgress(product, typed.partialProgress());
+                          if (cause instanceof LegacyBuildImportCancelled typed)
+                            rememberProgress(product, typed.partialProgress());
+                          migrationIssue =
+                              cancelled
+                                  ? "Local preparation stopped. Saved progress remains available."
+                                  : "Some older local builds could not be imported. Saved"
+                                      + " observations remain available.";
+                        }
+                        boolean refreshAfter =
+                            remoteAfterPage && !cancelled && (cause == null || explicitRemoteRetry);
+                        readPage(
+                            request,
+                            Optional.empty(),
+                            "Showing saved local build observations.",
+                            "",
+                            refreshAfter ? () -> beginRefresh(product, true) : () -> {});
+                      }));
+    } catch (RuntimeException failure) {
+      if (!current(request)) return;
+      preparing = null;
+      Throwable cause = unwrap(failure);
+      migrationFailure = cause;
+      if (cause instanceof LegacyBuildImportException typed)
+        rememberProgress(product, typed.partialProgress());
+      if (cause instanceof LegacyBuildImportCancelled typed)
+        rememberProgress(product, typed.partialProgress());
+      boolean cancelled = cause instanceof CancellationException;
+      migrationIssue =
+          cancelled
+              ? "Local preparation stopped. Saved progress remains available."
+              : "Older local builds could not be imported. Saved observations remain available.";
       readPage(
           request,
           Optional.empty(),
-          "Saved build observations loaded. Publication has not been refreshed.",
-          "");
+          "Showing saved local build observations.",
+          "",
+          remoteAfterPage && explicitRemoteRetry && !cancelled
+              ? () -> beginRefresh(product, true)
+              : () -> {});
+    }
+  }
+
+  private void rememberProgress(String product, LegacyBuildObservationImporter.Batch progress) {
+    if (!product.equals(progress.productId())) return;
+    if (progress.complete()) localCursors.remove(product);
+    else
+      progress
+          .nextCursor()
+          .ifPresent(
+              cursor -> {
+                if (!localCursors.containsKey(product) && localCursors.size() == 64)
+                  localCursors.remove(localCursors.keySet().iterator().next());
+                localCursors.put(product, cursor);
+              });
+  }
+
+  private static Throwable unwrap(Throwable failure) {
+    while ((failure instanceof CompletionException || failure instanceof ExecutionException)
+        && failure.getCause() != null) failure = failure.getCause();
+    return failure;
   }
 
   /** Only a deliberate changed product selection initiates automatic refresh. */
@@ -155,12 +293,17 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
       invalidProduct();
       return;
     }
-    beginRefresh(product, false);
+    beginEntry(product, GuidedDiscoveryPane.Filter.ALL, true);
   }
 
   public void refresh() {
-    if (!closed && state.productId() != null && !state.busy())
-      beginRefresh(state.productId(), true);
+    if (!closed && state.productId() != null && !state.busy()) {
+      if (localCursors.containsKey(state.productId())
+          || (migrationFailure != null
+              && !(migrationFailure instanceof UnsupportedOperationException)))
+        beginEntry(state.productId(), state.filter(), true, true);
+      else beginRefresh(state.productId(), true);
+    }
   }
 
   public void reload() {
@@ -291,6 +434,19 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
 
   private void readPage(
       long request, Optional<BuildLibraryCursor> cursor, String message, String error) {
+    readPage(request, cursor, message, error, () -> {});
+  }
+
+  private void readPage(
+      long request,
+      Optional<BuildLibraryCursor> cursor,
+      String message,
+      String error,
+      Runnable afterPage) {
+    String combinedError =
+        migrationIssue.isBlank()
+            ? error
+            : error.isBlank() ? migrationIssue : migrationIssue + " " + error;
     if (!current(request)) return;
     var query =
         new BuildLibraryQuery(
@@ -307,7 +463,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                             || page == null
                             || !query.equals(page.query())
                             || page.pageSize() != 25) {
-                          pageFailure(failure, error);
+                          pageFailure(failure, combinedError);
                           return;
                         }
                         if (cursor.isPresent()
@@ -316,7 +472,7 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                               new BuildLibraryException(
                                   BuildLibraryException.Code.STALE_CURSOR,
                                   "Page changed the admitted library revision"),
-                              error);
+                              combinedError);
                           return;
                         }
                         selectionGeneration++;
@@ -330,10 +486,11 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
                                 false,
                                 false,
                                 message,
-                                error));
+                                combinedError));
+                        if (current(request)) afterPage.run();
                       }));
     } catch (RuntimeException failure) {
-      if (current(request)) pageFailure(failure, error);
+      if (current(request)) pageFailure(failure, combinedError);
     }
   }
 
@@ -531,6 +688,13 @@ public final class GuidedDiscoveryPresentationModel implements AutoCloseable {
   private long retire() {
     generation++;
     selectionGeneration++;
+    var local = preparing;
+    preparing = null;
+    if (local != null)
+      try {
+        local.requestCancellation();
+      } catch (RuntimeException ignored) {
+      }
     var prior = refreshing;
     refreshing = null;
     if (prior != null) cancel(prior);

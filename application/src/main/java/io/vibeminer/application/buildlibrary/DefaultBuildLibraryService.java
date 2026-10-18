@@ -39,6 +39,7 @@ public final class DefaultBuildLibraryService implements BuildLibraryService {
   private final DiscoveryHistoryLimits limits;
   private final Executor executor;
   private final Clock clock;
+  private final LegacyBuildObservationImporter importer;
   private final Set<Job<?>> active = new HashSet<>();
   private volatile boolean closed;
 
@@ -89,6 +90,20 @@ public final class DefaultBuildLibraryService implements BuildLibraryService {
       DiscoveryHistoryLimits limits,
       Executor executor,
       Clock clock) {
+    this(gateway, history, library, checks, reader, limits, executor, clock, null);
+  }
+
+  public DefaultBuildLibraryService(
+      BuildLibraryProductGateway gateway,
+      DiscoveryHistoryRepository history,
+      BuildLibraryRepository library,
+      BuildLibraryProductChecks checks,
+      BuildLibraryReader reader,
+      DiscoveryHistoryLimits limits,
+      Executor executor,
+      Clock clock,
+      LegacyBuildObservationImporter importer) {
+    this.importer = importer;
     this.gateway = Objects.requireNonNull(gateway);
     this.history = Objects.requireNonNull(history);
     this.library = Objects.requireNonNull(library);
@@ -97,6 +112,117 @@ public final class DefaultBuildLibraryService implements BuildLibraryService {
     this.limits = Objects.requireNonNull(limits);
     this.executor = Objects.requireNonNull(executor);
     this.clock = Objects.requireNonNull(clock);
+  }
+
+  @Override
+  public LocalPreparationOperation prepareLocal(
+      String productId, Optional<LegacyBuildObservationImporter.Cursor> cursor) {
+    var job = new Job<BuildLibraryLocalPreparationResult>(true);
+    try {
+      new BuildLibraryQuery(productId, BuildLibraryProjection.Filter.ALL);
+      Objects.requireNonNull(cursor);
+      if (cursor.isPresent() && !cursor.get().productId().equals(productId))
+        throw new IllegalArgumentException("Local preparation cursor belongs to another product");
+      if (importer == null)
+        throw new UnsupportedOperationException("Legacy local preparation is not configured");
+      if (admit(job)) dispatch(job, token -> prepare(productId, cursor, token));
+    } catch (IllegalArgumentException | NullPointerException failure) {
+      job.result.completeExceptionally(
+          error(INVALID_REQUEST, "Exact local product and cursor required", failure));
+    } catch (RuntimeException failure) {
+      job.result.completeExceptionally(failure);
+    }
+    var readOnly = job.result.minimalCompletionStage();
+    return new LocalPreparationOperation() {
+      public CompletionStage<BuildLibraryLocalPreparationResult> completion() {
+        return readOnly;
+      }
+
+      public void requestCancellation() {
+        job.cancellation.set(true);
+      }
+    };
+  }
+
+  private BuildLibraryLocalPreparationResult prepare(
+      String productId,
+      Optional<LegacyBuildObservationImporter.Cursor> cursor,
+      CancellationToken token) {
+    var total = new LegacyBuildObservationImporter.Batch(productId, 0, 0, 0, cursor, false);
+    int steps = 0;
+    for (; steps < 4; ) {
+      try {
+        token.throwIfCancellationRequested();
+        var batch =
+            importer.importNext(
+                productId,
+                total.nextCursor(),
+                LegacyBuildObservationImporter.Limits.defaults(),
+                clock.instant(),
+                token);
+        requireBatch(productId, total.nextCursor(), batch);
+        total = merge(total, batch);
+        steps++;
+        if (total.complete() || token.isCancellationRequested())
+          return new BuildLibraryLocalPreparationResult(
+              total, steps, token.isCancellationRequested());
+      } catch (LegacyBuildImportCancelled cancelled) {
+        var partial = cancelled.partialProgress();
+        requireBatch(productId, total.nextCursor(), partial);
+        total = merge(total, partial);
+        if (total.scannedSnapshots() > 0 || total.importedPairs() > 0)
+          return new BuildLibraryLocalPreparationResult(total, steps + 1, true);
+        throw new LegacyBuildImportCancelled(total);
+      } catch (LegacyBuildImportException failed) {
+        var partial = failed.partialProgress();
+        requireBatch(productId, total.nextCursor(), partial);
+        throw new LegacyBuildImportException(
+            failed.code(), failed.getMessage(), merge(total, partial), failed);
+      } catch (CancellationException cancelled) {
+        if (total.scannedSnapshots() > 0 || total.importedPairs() > 0)
+          return new BuildLibraryLocalPreparationResult(total, steps, true);
+        throw cancelled;
+      }
+    }
+    return new BuildLibraryLocalPreparationResult(total, steps, false);
+  }
+
+  private static void requireBatch(
+      String product,
+      Optional<LegacyBuildObservationImporter.Cursor> before,
+      LegacyBuildObservationImporter.Batch batch) {
+    if (batch == null
+        || !batch.productId().equals(product)
+        || batch.scannedSnapshots() > 256
+        || batch.importedPairs() + (long) batch.alreadyImportedPairs() > 32
+        || (!batch.complete()
+            && batch.scannedSnapshots() > 0
+            && (batch.nextCursor().isEmpty()
+                || (before.isPresent()
+                    && batch
+                            .nextCursor()
+                            .get()
+                            .afterSnapshotId()
+                            .compareTo(before.get().afterSnapshotId())
+                        <= 0))))
+      throw error(CORRUPT_LIBRARY, "Local importer returned incompatible bounded progress");
+    if (!batch.complete()
+        && batch.scannedSnapshots() == 0
+        && batch.importedPairs() == 0
+        && batch.alreadyImportedPairs() == 0
+        && !batch.nextCursor().equals(before))
+      throw error(CORRUPT_LIBRARY, "Local importer changed a cursor without progress");
+  }
+
+  private static LegacyBuildObservationImporter.Batch merge(
+      LegacyBuildObservationImporter.Batch prior, LegacyBuildObservationImporter.Batch next) {
+    return new LegacyBuildObservationImporter.Batch(
+        prior.productId(),
+        Math.addExact(prior.scannedSnapshots(), next.scannedSnapshots()),
+        Math.addExact(prior.importedPairs(), next.importedPairs()),
+        Math.addExact(prior.alreadyImportedPairs(), next.alreadyImportedPairs()),
+        next.nextCursor(),
+        next.complete());
   }
 
   @Override

@@ -7,6 +7,28 @@ import java.util.concurrent.CompletionStage;
 public interface BuildLibraryService extends AutoCloseable {
   RefreshOperation refreshProduct(String productId);
 
+  /** Explicit offline entry preflight; ordinary page/select never trigger migration. */
+  default LocalPreparationOperation prepareLocal(
+      String productId, Optional<LegacyBuildObservationImporter.Cursor> cursor) {
+    var failed =
+        java.util.concurrent.CompletableFuture.<BuildLibraryLocalPreparationResult>failedFuture(
+                new UnsupportedOperationException("Legacy local preparation is not configured"))
+            .minimalCompletionStage();
+    return new LocalPreparationOperation() {
+      public CompletionStage<BuildLibraryLocalPreparationResult> completion() {
+        return failed;
+      }
+
+      public void requestCancellation() {}
+    };
+  }
+
+  interface LocalPreparationOperation {
+    CompletionStage<BuildLibraryLocalPreparationResult> completion();
+
+    void requestCancellation();
+  }
+
   CompletionStage<BuildLibraryPage> page(
       BuildLibraryQuery query, Optional<BuildLibraryCursor> cursor, int pageSize);
 

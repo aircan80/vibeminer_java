@@ -121,8 +121,11 @@ final class MetadataRuntime implements AutoCloseable {
               libraryRepository,
               libraryRepository,
               new SqliteBuildLibraryReader(catalog),
+              io.vibeminer.application.discoveryhistory.DiscoveryHistoryLimits.defaults(),
               workers,
-              Clock.systemUTC());
+              Clock.systemUTC(),
+              new io.vibeminer.infrastructure.discoveryhistory.SqliteLegacyBuildObservationImporter(
+                  catalog));
       var workspaces =
           new DefaultWorkspaceService(
               new SqliteWorkspaceRepository(catalog), workers, Clock.systemUTC());

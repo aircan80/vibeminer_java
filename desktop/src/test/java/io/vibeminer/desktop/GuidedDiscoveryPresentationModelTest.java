@@ -313,6 +313,9 @@ class GuidedDiscoveryPresentationModelTest {
     Queue<Runnable> ui = new ArrayDeque<>();
     var h = new Harness(ui::add);
     h.model.restore("wow", GuidedDiscoveryPane.Filter.ALL);
+    assertTrue(h.service.pages.isEmpty());
+    ui.remove()
+        .run(); // Explicit local-preparation completion enters the presentation thread first.
     complete(h.service.pages.remove());
     assertTrue(h.model.state().busy());
     ui.remove().run();
