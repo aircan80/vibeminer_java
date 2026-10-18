@@ -11,6 +11,7 @@ import io.vibeminer.protocol.tact.encoding.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.sql.*;
 import java.util.*;
 
 /**
@@ -24,8 +25,29 @@ public final class SqliteEncodingLookupIndex {
       int batchRows,
       long maxBatches,
       int maxQueryKeys,
-      int maxQueryCandidates) {
+      int maxQueryCandidates,
+      ReverseLimits reverse) {
+    public Limits(
+        long rows,
+        long candidates,
+        long bytes,
+        int batch,
+        long batches,
+        int keys,
+        int queryCandidates) {
+      this(
+          rows,
+          candidates,
+          bytes,
+          batch,
+          batches,
+          keys,
+          queryCandidates,
+          new ReverseLimits(256, 65536, 256, 4096, 65536, 10000000));
+    }
+
     public Limits {
+      Objects.requireNonNull(reverse);
       new EncodingLookupStaging.Limits(
           maxRows,
           maxCandidates,
@@ -45,6 +67,65 @@ public final class SqliteEncodingLookupIndex {
           maxBatches,
           maxQueryKeys,
           maxQueryCandidates);
+    }
+  }
+
+  /**
+   * EN query work is conservatively charged in 100-instruction units plus one unit per SQL
+   * statement. Exact-admission authority checks have their own bounded metadata closure and are
+   * outside this query-work ceiling. These limits do not assert a whole-operation wall-time bound.
+   */
+  public record ReverseLimits(
+      int maxMatchesPerReference,
+      int maxOriginsPerReference,
+      int maxContentsPerReference,
+      int maxBatchMatches,
+      int maxBatchOrigins,
+      long maxSqlInstructions) {
+    public ReverseLimits {
+      if (maxMatchesPerReference < 1
+          || maxMatchesPerReference > 65536
+          || maxOriginsPerReference < 1
+          || maxContentsPerReference < 1
+          || maxBatchMatches < 1
+          || maxBatchOrigins < 1
+          || maxSqlInstructions < 1000)
+        throw new IllegalArgumentException("Invalid reverse EN bounds");
+    }
+  }
+
+  public record ReverseQuery(String key, int keyBytes) {
+    public ReverseQuery {
+      if ((keyBytes != 9 && keyBytes != 16)
+          || key == null
+          || !key.matches("[0-9a-f]{" + (keyBytes * 2) + "}"))
+        throw new IllegalArgumentException("Exact full EKey or nine-byte prefix required");
+    }
+
+    public static ReverseQuery exact(String key) {
+      return new ReverseQuery(key, 16);
+    }
+
+    public static ReverseQuery prefix9(String key) {
+      return new ReverseQuery(key, 9);
+    }
+  }
+
+  public record Origin(String contentKey, long decodedBytes, int candidateOrdinal) {}
+
+  public record EncodingMatch(
+      String encodingKey,
+      OptionalLong encodedBytes,
+      OptionalLong specificationOrdinal,
+      List<Origin> origins) {
+    public EncodingMatch {
+      origins = List.copyOf(origins);
+    }
+  }
+
+  public record ReverseResult(ReverseQuery query, List<EncodingMatch> matches) {
+    public ReverseResult {
+      matches = List.copyOf(matches);
     }
   }
 
@@ -241,6 +322,37 @@ public final class SqliteEncodingLookupIndex {
       admissions.validateCurrentAuthority(facts, token);
       index.requireSource(identity, sourceProof, token);
       return result;
+    }
+
+    public synchronized List<ReverseResult> reverseBatch(
+        List<ReverseQuery> queries, CancellationToken token) {
+      if (closed) throw new IllegalStateException("EN lookup session is closed");
+      Objects.requireNonNull(token);
+      queries = List.copyOf(queries);
+      if (queries.size() > limits.maxQueryKeys())
+        throw new EncodingLookupException(
+            EncodingLookupException.Code.LIMIT, "Reverse reference batch bound exceeded");
+      token.throwIfCancellationRequested();
+      return index.reverseBatch(
+          identity, queries, limits.reverse(), c -> validateInTransaction(c, token), token);
+    }
+
+    public List<EncodingMatch> reverseExact(String key, CancellationToken token) {
+      return reverseBatch(List.of(ReverseQuery.exact(key)), token).getFirst().matches();
+    }
+
+    public List<EncodingMatch> reversePrefix9(String prefix, CancellationToken token) {
+      return reverseBatch(List.of(ReverseQuery.prefix9(prefix)), token).getFirst().matches();
+    }
+
+    /** Caller owns transaction and must keep this Session open through its final commit. */
+    public synchronized void validateInTransaction(Connection connection, CancellationToken token) {
+      if (closed) throw new IllegalStateException("EN lookup session is closed");
+      Objects.requireNonNull(connection);
+      Objects.requireNonNull(token);
+      token.throwIfCancellationRequested();
+      admissions.validateInTransaction(connection, facts, token);
+      index.requireSourceInTransaction(connection, identity, sourceProof, token);
     }
 
     public String artifactId() {

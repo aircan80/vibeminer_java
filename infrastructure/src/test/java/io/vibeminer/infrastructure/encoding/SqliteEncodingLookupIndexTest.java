@@ -63,11 +63,14 @@ class SqliteEncodingLookupIndexTest {
     final SqliteEncodingLookupIndex index;
 
     Fixture(boolean badDecodedKey, boolean commit) throws Exception {
+      this(badDecodedKey, commit, EncodingLookupStagingTest.fixture());
+    }
+
+    Fixture(boolean badDecodedKey, boolean commit, byte[] en) throws Exception {
       try (var c = sql.connect()) {
         BuildMetadataAdmissionSql.migrate(c);
         EncodingLookupSchema.migrate(c);
       }
-      var en = EncodingLookupStagingTest.fixture();
       var encoded = blte(en);
       String ek = hash("MD5", Arrays.copyOf(encoded, 36)),
           ck = badDecodedKey ? "b".repeat(32) : hash("MD5", en);
@@ -322,6 +325,287 @@ class SqliteEncodingLookupIndexTest {
         assertEquals(1, reads.get());
       }
     }
+  }
+
+  @Test
+  void reverseBatchPreservesOrderDuplicatesUnknownSizesAndOrphanPrefixCollision() throws Exception {
+    try (var f = new Fixture(false, true, reverseFixture());
+        var s = f.open()) {
+      var exact = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(10));
+      var unknown = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(11));
+      var orphan = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(12));
+      var prefix =
+          SqliteEncodingLookupIndex.ReverseQuery.prefix9(
+              EncodingLookupStagingTest.key(10).substring(0, 18));
+      var results = s.reverseBatch(List.of(exact, unknown, orphan, prefix, exact), NONE);
+      assertEquals(
+          List.of(exact, unknown, orphan, prefix, exact),
+          results.stream().map(SqliteEncodingLookupIndex.ReverseResult::query).toList());
+      assertEquals(3, results.get(0).matches().getFirst().origins().size());
+      assertEquals(
+          List.of(0, 1, 0),
+          results.get(0).matches().getFirst().origins().stream()
+              .map(SqliteEncodingLookupIndex.Origin::candidateOrdinal)
+              .toList());
+      assertTrue(results.get(1).matches().getFirst().encodedBytes().isEmpty());
+      assertEquals(1, results.get(1).matches().getFirst().origins().size());
+      assertEquals(200, results.get(2).matches().getFirst().encodedBytes().orElseThrow());
+      assertTrue(results.get(2).matches().getFirst().origins().isEmpty());
+      assertEquals(2, results.get(3).matches().size());
+      assertTrue(results.get(3).matches().get(1).origins().isEmpty());
+      assertEquals(results.get(0).matches(), results.get(4).matches());
+      assertTrue(s.reverseExact(EncodingLookupStagingTest.key(99), NONE).isEmpty());
+    }
+  }
+
+  @Test
+  void reverseLimitsRefuseWholeBatchInsteadOfReturningPartialFacts() throws Exception {
+    try (var f = new Fixture(false, true, reverseFixture())) {
+      var bounds =
+          new SqliteEncodingLookupIndex.Limits(
+              10000,
+              10000,
+              10000000,
+              2,
+              10000,
+              10,
+              100,
+              new SqliteEncodingLookupIndex.ReverseLimits(1, 2, 2, 10, 3, 100000));
+      try (var s =
+          f.index.open(
+              f.facts.reference(), "enUS", f.facts.scopeRevision(), budgets(), bounds, NONE)) {
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(
+                    EncodingLookupException.class,
+                    () ->
+                        s.reversePrefix9(EncodingLookupStagingTest.key(10).substring(0, 18), NONE))
+                .code());
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(
+                    EncodingLookupException.class,
+                    () -> s.reverseExact(EncodingLookupStagingTest.key(10), NONE))
+                .code());
+        var q = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(11));
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(
+                    EncodingLookupException.class, () -> s.reverseBatch(List.of(q, q, q, q), NONE))
+                .code());
+      }
+    }
+  }
+
+  @Test
+  void sessionSameTransactionValidationDoesNotCommitAndClosedSessionRejects() throws Exception {
+    try (var f = new Fixture(false, true)) {
+      var s = f.open();
+      try (var c = f.sql.connect()) {
+        c.setAutoCommit(false);
+        s.validateInTransaction(c, NONE);
+        try (var q = c.createStatement()) {
+          q.execute("CREATE TABLE probe_rollback(value INTEGER)");
+        }
+        c.rollback();
+        try (var q = c.createStatement()) {
+          assertThrows(
+              java.sql.SQLException.class, () -> q.executeQuery("SELECT * FROM probe_rollback"));
+        }
+      }
+      s.close();
+      try (var c = f.sql.connect()) {
+        c.setAutoCommit(false);
+        assertThrows(IllegalStateException.class, () -> s.validateInTransaction(c, NONE));
+        c.rollback();
+      }
+      assertThrows(
+          IllegalStateException.class,
+          () -> s.reverseExact(EncodingLookupStagingTest.key(10), NONE));
+    }
+  }
+
+  @Test
+  void reverseSqlWorkBudgetAndCancellationFailWithoutPoisoningNextQuery() throws Exception {
+    try (var f = new Fixture(false, true, reverseFixture())) {
+      var bounds =
+          new SqliteEncodingLookupIndex.Limits(
+              10000,
+              10000,
+              10000000,
+              2,
+              10000,
+              10,
+              100,
+              new SqliteEncodingLookupIndex.ReverseLimits(256, 65536, 256, 4096, 65536, 1000));
+      try (var session =
+          f.index.open(
+              f.facts.reference(), "enUS", f.facts.scopeRevision(), budgets(), bounds, NONE)) {
+        var q = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(10));
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(
+                    EncodingLookupException.class,
+                    () -> session.reverseBatch(java.util.Collections.nCopies(10, q), NONE))
+                .code());
+      }
+      try (var session = f.open()) {
+        var checks = new java.util.concurrent.atomic.AtomicInteger();
+        assertThrows(
+            java.util.concurrent.CancellationException.class,
+            () ->
+                session.reverseExact(
+                    EncodingLookupStagingTest.key(10), () -> checks.incrementAndGet() > 8));
+        assertEquals(
+            3,
+            session
+                .reverseExact(EncodingLookupStagingTest.key(10), NONE)
+                .getFirst()
+                .origins()
+                .size());
+      }
+    }
+  }
+
+  @Test
+  void callerTransactionSeesItsOwnRevokedCanonicalAuthorityAndCanRollback() throws Exception {
+    try (var f = new Fixture(false, true);
+        var session = f.open();
+        var c = f.sql.connect()) {
+      c.setAutoCommit(false);
+      session.validateInTransaction(c, NONE);
+      var en =
+          f.facts.metadata().stream()
+              .filter(x -> x.role() == BuildMetadataAdmission.Role.ENCODING)
+              .findFirst()
+              .orElseThrow();
+      try (var q =
+          c.prepareStatement(
+              "UPDATE canonical_content_slots SET status='RECOVERY' WHERE token=?")) {
+        q.setString(1, en.canonicalReservationToken().toString());
+        q.executeUpdate();
+      }
+      assertThrows(RuntimeException.class, () -> session.validateInTransaction(c, NONE));
+      c.rollback();
+      session.validateInTransaction(c, NONE);
+      c.rollback();
+    }
+  }
+
+  @Test
+  void reverseDistinctContentAndReferenceCapsAreIndependent() throws Exception {
+    try (var f = new Fixture(false, true, reverseFixture())) {
+      var bounds =
+          new SqliteEncodingLookupIndex.Limits(
+              10000,
+              10000,
+              10000000,
+              2,
+              10000,
+              2,
+              100,
+              new SqliteEncodingLookupIndex.ReverseLimits(10, 100, 1, 100, 100, 100000));
+      try (var session =
+          f.index.open(
+              f.facts.reference(), "enUS", f.facts.scopeRevision(), budgets(), bounds, NONE)) {
+        var q = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(10));
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(EncodingLookupException.class, () -> session.reverseExact(q.key(), NONE))
+                .code());
+        assertEquals(
+            EncodingLookupException.Code.LIMIT,
+            assertThrows(
+                    EncodingLookupException.class,
+                    () -> session.reverseBatch(List.of(q, q, q), NONE))
+                .code());
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> SqliteEncodingLookupIndex.ReverseQuery.prefix9(q.key()));
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                SqliteEncodingLookupIndex.ReverseQuery.exact(
+                    q.key().toUpperCase(java.util.Locale.ROOT).replace('A', 'G')));
+      }
+    }
+  }
+
+  @Test
+  void ordinaryFanoutPageCompletesUnderExplicitQueryWorkBudget() throws Exception {
+    var b = new ByteArrayOutputStream();
+    var o = new DataOutputStream(b);
+    o.writeBytes("EN");
+    o.writeByte(1);
+    o.writeByte(16);
+    o.writeByte(16);
+    o.writeShort(1);
+    o.writeShort(1);
+    o.writeInt(64);
+    o.writeInt(1);
+    o.writeByte(0);
+    o.writeInt(2);
+    o.writeByte('n');
+    o.writeByte(0);
+    byte[][] records = new byte[64][];
+    for (int n = 0; n < 64; n++) records[n] = EncodingLookupStagingTest.cp(n + 1, n, 10);
+    EncodingLookupStagingTest.pages(o, records, false);
+    EncodingLookupStagingTest.pages(o, new byte[][] {EncodingLookupStagingTest.ep(10, 100)}, true);
+    try (var f = new Fixture(false, true, b.toByteArray())) {
+      var bounds =
+          new SqliteEncodingLookupIndex.Limits(
+              10000,
+              10000,
+              10000000,
+              2,
+              10000,
+              10,
+              100,
+              new SqliteEncodingLookupIndex.ReverseLimits(256, 65536, 256, 4096, 65536, 100000));
+      try (var session =
+          f.index.open(
+              f.facts.reference(), "enUS", f.facts.scopeRevision(), budgets(), bounds, NONE)) {
+        var query = SqliteEncodingLookupIndex.ReverseQuery.exact(EncodingLookupStagingTest.key(10));
+        var page = session.reverseBatch(java.util.Collections.nCopies(10, query), NONE);
+        assertEquals(10, page.size());
+        assertTrue(
+            page.stream()
+                .allMatch(
+                    x -> x.matches().size() == 1 && x.matches().getFirst().origins().size() == 64));
+      }
+    }
+  }
+
+  static byte[] reverseFixture() throws Exception {
+    var b = new ByteArrayOutputStream();
+    var o = new DataOutputStream(b);
+    o.writeBytes("EN");
+    o.writeByte(1);
+    o.writeByte(16);
+    o.writeByte(16);
+    o.writeShort(1);
+    o.writeShort(1);
+    o.writeInt(2);
+    o.writeInt(3);
+    o.writeByte(0);
+    o.writeInt(2);
+    o.writeByte('n');
+    o.writeByte(0);
+    EncodingLookupStagingTest.pages(
+        o,
+        new byte[][] {
+          EncodingLookupStagingTest.cp(1, 5, 10, 10, 11), EncodingLookupStagingTest.cp(2, 6, 10)
+        },
+        false);
+    var extra = EncodingLookupStagingTest.ep(10, 150);
+    extra[15] = 1;
+    EncodingLookupStagingTest.pages(
+        o,
+        new byte[][] {
+          EncodingLookupStagingTest.ep(10, 100), extra, EncodingLookupStagingTest.ep(12, 200)
+        },
+        true);
+    return b.toByteArray();
   }
 
   static byte[] utf(String s) {

@@ -38,6 +38,9 @@ public final class EncodingLookupSchema {
           "CREATE INDEX IF NOT EXISTS en_lookup_reverse ON"
               + " en_lookup_candidates(artifact,generation,ekey)");
       s.execute(
+          "CREATE INDEX IF NOT EXISTS en_lookup_reverse_origins ON"
+              + " en_lookup_candidates(artifact,generation,ekey,ckey,ordinal)");
+      s.execute(
           "CREATE TABLE IF NOT EXISTS en_lookup_encoding(artifact TEXT NOT NULL,generation TEXT NOT"
               + " NULL,ekey TEXT NOT NULL CHECK(length(ekey)=32),encoded_bytes INTEGER NOT NULL"
               + " CHECK(encoded_bytes BETWEEN 0 AND 1099511627775),spec_ordinal INTEGER NOT NULL"
@@ -64,12 +67,16 @@ public final class EncodingLookupSchema {
                   + ".generation AND status='READY')"
                   + (action.equals("UPDATE")
                       ? " OR EXISTS(SELECT 1 FROM en_lookup_artifacts WHERE artifact=NEW.artifact"
-                            + " AND generation=NEW.generation AND status='READY')"
+                          + " AND generation=NEW.generation AND status='READY')"
                       : "")
                   + " BEGIN SELECT RAISE(ABORT,'Immutable ready EN"
                   + " facts'); END");
         }
       }
+      s.execute(
+          "CREATE TRIGGER IF NOT EXISTS en_lookup_ready_no_delete BEFORE DELETE ON"
+              + " en_lookup_artifacts WHEN OLD.status='READY' BEGIN SELECT RAISE(ABORT,'Immutable"
+              + " ready EN generation'); END");
       s.execute(
           "CREATE TRIGGER IF NOT EXISTS en_lookup_ready_immutable BEFORE UPDATE ON"
               + " en_lookup_artifacts WHEN OLD.status='READY' BEGIN SELECT RAISE(ABORT,'Immutable"

@@ -244,6 +244,164 @@ final class EncodingLookupStaging {
     }
   }
 
+  List<SqliteEncodingLookupIndex.ReverseResult> reverseBatch(
+      Generation g,
+      List<SqliteEncodingLookupIndex.ReverseQuery> queries,
+      SqliteEncodingLookupIndex.ReverseLimits limits,
+      java.util.function.Consumer<Connection> authority,
+      CancellationToken token) {
+    boolean[] exhausted = {false};
+    long[] instructions = {0};
+    try (var c = catalog.connect()) {
+      c.setAutoCommit(false);
+      authority.accept(c);
+      Runnable admitStatement =
+          () -> {
+            instructions[0] += 100;
+            if (instructions[0] > limits.maxSqlInstructions())
+              throw limit("Reverse SQL instruction bound exceeded");
+          };
+      org.sqlite.ProgressHandler.setHandler(
+          c,
+          100,
+          new org.sqlite.ProgressHandler() {
+            protected int progress() {
+              instructions[0] += 100;
+              if (instructions[0] > limits.maxSqlInstructions()) {
+                exhausted[0] = true;
+                return 1;
+              }
+              return token.isCancellationRequested() ? 1 : 0;
+            }
+          });
+      try {
+        var result = new ArrayList<SqliteEncodingLookupIndex.ReverseResult>();
+        long batchOrigins = 0, batchMatches = 0;
+        for (var query : queries) {
+          token.throwIfCancellationRequested();
+          String low = query.keyBytes() == 16 ? query.key() : query.key() + "0".repeat(14);
+          String high = query.keyBytes() == 16 ? query.key() : query.key() + "f".repeat(14);
+          var keys = new TreeSet<String>();
+          for (var table : List.of("en_lookup_encoding", "en_lookup_candidates")) {
+            try (var q =
+                c.prepareStatement(
+                    "SELECT DISTINCT ekey FROM "
+                        + table
+                        + " WHERE artifact=? AND generation=? AND ekey BETWEEN ? AND ? ORDER BY"
+                        + " ekey LIMIT ?")) {
+              bind(q, g);
+              q.setString(3, low);
+              q.setString(4, high);
+              q.setInt(5, limits.maxMatchesPerReference() + 1);
+              admitStatement.run();
+              try (var r = q.executeQuery()) {
+                while (r.next()) {
+                  token.throwIfCancellationRequested();
+                  keys.add(r.getString(1));
+                  if (keys.size() > limits.maxMatchesPerReference())
+                    throw limit("Reverse matching key bound exceeded");
+                }
+              }
+            }
+          }
+          if (keys.size() > limits.maxBatchMatches() - batchMatches)
+            throw limit("Reverse batch key bound exceeded");
+          batchMatches += keys.size();
+          var matches = new ArrayList<SqliteEncodingLookupIndex.EncodingMatch>();
+          var contents = new HashSet<String>();
+          int referenceOrigins = 0;
+          for (var key : keys) {
+            token.throwIfCancellationRequested();
+            OptionalLong size = OptionalLong.empty(), spec = OptionalLong.empty();
+            try (var q =
+                c.prepareStatement(
+                    "SELECT encoded_bytes,spec_ordinal FROM en_lookup_encoding WHERE artifact=? AND"
+                        + " generation=? AND ekey=?")) {
+              bind(q, g);
+              q.setString(3, key);
+              admitStatement.run();
+              try (var r = q.executeQuery()) {
+                if (r.next()) {
+                  size = OptionalLong.of(r.getLong(1));
+                  spec = OptionalLong.of(r.getLong(2));
+                }
+              }
+            }
+            var origins = new ArrayList<SqliteEncodingLookupIndex.Origin>();
+            try (var q =
+                c.prepareStatement(
+                    "SELECT a.ckey,b.decoded_bytes,a.ordinal FROM en_lookup_candidates a JOIN"
+                        + " en_lookup_content b ON a.artifact=b.artifact AND"
+                        + " a.generation=b.generation AND a.ckey=b.ckey WHERE a.artifact=? AND"
+                        + " a.generation=? AND a.ekey=? ORDER BY a.ckey,a.ordinal LIMIT ?")) {
+              bind(q, g);
+              q.setString(3, key);
+              q.setLong(4, (long) limits.maxOriginsPerReference() - referenceOrigins + 1);
+              admitStatement.run();
+              try (var r = q.executeQuery()) {
+                while (r.next()) {
+                  token.throwIfCancellationRequested();
+                  if (referenceOrigins >= limits.maxOriginsPerReference()
+                      || batchOrigins >= limits.maxBatchOrigins())
+                    throw limit("Reverse origin bound exceeded");
+                  String ck = r.getString(1);
+                  contents.add(ck);
+                  if (contents.size() > limits.maxContentsPerReference())
+                    throw limit("Reverse distinct content bound exceeded");
+                  origins.add(new SqliteEncodingLookupIndex.Origin(ck, r.getLong(2), r.getInt(3)));
+                  referenceOrigins++;
+                  batchOrigins++;
+                }
+              }
+            }
+            matches.add(new SqliteEncodingLookupIndex.EncodingMatch(key, size, spec, origins));
+          }
+          result.add(new SqliteEncodingLookupIndex.ReverseResult(query, matches));
+        }
+        token.throwIfCancellationRequested();
+        org.sqlite.ProgressHandler.clearHandler(c);
+        authority.accept(c);
+        token.throwIfCancellationRequested();
+        c.commit();
+        return List.copyOf(result);
+      } finally {
+        org.sqlite.ProgressHandler.clearHandler(c);
+      }
+    } catch (SQLException failed) {
+      token.throwIfCancellationRequested();
+      if (exhausted[0]) throw limit("Reverse SQL instruction bound exceeded");
+      throw new IllegalStateException("Cannot query reverse EN facts", failed);
+    } catch (RuntimeException failed) {
+      token.throwIfCancellationRequested();
+      if (exhausted[0]) throw limit("Reverse SQL instruction bound exceeded");
+      throw failed;
+    }
+  }
+
+  private static EncodingLookupException limit(String message) {
+    return new EncodingLookupException(EncodingLookupException.Code.LIMIT, message);
+  }
+
+  void requireSourceInTransaction(
+      Connection c, Generation generation, byte[] expectedProof, CancellationToken token) {
+    token.throwIfCancellationRequested();
+    try {
+      if (c.getAutoCommit()) throw new IllegalArgumentException("Caller transaction required");
+      try (var q =
+          c.prepareStatement(
+              "SELECT source_proof FROM en_lookup_artifacts WHERE artifact=? AND generation=? AND"
+                  + " status='READY'")) {
+        bind(q, generation);
+        try (var r = q.executeQuery()) {
+          if (!r.next() || !Arrays.equals(expectedProof, r.getBytes(1)))
+            throw new IllegalStateException("EN generation/source proof is stale");
+        }
+      }
+    } catch (SQLException failed) {
+      throw new IllegalStateException("Cannot validate EN generation", failed);
+    }
+  }
+
   Optional<Generation> findReady(String artifact, byte[] expectedProof, CancellationToken token) {
     token.throwIfCancellationRequested();
     try (var c = catalog.connect();

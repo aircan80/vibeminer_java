@@ -310,6 +310,76 @@ class EncodingLookupStagingTest {
     assertTrue(index.lookup(g, List.of(key(99)), LIMITS, NONE).getFirst().decodedBytes().isEmpty());
   }
 
+  @Test
+  void emptyReadyParentCannotBeDeleted() throws Exception {
+    var bytes = new ByteArrayOutputStream();
+    var o = new DataOutputStream(bytes);
+    o.writeBytes("EN");
+    o.writeByte(1);
+    o.writeByte(16);
+    o.writeByte(16);
+    o.writeShort(1);
+    o.writeShort(1);
+    o.writeInt(0);
+    o.writeInt(0);
+    o.writeByte(0);
+    o.writeInt(0);
+    var g =
+        index.build(
+            "empty",
+            new byte[] {1},
+            "owner",
+            new ByteArrayInputStream(bytes.toByteArray()),
+            PARSER,
+            LIMITS,
+            () -> {},
+            NONE);
+    try (var c = catalog.connect();
+        var q = c.createStatement()) {
+      assertThrows(
+          java.sql.SQLException.class,
+          () -> q.execute("DELETE FROM en_lookup_artifacts WHERE artifact='empty'"));
+    }
+    assertEquals(g, index.findReady("empty", new byte[] {1}, NONE).orElseThrow());
+  }
+
+  @Test
+  void reverseOriginsUseCoveringOrderInsteadOfTemporarySort() throws Exception {
+    var g =
+        index.build(
+            "a",
+            new byte[] {1},
+            "owner",
+            new ByteArrayInputStream(fixture()),
+            PARSER,
+            LIMITS,
+            () -> {},
+            NONE);
+    try (var c = catalog.connect();
+        var q =
+            c.prepareStatement(
+                "EXPLAIN QUERY PLAN SELECT a.ckey,b.decoded_bytes,a.ordinal FROM"
+                    + " en_lookup_candidates a JOIN en_lookup_content b ON a.artifact=b.artifact"
+                    + " AND a.generation=b.generation AND a.ckey=b.ckey WHERE a.artifact=? AND"
+                    + " a.generation=? AND a.ekey=? ORDER BY a.ckey,a.ordinal LIMIT ?")) {
+      q.setString(1, g.artifact());
+      q.setString(2, g.generation());
+      q.setString(3, key(10));
+      q.setInt(4, 128);
+      var details = new ArrayList<String>();
+      try (var r = q.executeQuery()) {
+        while (r.next()) details.add(r.getString("detail"));
+      }
+      assertTrue(
+          details.stream().anyMatch(x -> x.contains("COVERING INDEX en_lookup_reverse_origins")),
+          details.toString());
+      assertTrue(
+          details.stream()
+              .noneMatch(x -> x.toUpperCase(java.util.Locale.ROOT).contains("TEMP B-TREE")),
+          details.toString());
+    }
+  }
+
   long count(String table) throws Exception {
     try (var c = catalog.connect();
         var s = c.createStatement();
