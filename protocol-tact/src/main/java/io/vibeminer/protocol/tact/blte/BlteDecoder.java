@@ -72,7 +72,7 @@ public final class BlteDecoder {
         return output;
     }
 
-    private static void decodeBlock(byte[] source,int start,int size,byte[] target,int offset,int expected,
+    static void decodeBlock(byte[] source,int start,int size,byte[] target,int offset,int expected,
                                     BooleanSupplier cancelled) throws BlteException {
         int mode=source[start]&255;
         if(mode=='N') {
@@ -105,7 +105,7 @@ public final class BlteDecoder {
     private static void validateHash(byte[] hash) {
         if(hash!=null && hash.length!=16) throw new IllegalArgumentException("BLTE MD5 must contain 16 bytes");
     }
-    private static void verifyHash(byte[] data,int start,int size,byte[] expected,BooleanSupplier cancelled) throws BlteException {
+    static void verifyHash(byte[] data,int start,int size,byte[] expected,BooleanSupplier cancelled) throws BlteException {
         verifyHash(data,start,size,expected,0,cancelled);
     }
     private static void verifyHash(byte[] data,int start,int size,byte[] expected,int expectedOffset,BooleanSupplier cancelled) throws BlteException {
