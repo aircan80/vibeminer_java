@@ -91,3 +91,14 @@ Missing local content, corrupt bytes, unsupported variants, unavailable CDN obje
 
 
 The final synthetic [explicit-cost view](design/javafx-install-plan-1280x800.png) and [offline entries at 200%](design/javafx-install-offline-200pct-1280x800.png) passed matching-size Atlas review. The versioned two-JVM harness uses real application policy, SQLite and CAS with deterministic synthetic transport, checks source details, cancellation, unavailable data, context switches, filter focus, Enter/Escape details, offline restart with zero transport calls and rejection of corrupted retained bytes. Final row sizing and error wording were recaptured. This covers the install-list slice; full accessibility and other native-platform interaction testing remain separate.
+
+
+### Planned FileDataID lookup (#16)
+
+Add Find file within the exact-build Archive workspace. Start with one validated unsigned FileDataID and optional attributed name metadata; do not imply a filename catalog, asset previews or item search. Preserve exact build/locale context and all observed locale/content variants. An unnamed match remains identifiable by its ID. Choosing a variant never starts a payload download.
+
+Use explicit progressive decisions: check bounded lookup requirements; review and acquire the planned metadata; inspect variants; then separately plan and download the selected file. Group technical page/chunk requests within a disclosed operation budget rather than asking users about each protocol request. Show maximum wire transfer, logical decoded size and measured additional/reused bytes separately. Unknown is not zero. Changed source, ID, variant or plan invalidates stale consent and completions; no network starts on launch, typing or row selection.
+
+Incomplete lookup says the ID has not been ruled out; partial variants are matches found so far. Only complete verified searched scope supports a scope-qualified no-match statement. Metadata/chunk proof, retained encoded content and complete decoded content remain distinct. Encrypted, unsupported, unavailable, missing local and failed-integrity outcomes retain their exact evidence and clear invalid ready claims. Offline reopen performs zero network calls.
+
+At 1280×800, keep the current scope, cost and primary action reviewable together. At 200%, preserve exact context and normal scrolling to variants and full copyable details. Return in the ID field triggers only the visible check action and never bypasses cost review. Enter opens variant details; Escape returns to the table. Background completion does not steal focus. Implement this in separate metadata-resolution and selected-file acquisition slices, each with native keyboard, error, partial, multi-variant and offline/corruption fixtures before acceptance. This section is a design contract, not delivered functionality.
