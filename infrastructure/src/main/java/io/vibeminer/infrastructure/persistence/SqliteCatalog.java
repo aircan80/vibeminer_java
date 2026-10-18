@@ -14,7 +14,7 @@ import static io.vibeminer.application.catalog.CatalogException.Code.*;
 
 /** Single schema/migration owner and connection factory for app-owned metadata and object references. */
 public final class SqliteCatalog {
-    public static final int SCHEMA_VERSION = 12;
+    public static final int SCHEMA_VERSION = 13;
     private final Path database;
 
     public SqliteCatalog(Path database) { this.database = database.toAbsolutePath().normalize(); }
@@ -68,6 +68,7 @@ public final class SqliteCatalog {
                 io.vibeminer.infrastructure.content.MetadataAssociationSchema.migrate(connection);
                 io.vibeminer.infrastructure.content.MetadataRepairAuditSchema.migrate(connection);
                 io.vibeminer.infrastructure.item.SparseNameSchema.migrate(connection);
+                io.vibeminer.infrastructure.discoveryhistory.DiscoveryHistorySchema.migrate(connection);
                 statement.execute("PRAGMA user_version=" + SCHEMA_VERSION);
                 statement.execute("COMMIT");
             } catch (SQLException | RuntimeException failure) {
@@ -86,31 +87,121 @@ public final class SqliteCatalog {
     /** Caller owns the surrounding transaction; the first observation remains immutable. */
     public BuildSnapshot ensureSnapshot(Connection connection, BuildSnapshot build) throws SQLException {
         if (connection.getAutoCommit()) throw new IllegalStateException("Snapshot registration requires a transaction");
-        int inserted;
-        try (var statement = connection.prepareStatement("INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
-            statement.setString(1, build.snapshotId()); statement.setString(2, build.productId());
-            statement.setString(3, build.editionLabel()); statement.setString(4, build.channel());
-            statement.setString(5, build.region()); statement.setString(6, build.versionLabel());
-            statement.setString(7, build.buildConfig()); statement.setString(8, build.cdnConfig());
-            statement.setString(9, build.observedAt().toString()); statement.setInt(10, build.fixture() ? 1 : 0);
-            statement.setString(11, build.evidence().upstreamBuildId()); statement.setString(12, build.evidence().productConfig());
-            statement.setInt(13, build.evidence().documents().size()); inserted = statement.executeUpdate();
-        }
-        if (inserted == 1) {
-            int position = 0;
-            for (var source : build.evidence().documents()) {
-                try (var statement = connection.prepareStatement("INSERT OR IGNORE INTO source_blobs VALUES(?,?)")) {
-                    statement.setString(1, source.sha256()); statement.setBytes(2, source.bytes()); statement.executeUpdate();
-                }
-                try (var statement = connection.prepareStatement("INSERT INTO snapshot_sources VALUES(?,?,?,?,?)")) {
-                    statement.setString(1, build.snapshotId()); statement.setInt(2, position++);
-                    statement.setString(3, source.sha256()); statement.setString(4, source.sourceUrl());
-                    statement.setString(5, source.capturedAt().toString()); statement.executeUpdate();
-                }
-            }
-        }
+        insertSnapshot(connection, build, false);
         return readSnapshot(connection, build.snapshotId()).orElseThrow(() -> new CatalogException(CORRUPT_METADATA, "Registered snapshot could not be read"));
     }
+
+  /**
+   * Register identity and first source references without hydrating canonical source bodies. Caller
+   * must validate/register every incoming document blob in this SAME transaction first. This checks
+   * identity/reference shape, not source availability or content readiness.
+   */
+  public void ensureSnapshotIdentity(Connection connection, BuildSnapshot build)
+      throws SQLException {
+    if (connection.getAutoCommit())
+      throw new IllegalStateException("Snapshot registration requires a transaction");
+    insertSnapshot(connection, build, true);
+    requireSnapshotIdentity(connection, build);
+  }
+
+  /** Validate canonical identity columns without substituting first-observation documents. */
+  public void requireSnapshotIdentity(Connection connection, BuildSnapshot expected)
+      throws SQLException {
+    try (var query = connection.prepareStatement("SELECT * FROM snapshots WHERE id=?")) {
+      query.setString(1, expected.snapshotId());
+      try (var row = query.executeQuery()) {
+        if (!row.next())
+          throw new CatalogException(CORRUPT_METADATA, "History snapshot reference is missing");
+        try {
+          var identity =
+              new BuildSnapshot(
+                  row.getString("product_id"),
+                  row.getString("edition_label"),
+                  row.getString("channel"),
+                  row.getString("region"),
+                  row.getString("version_label"),
+                  row.getString("build_config"),
+                  row.getString("cdn_config"),
+                  Instant.parse(row.getString("observed_at")),
+                  row.getInt("fixture") != 0,
+                  new BuildEvidence(
+                      row.getString("upstream_build_id"),
+                      row.getString("product_config"),
+                      java.util.List.of()));
+          if (!identity.snapshotId().equals(expected.snapshotId()))
+            throw new IllegalArgumentException("Snapshot identity fields disagree");
+          int expectedCount = row.getInt("source_count"), count = 0;
+          if (expectedCount < 0 || expectedCount > 8)
+            throw new IllegalArgumentException("Invalid canonical source count");
+          try (var sources =
+              connection.prepareStatement(
+                  "SELECT s.position,length(b.bytes) FROM snapshot_sources s LEFT JOIN source_blobs"
+                      + " b ON b.digest=s.digest WHERE s.snapshot_id=? ORDER BY s.position")) {
+            sources.setString(1, expected.snapshotId());
+            try (var refs = sources.executeQuery()) {
+              while (refs.next()) {
+                if (refs.getInt(1) != count++
+                    || refs.getObject(2) == null
+                    || refs.getLong(2) > 1048576)
+                  throw new IllegalArgumentException("Canonical source membership is incomplete");
+              }
+            }
+          }
+          if (count != expectedCount)
+            throw new IllegalArgumentException("Canonical source count differs");
+        } catch (RuntimeException invalid) {
+          throw new CatalogException(
+              CORRUPT_METADATA, "Saved snapshot identity failed integrity checks", invalid);
+        }
+      }
+    }
+  }
+
+  private void insertSnapshot(
+      Connection connection, BuildSnapshot build, boolean bodiesAlreadyRegistered)
+      throws SQLException {
+    int inserted;
+    try (var statement =
+        connection.prepareStatement(
+            "INSERT OR IGNORE INTO snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")) {
+      statement.setString(1, build.snapshotId());
+      statement.setString(2, build.productId());
+      statement.setString(3, build.editionLabel());
+      statement.setString(4, build.channel());
+      statement.setString(5, build.region());
+      statement.setString(6, build.versionLabel());
+      statement.setString(7, build.buildConfig());
+      statement.setString(8, build.cdnConfig());
+      statement.setString(9, build.observedAt().toString());
+      statement.setInt(10, build.fixture() ? 1 : 0);
+      statement.setString(11, build.evidence().upstreamBuildId());
+      statement.setString(12, build.evidence().productConfig());
+      statement.setInt(13, build.evidence().documents().size());
+      inserted = statement.executeUpdate();
+    }
+    if (inserted == 1) {
+      int position = 0;
+      for (var source : build.evidence().documents()) {
+        if (!bodiesAlreadyRegistered) {
+          try (var statement =
+              connection.prepareStatement("INSERT OR IGNORE INTO source_blobs VALUES(?,?)")) {
+            statement.setString(1, source.sha256());
+            statement.setBytes(2, source.bytes());
+            statement.executeUpdate();
+          }
+        }
+        try (var statement =
+            connection.prepareStatement("INSERT INTO snapshot_sources VALUES(?,?,?,?,?)")) {
+          statement.setString(1, build.snapshotId());
+          statement.setInt(2, position++);
+          statement.setString(3, source.sha256());
+          statement.setString(4, source.sourceUrl());
+          statement.setString(5, source.capturedAt().toString());
+          statement.executeUpdate();
+        }
+      }
+    }
+  }
 
     public Optional<BuildSnapshot> readSnapshot(Connection connection, String snapshotId) throws SQLException {
         try (var query = connection.prepareStatement("SELECT * FROM snapshots WHERE id=?")) {

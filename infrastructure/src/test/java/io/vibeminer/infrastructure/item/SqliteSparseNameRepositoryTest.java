@@ -268,7 +268,7 @@ class SqliteSparseNameRepositoryTest {
       try (var c = f.catalog.connect();
           var q = c.createStatement();
           var r = q.executeQuery("PRAGMA user_version")) {
-        assertEquals(12, r.getInt(1));
+        assertEquals(SqliteCatalog.SCHEMA_VERSION, r.getInt(1));
       }
     }
   }
