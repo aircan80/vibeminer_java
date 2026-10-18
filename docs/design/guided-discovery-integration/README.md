@@ -44,4 +44,15 @@ Each invocation writes eight PNGs named `atlas-guided-STATE-WIDTHxHEIGHT-SCALEpc
 
 ## Evidence status
 
-The harness compiles and the guided startup cleanup passes desktop checks. **The author has not executed this integrated native journey or captured screenshots.** The root reviewer owns the isolated display and will record actual execution, visual comparison with the selected [guided reference](../build-discovery/index.html?concept=guided), scaling limitations and image acceptance. Compilation and unit tests are not native workflow evidence.
+Exact `be03a8e` passed a clean immutable full check: **1,707 Java tests**, Linux packaging, bundled-runtime verification and JavaFX launch. The integrated journey then passed **four native cases, 80 assertions each**, producing eight screenshots per case. Both scene sizes and both application text scales passed. An independent visual review accepted product placement, grouped builds, selection, offline state, exact source identities and readable wrapped explanations. The final layout prevents ordinary edition names and selected inspector text from being vertically truncated at 200%.
+
+| Scene | Application text | Assertions | Result |
+| --- | --- | --- | --- |
+| 1440×1100 | 100% | 80 | PASS |
+| 1440×1100 | 200% | 80 | PASS |
+| 1280×800 | 100% | 80 | PASS |
+| 1280×800 | 200% | 80 | PASS |
+
+The [machine-readable results](results.json) bind the exact source revision and published image checksums. Representative images: [grouped builds](atlas-guided-grouped-1440x1100-100pct.png), [selected inspector](atlas-guided-selected-1440x1100-100pct.png), [offline history](atlas-guided-offline-1440x1100-100pct.png), [source receipts](atlas-guided-source-receipts-1440x1100-100pct.png), [200% product selection](atlas-guided-grouped-1280x800-200pct.png), and [200% inspector](atlas-guided-selected-1280x800-200pct.png). The selected images deliberately scroll to the action area; content above remains available through the outer page scroll.
+
+Every capture visibly identifies authored review data. No scratch SQLite database is published. Open remains disabled because complete metadata opening is not connected in this checkpoint. These results establish the integrated discovery portion, not a mining Home or Download all. Source-dialog attribution/title sizing at 200% remains a minor polish limitation; receipts are readable by scrolling. Hardware input, assistive technology, OS DPI and other native platforms remain separate gates.

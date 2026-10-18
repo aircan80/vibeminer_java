@@ -218,6 +218,18 @@ jobs:
             --isolated-display "$DISPLAY" --output build/ui-review/item-evidence-export'
           build/export-validator/bin/python tools/exports/native_oracle.py \
             build/ui-review/item-evidence-export
+      - name: Check integrated guided discovery at both sizes and text scales
+        if: runner.os == 'Linux'
+        run: |
+          for viewport in 1440x1100 1280x800; do
+            for scale in 100 200; do
+              output="build/ui-review/guided-discovery/${viewport}-${scale}pct"
+              timeout --kill-after=10s 90s xvfb-run -a sh -c 'exec java --enable-native-access=ALL-UNNAMED \
+                -cp "build/ui-tool:bootstrap/build/install/bootstrap/lib/*" CaptureGuidedDiscoveryIntegration \
+                --isolated-display "$DISPLAY" --output "$1" --width "$2" --height "$3" --scale "$4"' \
+                sh "$output" "${viewport%x*}" "${viewport#*x}" "$scale"
+            done
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && runner.os == 'Linux'
         with:

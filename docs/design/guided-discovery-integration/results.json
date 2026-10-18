@@ -1,0 +1,93 @@
+{
+  "sourceRevision": "be03a8eab02e0fa677bed29468c99e8fbae140fb",
+  "fixtureOnly": true,
+  "httpConfigured": false,
+  "casConfigured": false,
+  "cases": [
+    {
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 100,
+      "assertions": 80,
+      "authoredPairedCaptures": 4,
+      "legacyCalls": 0,
+      "screenshots": 8,
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "height": 1100,
+      "applicationTextScalePercent": 200,
+      "assertions": 80,
+      "authoredPairedCaptures": 4,
+      "legacyCalls": 0,
+      "screenshots": 8,
+      "result": "PASS"
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 100,
+      "assertions": 80,
+      "authoredPairedCaptures": 4,
+      "legacyCalls": 0,
+      "screenshots": 8,
+      "result": "PASS"
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "applicationTextScalePercent": 200,
+      "assertions": 80,
+      "authoredPairedCaptures": 4,
+      "legacyCalls": 0,
+      "screenshots": 8,
+      "result": "PASS"
+    }
+  ],
+  "publishedImages": [
+    {
+      "file": "atlas-guided-grouped-1440x1100-100pct.png",
+      "width": 1440,
+      "height": 1100,
+      "sha256": "1ac7ae51719b8d6af5423a09fad6ace9464eafa65831c3d32fe81e6ef94083d8"
+    },
+    {
+      "file": "atlas-guided-selected-1440x1100-100pct.png",
+      "width": 1440,
+      "height": 1100,
+      "sha256": "645c9fca335ac8c6dae3117cb2673a4ff71158e55c1e81850527f1f49ce21510"
+    },
+    {
+      "file": "atlas-guided-offline-1440x1100-100pct.png",
+      "width": 1440,
+      "height": 1100,
+      "sha256": "74dec3911c5fc56e888e392cbafd8ed4d4053b68978d803f2aa1564e8b9dbbdd"
+    },
+    {
+      "file": "atlas-guided-source-receipts-1440x1100-100pct.png",
+      "width": 690,
+      "height": 698,
+      "sha256": "cc3de787a614862b66b75333120e6e75a6ba187c745cc8fffd0841f4e7c549b0"
+    },
+    {
+      "file": "atlas-guided-grouped-1280x800-200pct.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "f046a43e24e4570c764212eea09c09915220b5b5a41235e7cd97c034c76626e9"
+    },
+    {
+      "file": "atlas-guided-selected-1280x800-200pct.png",
+      "width": 1280,
+      "height": 800,
+      "sha256": "ff4d211d7805375dad9df308fe6d718ac9ea9fd35785892ab559a5af7ac465e2"
+    }
+  ],
+  "limits": [
+    "Authored source gateway; no live CDN qualification",
+    "Discovery only: Open is capability-disabled until complete metadata integration",
+    "Settings application text scaling, not OS DPI",
+    "SQLite factory reopened in one JVM; no two-JVM restart claim",
+    "No physical keyboard, IME or assistive-technology qualification"
+  ]
+}
