@@ -18,6 +18,7 @@ Released [alpha.3](https://github.com/aircan80/vibeminer/releases/tag/v0.1.0-alp
 - [WoW formats, schemas and research search](FORMATS.md)
 - [Exact Item cohort, compatibility and proof coverage](ITEM-COHORT.md)
 - [Approved offline physical Item-row projection](ITEM-PROJECTION.md)
+- [Bounded Item name projection and exact-context joins](ITEM-NAMES.md)
 - [Atlas UI specification and screenshot acceptance](UI.md)
 - [Research workflows and state coverage](WORKFLOWS.md)
 - [Test strategy and quality gates](TESTING.md)

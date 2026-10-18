@@ -1,0 +1,66 @@
+# Bounded Item names and exact-context join
+
+**Status: proposed design for [#21](https://github.com/aircan80/vibeminer/issues/21); unimplemented.** The [Item physical projection](ITEM-PROJECTION.md) is the prerequisite. Its #81 user-interface acceptance remains pending; this document establishes no delivered name search, readable whole table or newly acquired content.
+
+## Research outcome and source selection
+
+From two already retained sources, explicitly prepare the admitted ItemSparse physical-name projection and join its names onto the existing bounded Item record-ID pages and exact-ID lookup. The Item index remains the row anchor. No download, repair or preparation follows automatically from opening the screen or querying an ID.
+
+The UI must require an explicit **source pair**: the prepared Item source and the retained ItemSparse source from the same exact build snapshot and requested locale. Show both FileDataIDs, declared CKeys, actual retained EKeys and independent readiness/coverage. A build or locale label alone does not select a source. Missing retained evidence is a local missing outcome, not permission to acquire another source. Source selection and preparation remain cancellable, and an older pair's completion cannot replace the current pair's results.
+
+## Exact admitted cohort and schema
+
+Use the existing [cohort evidence](ITEM-COHORT.md), not a current/latest schema assumption. The initial context is official product `wow`, US, build `12.1.5.70448`, explicit `enUS`. ItemSparse FileDataID is `1572924`, declared CKey `bb0ecbdc2fd4988ddd3c1c5e95c34165`; the previously observed actual EKey is `cab35eb8601260c12a5917c1bdacfda5`. A retained descriptor must independently authenticate the actual representation used. Do not replace its original receipt with another encoding's evidence.
+
+The selected root membership mask `0x202` includes requested enUS bit `0x2` and enGB bit `0x200`. Preserve the exact selected variant and explicit requested locale. US region and raw DB2 locale value `1` do not establish enUS. No other-locale fallback is admitted.
+
+The observed ItemSparse header is WDC5 schema version `5`, table hash `919BE54E`, layout `1C17D17F`, flags `5`, 67 fields and 49 sections. All 67 observed storage descriptors are `NONE`; common and pallet data sizes are zero. The admitted first section declares a zero key, 175,503 physical records and 122 copy declarations; 48 other sections remain excluded. A section-key declaration alone proves neither readability nor unreadability.
+
+The bundled candidate is [WoWDBDefs ItemSparse.dbd](https://github.com/wowdev/WoWDBDefs/blob/b9a63096cdd99b26967f17f9515377ae62cadfd7/definitions/ItemSparse.dbd), immutable revision `b9a63096cdd99b26967f17f9515377ae62cadfd7`, SHA-256 `8664c3b5862dfe4c3a4322941b48b032c57b90412c070deb2028f3e448cf674a`. Preserve WoWDBDefs contributor attribution, CC BY-SA 4.0 licensing and the bundled notice/license. These are attributed community field candidates, not Blizzard-authored semantic guarantees.
+
+After the noninline record ID, the selected definition orders five inline localized strings:
+
+1. `Description_lang`
+2. `Display3_lang`
+3. `Display2_lang`
+4. `Display1_lang`
+5. `Display_lang`
+
+Project only the fifth string as the initial name candidate. Locate it by safely reading all five bounded UTF-8 NUL-terminated strings within the validated physical record slice. Do not skip an assumed fixed byte count or interpret these sparse inline strings as ordinary string-table offsets. An empty fifth string is a valid empty candidate, distinct from a missing row. Trailing numeric fields remain uninspected. Header record size `328` does not supply each variable record's length; the validated sparse map's unsigned 16-bit size does.
+
+## Bounded decoding and publication
+
+The observed encoded source is 7,988,612 bytes; its declared whole decoded length is 62,715,198 bytes. The admitted record area is `[5252, 60166704)`, followed by the ID/copy/map suffix `[60166704, 62624722)`. These are recorded cohort observations, not hardcoded completion counts.
+
+Authenticate the complete retained encoded object and replay its exact original root/EN association locally. Authenticate the required metadata, complete suffix and consumed record chunks before their decoded bytes contribute to a projection. Keep these evidence dimensions separate:
+
+- Complete encoded verification and current local physical SHA-256/length verification.
+- Exact consumed chunk identities, encoded/decoded geometry and admitted decoded windows.
+- Declared CKey association from the selected root/EN evidence.
+- Complete decoded CKey verification, only if independently established.
+
+The 2,458,018-byte suffix (approximately 2.34MiB) can be an explicitly bounded buffer. The 60,161,452-byte record area (approximately 57.37MiB) must be streamed; do not enlarge Item's 4MiB section-buffer contract silently or persist a second decoded table. Decode required chunks in a bounded pass, retaining at most one bounded decoded chunk and a bounded record tail across chunk boundaries. Repeatedly inflating the same chunk once per row is not an acceptable enumeration strategy. Validate absolute sparse coordinates and ID/map-ID coherence; do not repair offsets by accumulating sizes.
+
+Choose explicit limits before production implementation: encoded bytes, header/chunk count and sizes, metadata/suffix bytes, physical records, copy declarations, record-area bytes, per-record bytes, five-string prefix bytes, per-string UTF-8 bytes, aggregate projected text and staging batches. The physical record-size ceiling is 65,535 bytes. Do not truncate names silently to fit a limit. A malformed or over-limit late record must leave no ready partial name index.
+
+Callbacks are provisional until the declared physical projection completes. Use bounded nonready staging and a short atomic ready transition, retaining the CAS read lease through publication. Cancellation discards unpublished staging; a completed atomic publication may win a cancellation race without delivering a ready result to the cancelled caller. Required opaque/unsupported chunks produce a scoped unsupported outcome, with no hidden key lookup or alternate-source fallback.
+
+## Shared artifacts, joins and honest outcomes
+
+Store one independent Sparse physical-name artifact, keyed by its physical source content, exact schema/selection/decoder/index/string-validation revisions, locale, options and admitted coverage. Build memberships reference shared rows. Do not duplicate the existing Item integer rows in every name artifact or hash snapshot observation timestamps into shared derivation identity. Changed interpretation inputs require a distinct artifact.
+
+The contextual join requires separately validated memberships for both artifacts in the same exact snapshot and locale. Join unsigned Item record ID to unsigned Sparse physical record ID. Physical names do not expand copies. Preserve copy target/source declarations as inspectable metadata; do not resolve chains or manufacture a target's values from a source row in this slice.
+
+The Item-based left join distinguishes physical name candidate, empty physical name candidate, known Sparse copy declaration unindexed and no physical Sparse match in the admitted scope. An Item row without an admitted name retains its ID and four integer candidates. Sparse-only rows do not silently become Item rows. Neither side's excluded sections or a scoped nonmatch establish whole-table absence. Do not join the same numeric ID across builds, editions or locales.
+
+Queries must recheck both retained sources and required proof before trusting persisted artifacts. Item readiness does not prove Sparse readiness. Preserve each artifact's historical preparation evidence separately from any new verification observation. Inspectors expose both source/proof chains, candidate attribution and independent counts/coverage. Render names as plain text; they do not authorize markup execution, icon downloads or inferred gameplay availability.
+
+## Delivery and TDD sequence
+
+1. **Pure decoder:** add a narrow Sparse physical-name projector composing the existing schema selector, sparse suffix parser, validated locator and C-string prefix reader. Test exact field ordering/layout/flags, positive unique IDs and map IDs, absolute contiguous bounds, unindexed copies, empty/non-ASCII strings, invalid UTF-8, missing terminators, record/chunk boundaries, late failure and cancellation. Malformed uninspected trailing fields must not be labelled verified.
+2. **Domain and application:** define separate string candidate/name coverage and exact source-pair contracts, then explicit retained-only prepare, bounded pages and exact-ID joined lookup. Test source/locale/snapshot substitutions, unavailable names and copies, invalid limits before I/O, stale handles/cursors, bounded jobs and cancellation. Do not force strings into integer candidate DTOs or introduce a general table framework.
+3. **Source reader and storage:** replay complete encoded and consumed-window proof, stream records with bounded allocations/work, stage one shared name index and atomically publish. Test corruption, required opaque chunks, late rollback, restart with zero HTTP, shared artifacts across independently validated memberships, changed-interpretation separation, lease retirement and absence of duplicate decoded tables or duplicated Item rows.
+4. **Atlas UI:** require the explicit retained source pair and preparation action. Show separate readiness, proof and physical/copy/excluded coverage; retain actionable missing/corrupt/unsupported states. Add joined name inspection without hiding an Item row whose name is unavailable. Verify keyboard navigation, cancellation, stale-pair suppression and 100%/200% scaling against native screenshots after #81 UI acceptance.
+5. **Independent acceptance:** review format semantics, source proof, storage sharing and UI behavior independently. Normal tests use authored IDs/strings and temporary app-owned storage. Existing two-ID diagnostic evidence is corroboration, not general production acceptance. Any later live acceptance needs its own bounded authorization and records proof scope without committing game rows or names.
+
+Free-text name search follows an explicit Unicode normalization/case and indexed-query design after the exact/paged join works. Full tooltips, other Sparse fields, copy expansion, related-table joins, additional locales/builds, comparison, icons and automatic acquisition remain outside this first name slice. This document authorizes no source changes or network work.
