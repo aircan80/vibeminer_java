@@ -9,6 +9,7 @@ These versioned documents are the formal project specifications. A clean checkou
 - [Verified alpha.4 release notes](releases/v0.1.0-alpha.4.md)
 - [Implementation plan and milestones](PLAN.md)
 - [Planned single Item JSON evidence export](ITEM-EVIDENCE-EXPORT.md)
+- [Planned exact discovery observation history](DISCOVERY-HISTORY.md)
 - [Layered architecture and contracts](ARCHITECTURE.md)
 - [CDN discovery and acquisition](CDN.md)
 - [Recorded official metadata evidence](PROTOCOL-EVIDENCE.md)
