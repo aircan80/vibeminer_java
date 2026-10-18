@@ -14,6 +14,16 @@
 - Disclose bounded linear-scan work: page size is not total CPU/proof cost. Existing source replay budgets and integrity aggregate scans (#88) are additional. Measure realistic authored 59,859-Item/175,503-Sparse fixtures and cancellation before UI acceptance; do not promise invented latency or weaken checks.
 - Native authored-data Search→continue→inspect→clear→exact-ID flow passes offline, with keyboard/100%/200%, stale pair/query suppression and regression of current names/repair workflows. No actual game names or live acquisition enters tests.
 
+## First native editor boundary
+
+The domain and backend keep the full strict scalar query contract above. The first JavaFX editor exposes an explicit input subset because standard text controls can silently strip control characters. A two-row plain-text editor preserves LF, tab, spaces, case and normalization verbatim. Enter invokes Search; Shift+Enter inserts LF, with a visible keyboard hint. Exact Item-ID lookup remains a separate control and query mode.
+
+Reject ingress containing CR, NUL, other C0 characters except LF/tab, or DEL **before** JavaFX filtering. Show an inline editor limitation and make no query; do not silently convert CRLF to LF or remove a rejected character. Guard paste, replacement and programmatic restoration paths. A rejected insertion cannot authorize searching an altered value or silently searching the previous draft instead; require a subsequent valid edit or explicit Clear before submission. This is a native-editor limitation, not a restriction or normalization of the domain query value. No escaped-input mode is included in this slice.
+
+Clear retires pending search, clears the text draft, result, cursor and selection, and returns to **Browse mode · no query made** without fetching a page. Browse remains an explicit action. When a draft changes, any retained results are labeled as the previous executed query and the current inspector is cleared. Disable continuation while the draft differs from the executed query; Next always belongs to the accepted query and source-pair generation. Preserve full copyable executed text in details without creating a persisted query ledger.
+
+Native tests must cover preserved LF/tab and spaces-only input, rejected raw CRLF/NUL/C0/DEL with no query or silently transformed submission, malformed UTF-16, Enter versus Shift+Enter, Clear with zero service calls, and draft/result/cursor isolation at 100% and 200% text scale. These tests complement the broader domain scalar oracle and do not reduce its accepted input set.
+
 ## TDD and independent evidence
 
 Strict query/cursor tests; scalar-array predicate oracle including NFC/NFD, non-BMP, combining/ZWJ, punctuation and spaces; real SQLite corruption of nonmatching tuples; copy/empty/missing and Sparse-only exclusions; lookahead/cursor/generation tests; actual bounds and interrupted aggregates; source leases/restart zero HTTP. Independent integrity/storage and domain/UI reviews precede acceptance.
