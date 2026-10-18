@@ -45,5 +45,58 @@ public final class ItemProjectionSchema {
               + " KEY(snapshot_id,source_role) REFERENCES"
               + " build_object_memberships(snapshot_id,role))");
     }
+    // VMIR1 encodes its fixed nine-byte version prefix, then big-endian ID and ordinal.
+    // Binding indexed columns prevents a one-column edit from fabricating an absent lookup key.
+    var rowIdentity =
+        "typeof(NEW.row)='blob' AND length(NEW.row)>=25 AND"
+            + " hex(substr(NEW.row,1,9))='00000005564D495231' AND"
+            + " hex(substr(NEW.row,10,8))=printf('%016X',NEW.record_id) AND"
+            + " hex(substr(NEW.row,18,4))=printf('%08X',NEW.physical_ordinal)";
+    try (var statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TRIGGER IF NOT EXISTS item_projection_rows_identity_insert BEFORE INSERT ON"
+              + " item_projection_rows WHEN NOT ("
+              + rowIdentity
+              + ") BEGIN SELECT RAISE(ABORT,'Projected row index differs from encoded identity');"
+              + " END");
+      statement.execute(
+          "CREATE TRIGGER IF NOT EXISTS item_projection_rows_identity_update BEFORE UPDATE OF"
+              + " record_id,physical_ordinal,row ON item_projection_rows WHEN NOT ("
+              + rowIdentity
+              + ") BEGIN SELECT RAISE(ABORT,'Projected row index differs from encoded identity');"
+              + " END");
+    }
+    if (!hasColumn(connection, "item_projection_artifacts", "copy_proof_version"))
+      try (var statement = connection.createStatement()) {
+        statement.execute(
+            "ALTER TABLE item_projection_artifacts ADD COLUMN copy_proof_version INTEGER"
+                + " CHECK(copy_proof_version IS NULL OR (typeof(copy_proof_version)='integer' AND"
+                + " copy_proof_version=1))");
+      }
+    if (!hasColumn(connection, "item_projection_copies", "copy_record"))
+      try (var statement = connection.createStatement()) {
+        statement.execute(
+            "ALTER TABLE item_projection_copies ADD COLUMN copy_record BLOB CHECK(copy_record IS"
+                + " NULL OR (typeof(copy_record)='blob' AND length(copy_record)=20 AND"
+                + " hex(substr(copy_record,1,4))='564D4301' AND"
+                + " hex(substr(copy_record,5,8))=printf('%016X',target_id) AND"
+                + " hex(substr(copy_record,13,8))=printf('%016X',source_id)))");
+      }
+    if (!hasColumn(connection, "item_projection_copies", "copy_sha256"))
+      try (var statement = connection.createStatement()) {
+        statement.execute(
+            "ALTER TABLE item_projection_copies ADD COLUMN copy_sha256 TEXT CHECK((copy_record IS"
+                + " NULL AND copy_sha256 IS NULL) OR (copy_record IS NOT NULL AND"
+                + " typeof(copy_sha256)='text' AND length(copy_sha256)=64))");
+      }
+  }
+
+  private static boolean hasColumn(Connection connection, String table, String column)
+      throws SQLException {
+    try (var statement = connection.createStatement();
+        var rows = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+      while (rows.next()) if (rows.getString("name").equals(column)) return true;
+      return false;
+    }
   }
 }

@@ -9,6 +9,7 @@ import io.vibeminer.domain.item.*;
 import io.vibeminer.infrastructure.persistence.SqliteCatalog;
 import io.vibeminer.infrastructure.selectedfile.SelectedFileRecords;
 import io.vibeminer.infrastructure.storage.FileObjectStore;
+import java.nio.ByteBuffer;
 import java.security.*;
 import java.sql.*;
 import java.time.Instant;
@@ -21,7 +22,8 @@ final class SqliteItemProjectionRepository {
       UUID generation,
       UUID owner,
       boolean ready,
-      PreparedItemProjection.Coverage coverage) {}
+      PreparedItemProjection.Coverage coverage,
+      boolean currentCopyProof) {}
 
   record Stage(String artifactId, UUID generation) {}
 
@@ -47,18 +49,23 @@ final class SqliteItemProjectionRepository {
             var old = previous.get();
             if (!old.definition().equals(definition))
               throw failure(CORRUPT, "Shared artifact definition changed");
-            if (old.ready()) {
+            if (old.ready()
+                && (old.currentCopyProof() || old.coverage().unindexedCopyDeclarations() == 0)) {
               verifyCounts(c, definition.artifactId(), old);
               return old;
             }
-            if (old.owner().equals(session.epoch()))
+            if (!old.ready() && old.owner().equals(session.epoch()))
               throw failure(BUSY, "This artifact is already being prepared");
-            // Only explicit prepare under a newly fenced exclusive store epoch reclaims old
-            // staging.
+            // Only explicit prepare with a fresh verified source lease replaces old derived
+            // copy facts or reclaims interrupted staging. Never hash old SQL facts into proof.
+            try (var contexts =
+                c.prepareStatement("DELETE FROM item_projection_contexts WHERE artifact_id=?")) {
+              contexts.setString(1, definition.artifactId());
+              contexts.executeUpdate();
+            }
             try (var query =
                 c.prepareStatement(
-                    "DELETE FROM item_projection_artifacts WHERE artifact_id=? AND generation=? AND"
-                        + " status='STAGING'")) {
+                    "DELETE FROM item_projection_artifacts WHERE artifact_id=? AND generation=?")) {
               query.setString(1, definition.artifactId());
               query.setString(2, old.generation().toString());
               if (query.executeUpdate() != 1)
@@ -69,8 +76,8 @@ final class SqliteItemProjectionRepository {
           try (var query =
               c.prepareStatement(
                   "INSERT INTO"
-                      + " item_projection_artifacts(artifact_id,definition,generation,owner_epoch,status,section_ordinal)"
-                      + " VALUES(?,?,?,?,'STAGING',?)")) {
+                      + " item_projection_artifacts(artifact_id,definition,generation,owner_epoch,status,section_ordinal,copy_proof_version)"
+                      + " VALUES(?,?,?,?,'STAGING',?,1)")) {
             query.setString(1, definition.artifactId());
             query.setBytes(2, ItemProjectionRecords.definition(definition));
             query.setString(3, generation.toString());
@@ -78,7 +85,7 @@ final class SqliteItemProjectionRepository {
             query.setInt(5, definition.interpretation().sectionOrdinal());
             query.executeUpdate();
           }
-          return new Header(definition, generation, session.epoch(), false, null);
+          return new Header(definition, generation, session.epoch(), false, null, true);
         });
   }
 
@@ -114,12 +121,18 @@ final class SqliteItemProjectionRepository {
         c -> {
           requireStage(c, stage);
           try (var query =
-              c.prepareStatement("INSERT INTO item_projection_copies VALUES(?,?,?,?)")) {
+              c.prepareStatement(
+                  "INSERT INTO"
+                      + " item_projection_copies(artifact_id,generation,target_id,source_id,copy_record,copy_sha256)"
+                      + " VALUES(?,?,?,?,?,?)")) {
             for (var copy : copies) {
               query.setString(1, stage.artifactId());
               query.setString(2, stage.generation().toString());
               query.setLong(3, copy.targetId());
               query.setLong(4, copy.sourceId());
+              var record = copyRecord(copy.targetId(), copy.sourceId());
+              query.setBytes(5, record);
+              query.setString(6, sha256(record));
               query.addBatch();
             }
             query.executeBatch();
@@ -143,7 +156,7 @@ final class SqliteItemProjectionRepository {
           verifyCounts(
               c,
               stage.artifactId(),
-              new Header(definition, stage.generation(), session.epoch(), false, coverage));
+              new Header(definition, stage.generation(), session.epoch(), false, coverage, true));
           try (var query =
               c.prepareStatement(
                   "SELECT 1 FROM item_projection_copies c JOIN item_projection_rows r ON"
@@ -177,7 +190,10 @@ final class SqliteItemProjectionRepository {
   }
 
   PreparedItemProjection reuse(
-      Header header, ItemProjectionEvidence evidence, CancellationToken token) {
+      Header header,
+      ItemProjectionEvidence evidence,
+      List<ItemProjectionSourceReader.CopyDeclaration> authenticatedCopies,
+      CancellationToken token) {
     return tx(
         token,
         c -> {
@@ -187,6 +203,9 @@ final class SqliteItemProjectionRepository {
           if (!current.ready() || !current.generation().equals(header.generation()))
             throw failure(NOT_READY, "Projection is not ready");
           verifyCounts(c, header.definition().artifactId(), current);
+          var handle =
+              new PreparedItemProjection(current.definition(), evidence, current.coverage());
+          validateSourceCopies(c, handle, authenticatedCopies);
           return attachContext(
               c, new PreparedItemProjection(current.definition(), evidence, current.coverage()));
         });
@@ -261,6 +280,8 @@ final class SqliteItemProjectionRepository {
           if (!header.definition().equals(handle.definition())
               || !header.coverage().equals(handle.coverage()))
             throw failure(CORRUPT, "Prepared handle differs from persisted artifact");
+          if (!header.currentCopyProof() && header.coverage().unindexedCopyDeclarations() > 0)
+            throw failure(NOT_READY, "Legacy copy metadata requires explicit verified preparation");
           verifyCounts(c, handle.artifactId(), header);
           requireDependencies(c, handle);
           var build =
@@ -325,16 +346,54 @@ final class SqliteItemProjectionRepository {
   OptionalLong copy(Connection c, PreparedItemProjection handle, long id) throws SQLException {
     try (var query =
         c.prepareStatement(
-            "SELECT source_id FROM item_projection_copies WHERE artifact_id=? AND"
-                + " generation=(SELECT generation FROM item_projection_artifacts WHERE"
-                + " artifact_id=?) AND target_id=?")) {
+            "SELECT target_id,source_id,length(copy_record),copy_record,copy_sha256 FROM"
+                + " item_projection_copies WHERE artifact_id=? AND generation=(SELECT generation"
+                + " FROM item_projection_artifacts WHERE artifact_id=?) AND target_id=?")) {
       query.setString(1, handle.artifactId());
       query.setString(2, handle.artifactId());
       query.setLong(3, id);
       try (var rows = query.executeQuery()) {
-        return rows.next() ? OptionalLong.of(rows.getLong(1)) : OptionalLong.empty();
+        if (!rows.next()) return OptionalLong.empty();
+        return OptionalLong.of(readCopy(rows, id));
       }
     }
+  }
+
+  /** Full copy comparison is explicit-prepare work, never a page/exact-query scan. */
+  private void validateSourceCopies(
+      Connection c,
+      PreparedItemProjection handle,
+      List<ItemProjectionSourceReader.CopyDeclaration> source)
+      throws SQLException {
+    var expected = new ArrayList<>(source);
+    expected.sort(Comparator.comparingLong(ItemProjectionSourceReader.CopyDeclaration::targetId));
+    try (var query =
+        c.prepareStatement(
+            "SELECT target_id,source_id,length(copy_record),copy_record,copy_sha256 FROM"
+                + " item_projection_copies WHERE artifact_id=? AND generation=(SELECT generation"
+                + " FROM item_projection_artifacts WHERE artifact_id=?) ORDER BY target_id")) {
+      query.setString(1, handle.artifactId());
+      query.setString(2, handle.artifactId());
+      try (var rows = query.executeQuery()) {
+        for (var declaration : expected)
+          if (!rows.next() || readCopy(rows, declaration.targetId()) != declaration.sourceId())
+            throw failure(
+                CORRUPT, "Persisted copies differ from authenticated source declarations");
+        if (rows.next()) throw failure(CORRUPT, "Projection contains extra copy declarations");
+      }
+    }
+  }
+
+  private static long readCopy(ResultSet rows, long expectedId) throws SQLException {
+    if (rows.getObject(3) == null || rows.getLong(3) != 20)
+      throw failure(CORRUPT, "Missing or invalid copy proof record");
+    var record = rows.getBytes(4);
+    if (!sha256(record).equals(rows.getString(5)))
+      throw failure(CORRUPT, "Copy declaration checksum changed");
+    var decoded = readCopyRecord(record);
+    if (decoded[0] != expectedId || decoded[0] != rows.getLong(1) || decoded[1] != rows.getLong(2))
+      throw failure(CORRUPT, "Indexed copy declaration differs from original record");
+    return decoded[1];
   }
 
   private void requireDependencies(Connection c, PreparedItemProjection handle)
@@ -453,7 +512,7 @@ final class SqliteItemProjectionRepository {
     try (var query =
         c.prepareStatement(
             "SELECT"
-                + " length(definition),definition,generation,owner_epoch,status,section_ordinal,physical_rows,copy_count,excluded_sections"
+                + " length(definition),definition,generation,owner_epoch,status,section_ordinal,physical_rows,copy_count,excluded_sections,copy_proof_version"
                 + " FROM item_projection_artifacts WHERE artifact_id=?")) {
       query.setString(1, id);
       try (var rows = query.executeQuery()) {
@@ -483,7 +542,8 @@ final class SqliteItemProjectionRepository {
                 UUID.fromString(rows.getString(3)),
                 UUID.fromString(rows.getString(4)),
                 ready,
-                coverage));
+                coverage,
+                copyProofVersion(rows, 10)));
       }
     }
   }
@@ -505,7 +565,8 @@ final class SqliteItemProjectionRepository {
     }
     try (var query =
         c.prepareStatement(
-            "SELECT count(*) FROM item_projection_copies WHERE artifact_id=? AND generation=?")) {
+            "SELECT count(*) FROM item_projection_copies"
+                + " WHERE artifact_id=? AND generation=?")) {
       query.setString(1, id);
       query.setString(2, header.generation().toString());
       try (var rows = query.executeQuery()) {
@@ -513,6 +574,41 @@ final class SqliteItemProjectionRepository {
           throw failure(CORRUPT, "Projection copy coverage changed");
       }
     }
+    // Validate fresh staging proof completeness once at publication, never scan copy tuples
+    // for a bounded page/exact query. Ready exact copies validate their own record and SHA.
+    if (!header.ready() && header.currentCopyProof()) {
+      try (var query =
+          c.prepareStatement(
+              "SELECT 1 FROM item_projection_copies WHERE artifact_id=? AND generation=? AND"
+                  + " (copy_record IS NULL OR copy_sha256 IS NULL) LIMIT 1")) {
+        query.setString(1, id);
+        query.setString(2, header.generation().toString());
+        try (var rows = query.executeQuery()) {
+          if (rows.next()) throw failure(CORRUPT, "Fresh projection copy records are incomplete");
+        }
+      }
+    }
+  }
+
+  private static boolean copyProofVersion(ResultSet rows, int column) throws SQLException {
+    var value = rows.getObject(column);
+    if (value == null) return false;
+    if (!(value instanceof Integer || value instanceof Long) || rows.getLong(column) != 1)
+      throw failure(CORRUPT, "Unknown copy proof version");
+    return true;
+  }
+
+  private static byte[] copyRecord(long target, long source) {
+    return ByteBuffer.allocate(20).putInt(0x564d4301).putLong(target).putLong(source).array();
+  }
+
+  private static long[] readCopyRecord(byte[] record) {
+    var input = ByteBuffer.wrap(record);
+    if (input.getInt() != 0x564d4301) throw failure(CORRUPT, "Unknown copy record version");
+    long target = input.getLong(), source = input.getLong();
+    if (target < 1 || target > 0xffffffffL || source < 1 || source > 0xffffffffL)
+      throw failure(CORRUPT, "Invalid original copy identifiers");
+    return new long[] {target, source};
   }
 
   private static long integer(ResultSet rows, int column) throws SQLException {

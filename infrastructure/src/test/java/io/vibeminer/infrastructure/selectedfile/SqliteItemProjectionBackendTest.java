@@ -37,6 +37,8 @@ class SqliteItemProjectionBackendTest {
     Instant verificationTime = Instant.EPOCH;
     String decoder = "decoder-v1";
     ProjectionAction action;
+    List<ItemProjectionSourceReader.CopyDeclaration> copyDeclarations =
+        List.of(new ItemProjectionSourceReader.CopyDeclaration(99, 2));
 
     @FunctionalInterface
     interface ProjectionAction {
@@ -115,7 +117,7 @@ class SqliteItemProjectionBackendTest {
               }
 
               public List<CopyDeclaration> copies() {
-                return List.of(new CopyDeclaration(99, 2));
+                return copyDeclarations;
               }
 
               public PreparedItemProjection.Coverage project(
@@ -455,9 +457,26 @@ class SqliteItemProjectionBackendTest {
       var backend =
           new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
       var handle = backend.prepare(fixture.request("one"), NONE);
+      var changedValues = new ArrayList<>(row(9, 0).values());
+      changedValues.set(
+          0,
+          new ItemPhysicalRow.IntegerCandidate(
+              ItemArtifactDefinition.Field.CLASS_ID,
+              8,
+              32,
+              ItemPhysicalRow.PhysicalInterpretation.UNSIGNED_BITS,
+              8,
+              32,
+              ItemArtifactDefinition.Sign.UNSIGNED));
+      var changed =
+          io.vibeminer.infrastructure.item.ItemProjectionRecords.row(
+              new ItemPhysicalRow(9, 0, 0, changedValues));
       try (var connection = fixture.catalog.connect();
-          var statement = connection.createStatement()) {
-        statement.execute("UPDATE item_projection_rows SET row=x'00' WHERE record_id=9");
+          var update =
+              connection.prepareStatement(
+                  "UPDATE item_projection_rows SET row=? WHERE record_id=9")) {
+        update.setBytes(1, changed);
+        update.executeUpdate();
       }
       int before = fixture.verifies.get();
       assertEquals(
@@ -618,6 +637,251 @@ class SqliteItemProjectionBackendTest {
       query.executeUpdate();
     } catch (java.sql.SQLException failure) {
       throw new AssertionError(failure);
+    }
+  }
+
+  @Test
+  void editedCopySourceCannotInventAnAuthenticatedCopyDeclaration() throws Exception {
+    try (var fixture = new Fixture()) {
+      var backend =
+          new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
+      var handle = backend.prepare(fixture.request("one"), NONE);
+      assertEquals(2, backend.lookup(handle, 99, NONE).copySourceId().orElseThrow());
+      for (var mutation :
+          List.of(
+              "UPDATE item_projection_copies SET source_id=9 WHERE target_id=99",
+              "UPDATE item_projection_copies SET target_id=100 WHERE target_id=99",
+              "UPDATE item_projection_rows SET record_id=8 WHERE record_id=9",
+              "UPDATE item_projection_rows SET physical_ordinal=99 WHERE record_id=9")) {
+        assertThrows(java.sql.SQLException.class, () -> executeMutation(fixture, mutation));
+      }
+      assertEquals(2, backend.lookup(handle, 99, NONE).copySourceId().orElseThrow());
+      assertEquals(9, backend.lookup(handle, 9, NONE).row().orElseThrow().recordId());
+      executeMutation(
+          fixture,
+          "UPDATE item_projection_copies SET copy_sha256='"
+              + "0".repeat(64)
+              + "' WHERE target_id=99");
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(
+                  ItemProjectionException.class,
+                  () -> backend.prepare(fixture.request("one"), NONE))
+              .code());
+      assertEquals(1, fixture.projects.get());
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(ItemProjectionException.class, () -> backend.lookup(handle, 99, NONE))
+              .code());
+      assertEquals(0, fixture.leases.get());
+    }
+  }
+
+  @Test
+  void schemaEightCopyFactsStayUnprovenUntilExplicitVerifiedPrepareRebuildsDerivedOnly()
+      throws Exception {
+    try (var fixture = new Fixture()) {
+      var backend =
+          new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
+      var first = backend.prepare(fixture.request("one"), NONE);
+      backend.prepare(fixture.request("two"), NONE);
+      String oldGeneration;
+      byte[] originalCanonical;
+      var files = new SqliteSelectedFileCatalog(fixture.catalog, fixture.store, fixture.session);
+      var claim = files.lookup(slot(), NONE).orElseThrow();
+      var worker = files.claimWorker(claim.token(), NONE);
+      try (var connection = fixture.catalog.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery("SELECT generation FROM item_projection_artifacts")) {
+        oldGeneration = rows.getString(1);
+      }
+      try (var connection = fixture.catalog.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery("SELECT representation FROM canonical_content_slots")) {
+        originalCanonical = rows.getBytes(1);
+      }
+      downgradeToEight(fixture, true);
+      var migrated = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+      try (var connection = migrated.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery("SELECT copy_record,copy_sha256 FROM item_projection_copies")) {
+        assertNull(rows.getObject(1));
+        assertNull(rows.getObject(2));
+      }
+      try (var connection = migrated.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery(
+                      "SELECT worker_nonce,representation FROM canonical_content_slots")) {
+        assertEquals(worker.workerNonce().toString(), rows.getString(1));
+        assertArrayEquals(originalCanonical, rows.getBytes(2));
+      }
+      assertCounts(fixture, 1, 3, 2);
+      backend = new SqliteItemProjectionBackend(migrated, fixture.session, fixture.reader);
+      var current = backend;
+      assertEquals(
+          ItemProjectionException.Code.NOT_READY,
+          assertThrows(
+                  ItemProjectionException.class,
+                  () -> current.page(first, Optional.empty(), 2, NONE))
+              .code());
+      assertEquals(
+          ItemProjectionException.Code.NOT_READY,
+          assertThrows(ItemProjectionException.class, () -> current.lookup(first, 99, NONE))
+              .code());
+      assertEquals(1, fixture.projects.get());
+      assertCounts(fixture, 1, 3, 2);
+      var rebuilt = backend.prepare(fixture.request("one"), NONE);
+      assertEquals(first.artifactId(), rebuilt.artifactId());
+      assertEquals(2, fixture.projects.get());
+      assertCounts(fixture, 1, 3, 1);
+      assertEquals(2, backend.lookup(rebuilt, 99, NONE).copySourceId().orElseThrow());
+      try (var connection = migrated.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery(
+                      "SELECT generation,copy_proof_version FROM item_projection_artifacts")) {
+        assertNotEquals(oldGeneration, rows.getString(1));
+        assertEquals(1, rows.getInt(2));
+      }
+      try (var connection = migrated.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery(
+                      "SELECT (SELECT count(*) FROM retention_scopes WHERE pinned=1),(SELECT"
+                          + " count(*) FROM build_object_memberships)")) {
+        assertEquals(2, rows.getInt(1));
+        assertEquals(6, rows.getInt(2));
+      }
+      files.finishWorker(
+          worker, io.vibeminer.domain.content.ContentWorkerFinishOutcome.RETAINED, NONE);
+      assertEquals(0, fixture.leases.get());
+    }
+  }
+
+  @Test
+  void schemaEightZeroCopyReadyArtifactRemainsUsableWithoutRebuilding() throws Exception {
+    try (var fixture = new Fixture()) {
+      fixture.copyDeclarations = List.of();
+      fixture.action =
+          (sink, token) -> {
+            sink.accept(row(7, 0));
+            return new PreparedItemProjection.Coverage(0, 1, 0, 0);
+          };
+      var backend =
+          new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
+      var handle = backend.prepare(fixture.request("one"), NONE);
+      downgradeToEight(fixture);
+      var migrated = new SqliteCatalog(directory.resolve("catalog.sqlite"));
+      try (var ignored = migrated.connect()) {}
+      backend = new SqliteItemProjectionBackend(migrated, fixture.session, fixture.reader);
+      assertEquals(1, backend.page(handle, Optional.empty(), 2, NONE).rows().size());
+      assertEquals(handle, backend.prepare(fixture.request("one"), NONE));
+      assertEquals(1, fixture.projects.get());
+    }
+  }
+
+  static void downgradeToEight(Fixture fixture) throws Exception {
+    downgradeToEight(fixture, false);
+  }
+
+  static void downgradeToEight(Fixture fixture, boolean corruptOldSource) throws Exception {
+    try (var connection = fixture.catalog.connect();
+        var statement = connection.createStatement()) {
+      statement.execute("ALTER TABLE item_projection_copies DROP COLUMN copy_sha256");
+      statement.execute("ALTER TABLE item_projection_copies DROP COLUMN copy_record");
+      statement.execute("ALTER TABLE item_projection_artifacts DROP COLUMN copy_proof_version");
+      statement.execute("DROP TRIGGER item_projection_rows_identity_insert");
+      statement.execute("DROP TRIGGER item_projection_rows_identity_update");
+      if (corruptOldSource)
+        statement.execute("UPDATE item_projection_copies SET source_id=9 WHERE target_id=99");
+      statement.execute("PRAGMA user_version=8");
+    }
+  }
+
+  @Test
+  void invalidExactItemIdsFailBeforeLocalSourceIo() throws Exception {
+    try (var fixture = new Fixture()) {
+      var backend =
+          new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
+      var handle = backend.prepare(fixture.request("one"), NONE);
+      for (long id : new long[] {-1, 0, 0x100000000L})
+        assertEquals(
+            ItemProjectionException.Code.INVALID_REQUEST,
+            assertThrows(ItemProjectionException.class, () -> backend.lookup(handle, id, NONE))
+                .code());
+      assertEquals(0, fixture.verifies.get());
+      assertEquals(0, fixture.leases.get());
+    }
+  }
+
+  @Test
+  void currentMissingOrDamagedCopyProofIsCorruptionAndNeverTriggersAutomaticRebuild()
+      throws Exception {
+    try (var fixture = new Fixture()) {
+      var backend =
+          new SqliteItemProjectionBackend(fixture.catalog, fixture.session, fixture.reader);
+      var handle = backend.prepare(fixture.request("one"), NONE);
+      byte[] record;
+      try (var connection = fixture.catalog.connect();
+          var rows =
+              connection
+                  .createStatement()
+                  .executeQuery("SELECT copy_record FROM item_projection_copies")) {
+        record = rows.getBytes(1);
+      }
+      try (var connection = fixture.catalog.connect();
+          var statement = connection.createStatement()) {
+        statement.execute("UPDATE item_projection_copies SET copy_record=NULL,copy_sha256=NULL");
+      }
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(ItemProjectionException.class, () -> backend.lookup(handle, 99, NONE))
+              .code());
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(
+                  ItemProjectionException.class,
+                  () -> backend.prepare(fixture.request("one"), NONE))
+              .code());
+      assertEquals(1, fixture.projects.get());
+      var sha = "0".repeat(64);
+      try (var connection = fixture.catalog.connect();
+          var query =
+              connection.prepareStatement(
+                  "UPDATE item_projection_copies SET copy_record=?,copy_sha256=?")) {
+        query.setBytes(1, record);
+        query.setString(2, sha);
+        query.executeUpdate();
+      }
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(ItemProjectionException.class, () -> backend.lookup(handle, 99, NONE))
+              .code());
+      assertEquals(
+          ItemProjectionException.Code.CORRUPT,
+          assertThrows(
+                  ItemProjectionException.class,
+                  () -> backend.prepare(fixture.request("one"), NONE))
+              .code());
+      assertEquals(1, fixture.projects.get());
+      assertEquals(0, fixture.leases.get());
+    }
+  }
+
+  static void executeMutation(Fixture fixture, String sql) throws java.sql.SQLException {
+    try (var connection = fixture.catalog.connect();
+        var statement = connection.createStatement()) {
+      statement.executeUpdate(sql);
     }
   }
 

@@ -45,7 +45,7 @@ public final class SqliteItemProjectionBackend implements ItemProjectionBackend 
       var header = repository.claim(definition, token);
       if (header.ready()) {
         requireCoverage(header.coverage(), request.limits(), copies.size());
-        return repository.reuse(header, evidence, token);
+        return repository.reuse(header, evidence, copies, token);
       }
       var stage =
           new SqliteItemProjectionRepository.Stage(definition.artifactId(), header.generation());
@@ -140,8 +140,8 @@ public final class SqliteItemProjectionBackend implements ItemProjectionBackend 
       PreparedItemProjection handle, long recordId, CancellationToken token) {
     Objects.requireNonNull(handle);
     Objects.requireNonNull(token);
-    if (recordId < 0 || recordId > 0xffffffffL)
-      throw failure(INVALID_REQUEST, "Unsigned Item record ID required");
+    if (recordId < 1 || recordId > 0xffffffffL)
+      throw failure(INVALID_REQUEST, "Item record ID must be between 1 and 4294967295");
     token.throwIfCancellationRequested();
     beforeSourceOperation();
     try (var verified = reader.verify(handle, token)) {
