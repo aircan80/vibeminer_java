@@ -70,7 +70,7 @@ public final class SelectedFileRecords {
         });
   }
 
-  static byte[] association(SelectedFileAssociation value) {
+  public static byte[] association(SelectedFileAssociation value) {
     return encode(
         out -> {
           text(out, "VMSA2");
@@ -105,7 +105,7 @@ public final class SelectedFileRecords {
         });
   }
 
-  static SelectedFileAssociation association(
+  public static SelectedFileAssociation association(
       byte[] bytes, BuildSnapshot build, ContentRepresentation representation) {
     return decode(
         bytes,
