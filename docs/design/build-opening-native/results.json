@@ -1,0 +1,157 @@
+{
+  "applicationBaseSource": "e18c986",
+  "atlasVisibilityCorrection": "5dda801",
+  "fullCheckAtBase": {
+    "javaTests": 1892,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "nativeResult": "PASS",
+  "visualReview": "ACCEPTED",
+  "transport": "Authored HTTP responses; no live CDN",
+  "cases": [
+    {
+      "viewport": "1440x1100",
+      "applicationTextScalePercent": 100,
+      "assertions": 31,
+      "authoredHttpRequests": 13,
+      "gamePayloadRequests": 0,
+      "offlineReopenHttpRequests": 0,
+      "screenshots": [
+        {
+          "file": "atlas-open-admitted-1440x1100-100pct.png",
+          "sha256": "131753f442c82854efb1bb0c2f90da154bfd657109e97dbcc49463c1a9d05bd4"
+        },
+        {
+          "file": "atlas-open-back-1440x1100-100pct.png",
+          "sha256": "66c322d1abae21f215d2566b2b6cc5fd1f84615ccec2751692dbd63296083c29"
+        },
+        {
+          "file": "atlas-open-canceled-1440x1100-100pct.png",
+          "sha256": "47cbdbb0b2ae7f343f8c56cf9a386fcc6d7d2a0fada3f0c73dad161f6fde6ee6"
+        },
+        {
+          "file": "atlas-open-offline-reopened-1440x1100-100pct.png",
+          "sha256": "131753f442c82854efb1bb0c2f90da154bfd657109e97dbcc49463c1a9d05bd4"
+        },
+        {
+          "file": "atlas-open-preparing-1440x1100-100pct.png",
+          "sha256": "9c115a14802896fab7c776298987286fd073edf78dfacfff15df974e6d2ccc4f"
+        },
+        {
+          "file": "atlas-open-selected-1440x1100-100pct.png",
+          "sha256": "9b7f1d54b9c61adb7fb2297242adcd4c7c4b1626e46a172d38398ad984b4e83e"
+        }
+      ]
+    },
+    {
+      "viewport": "1440x1100",
+      "applicationTextScalePercent": 200,
+      "assertions": 31,
+      "authoredHttpRequests": 12,
+      "gamePayloadRequests": 0,
+      "offlineReopenHttpRequests": 0,
+      "screenshots": [
+        {
+          "file": "atlas-open-admitted-1440x1100-200pct.png",
+          "sha256": "d21582adb3a3f9ab02515f988f38465d497945fb7ad18e6498ecc94a11e59292"
+        },
+        {
+          "file": "atlas-open-back-1440x1100-200pct.png",
+          "sha256": "715628a375bb0deee427a0be7f58da3bab29da0114ef937d5628528e7a73fb40"
+        },
+        {
+          "file": "atlas-open-canceled-1440x1100-200pct.png",
+          "sha256": "8222bf91410c1058c19a273a8bc9faad1075b2b2d75d40dc55a48d0d5300b805"
+        },
+        {
+          "file": "atlas-open-offline-reopened-1440x1100-200pct.png",
+          "sha256": "d21582adb3a3f9ab02515f988f38465d497945fb7ad18e6498ecc94a11e59292"
+        },
+        {
+          "file": "atlas-open-preparing-1440x1100-200pct.png",
+          "sha256": "c27aea7c3807e78463ac38d9d9b32819b5fb7543f5bdddf1d49a289f33a7379b"
+        },
+        {
+          "file": "atlas-open-selected-1440x1100-200pct.png",
+          "sha256": "25c06491f4d66882c81e7a39581e1c907ec173f296df2aea6e3806315e091301"
+        }
+      ]
+    },
+    {
+      "viewport": "1280x800",
+      "applicationTextScalePercent": 100,
+      "assertions": 31,
+      "authoredHttpRequests": 13,
+      "gamePayloadRequests": 0,
+      "offlineReopenHttpRequests": 0,
+      "screenshots": [
+        {
+          "file": "atlas-open-admitted-1280x800-100pct.png",
+          "sha256": "080755c0e548dd52e71ecc2b65a028d00231e258e2d1b71e5e80cd2ed552cb57"
+        },
+        {
+          "file": "atlas-open-back-1280x800-100pct.png",
+          "sha256": "ff9d15c1ad585a6f5026a07f5b7a8980e074b0972a20a35751809b3445459134"
+        },
+        {
+          "file": "atlas-open-canceled-1280x800-100pct.png",
+          "sha256": "03823c8cb56edeedfe605af005dc7f2cfff541ec7da96663f870edff78bfe23d"
+        },
+        {
+          "file": "atlas-open-offline-reopened-1280x800-100pct.png",
+          "sha256": "080755c0e548dd52e71ecc2b65a028d00231e258e2d1b71e5e80cd2ed552cb57"
+        },
+        {
+          "file": "atlas-open-preparing-1280x800-100pct.png",
+          "sha256": "f082f74e5c1c8fbc8c25d65ab70d3103f2be2985647a8bb5d80fbd2249365659"
+        },
+        {
+          "file": "atlas-open-selected-1280x800-100pct.png",
+          "sha256": "e57ecbef5532c185e19ce2bf03770ef60707a2ce3c29bd0783077cf3035ea4b4"
+        }
+      ]
+    },
+    {
+      "viewport": "1280x800",
+      "applicationTextScalePercent": 200,
+      "assertions": 31,
+      "authoredHttpRequests": 13,
+      "gamePayloadRequests": 0,
+      "offlineReopenHttpRequests": 0,
+      "screenshots": [
+        {
+          "file": "atlas-open-admitted-1280x800-200pct.png",
+          "sha256": "9764a2dd4759cba9f63dfd55bb25e19e93c9e102ff30d3ebdc5434912d1b5ca8"
+        },
+        {
+          "file": "atlas-open-back-1280x800-200pct.png",
+          "sha256": "d0a79ee73ff10c52152ca04c540517a64f6d61b15fd111ab7c328c831cdae28b"
+        },
+        {
+          "file": "atlas-open-canceled-1280x800-200pct.png",
+          "sha256": "16d701063e00a437649f11fd6cddef67bebbd76b6491cfa548ee205ab5c9cd8d"
+        },
+        {
+          "file": "atlas-open-offline-reopened-1280x800-200pct.png",
+          "sha256": "9764a2dd4759cba9f63dfd55bb25e19e93c9e102ff30d3ebdc5434912d1b5ca8"
+        },
+        {
+          "file": "atlas-open-preparing-1280x800-200pct.png",
+          "sha256": "176e0a34791aed638c8161ea5af5a677b348b376c0fc17ff490a176a3d0187c3"
+        },
+        {
+          "file": "atlas-open-selected-1280x800-200pct.png",
+          "sha256": "1f39725e97c2894b60ae62be0f2fd1c04ad0371d13d58bf212f98636e6f0eeb5"
+        }
+      ]
+    }
+  ],
+  "totalAssertions": 124,
+  "limitations": [
+    "Linux JavaFX scene capture and application text scale, not OS DPI/accessibility certification",
+    "Complete metadata admission only; payload inventory metrics and bulk download controls unavailable",
+    "Cancellation cooperatively releases a held pre-response fixture gate; no claim covering every transport cancellation race"
+  ]
+}

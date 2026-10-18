@@ -1,6 +1,6 @@
 # Open an exact build through verified metadata
 
-**Contract plan for [#100](https://github.com/aircan80/vibeminer/issues/100), dependent on [#98](https://github.com/aircan80/vibeminer/issues/98) identity/state and the admitted grammar in [#101](https://github.com/aircan80/vibeminer/issues/101). No new opening service or complete metadata admission is implemented by this document.** The selected interaction is one **Open Build** action in Discover, followed by C Build overview after successful admission. It is not a separate Prepare, Start or Save-workspace sequence. See the [two-screen plan](BUILD-BROWSER-IMPLEMENTATION.md) and [format matrix](BUILD-INVENTORY-FORMATS.md).
+**Implementation contract for [#100](https://github.com/aircan80/vibeminer/issues/100), dependent on [#98](https://github.com/aircan80/vibeminer/issues/98) identity/state and the admitted grammar in [#101](https://github.com/aircan80/vibeminer/issues/101). The opening service, complete metadata admission, lazy runtime composition and Discover → C binding are implemented in source; native workflow qualification and background Download all remain separate delivery gates.** The selected interaction is one **Open Build** action in Discover, followed by C Build overview after successful admission. It is not a separate Prepare, Start or Save-workspace sequence. See the [two-screen plan](BUILD-BROWSER-IMPLEMENTATION.md) and [format matrix](BUILD-INVENTORY-FORMATS.md).
 
 ## Admission is stricter than current inspection
 
@@ -10,21 +10,23 @@ The admitted grammar determines the complete required metadata closure: exact bu
 
 All declared language/platform variants are retained and interpreted nonselectively in the initial scope. Research locale is an independent view value. Host OS, friendly edition labels, opaque root flags and install/download tags do not silently select a Windows/enUS game scope.
 
-## Current implementation and precise gaps
+## Implemented responsibilities and remaining gaps
 
 There is no `MetadataService` or `DefaultMetadataService` in the current source. Existing responsibilities are deliberately narrower:
 
 | Existing component | Verified scope available now | Gap for Open Build |
 | --- | --- | --- |
 | `OfficialBootstrapArtifactGateway` / `DefaultBootstrapService` | Raw MD5-verified build config, exact known-cost IN acquisition, complete BLTE decoded-CKey and supported IN grammar, retained reopen | IN is not the complete game catalog; no complete metadata-closure admission |
-| `OfficialFileLookupGateway` / `DefaultFileLookupService` | Authenticated selected EN pages resolve ROOT candidates; one encoded ROOT CAS object, full decoded CKey and supported TSFM structural EOF; selected-ID offline lookup | EN ranges are bounded session data, not a retained complete encoding catalog; selected ROOT lookup is not full inventory enumeration |
+| `OfficialFileLookupGateway` / `DefaultFileLookupService` | Authenticated selected EN pages resolve ROOT candidates; one encoded ROOT CAS object, full decoded CKey and supported TSFM structural EOF; selected-ID offline lookup | The selected lookup path alone is not full inventory enumeration; Open separately retains complete EN before deriving its ROOT plan |
 | `OfficialSelectedFileGateway` / `DefaultSelectedFileService` | Exact retained root variant replay, selected EN candidate facts, loose/selected archive locator proof and complete encoded target retention | CDN config and archive footer/ToC/page reads support one bounded locator search; they are not a durable complete catalog/index closure |
 | `DefaultMetadataReuseService`, repair service and local verifiers | Strong ROOT/IN canonical-A reuse, explicit same-A repair, original evidence preservation and fresh verification facts | Legacy reuse/repair adapters remain ROOT/INSTALL-only and explicitly reject newer kinds; complete EN/DL/DS have distinct typed identities and must not be relabeled as ROOT/INSTALL or archive-index evidence |
-| Full ROOT/EN/DL/DS readers and streaming BLTE verification | Bounded complete supported grammars, structural EOF and encoded/decoded integrity primitives | No sealed durable payload inventory or complete derived EN index; parser success alone does not admit a build |
-| `OfficialBuildMetadataSourceWorker` | Complete EN/DL/DS retention through the existing canonical publisher, full encoded/decoded verification followed by leased grammar verification; local reuse preserves original receipts | Not wired into the opening facade; no build admission, Open acknowledgement or payload inventory |
-| Shared CAS, build-object catalog, canonical claims, retention and actual-worker permits | One physical object per SHA, exact source aliases/build memberships, fenced publication and recovery | Opening needs a reviewed exact required-role closure and persisted admission, not another object store or arbitrary metadata cache |
+| Full ROOT/EN/DL/DS readers and streaming BLTE verification | Bounded complete supported grammars, structural EOF and encoded/decoded integrity primitives | Complete derived EN lookup and sealed declared ROOT/IN/DL/DS membership are implemented separately; parser success alone does not admit a build |
+| `OfficialBuildMetadataSourceWorker` | Complete EN/DL/DS retention through the existing canonical publisher, full encoded/decoded verification followed by leased grammar verification; local reuse preserves original receipts | Composed by `OfficialBuildOpeningGateway`; admission and Open acknowledgement commit together only after the full required-role closure |
+| `OfficialBuildOpeningGateway` / `DefaultBuildOpeningService` | Exact registered reference, authenticated declarations, complete required metadata, atomic admission/acknowledgement and strict offline reopen | Initial bounded loose-metadata profile; no implicit repair or general archive/VFS resolver |
+| `LazyBuildOpeningService` / Atlas Open presentation | Lazy shared runtime initialization, explicit Open, staged progress/cancel and admission-bound C overview | Native authored-HTTP UI journey remains required; current C coverage metrics are unknown until the inventory/download projection is connected |
+| Shared CAS, build-object catalog, canonical claims, retention and actual-worker permits | One physical object per SHA, exact source aliases/build memberships, fenced publication and recovery | Opening borrows these existing owners; no second object store or metadata cache |
 
-A successful current install-list/root inspection therefore cannot be promoted to complete Open readiness. Existing services remain regression-tested research primitives; a new facade must not reinterpret their successful narrow results as the missing proof.
+A successful current install-list/root inspection therefore cannot be promoted to complete Open readiness. Existing services remain regression-tested research primitives; the opening facade checks the complete declared closure rather than treating a narrow inspection result as admission.
 
 ## Required-role resolution
 
@@ -43,7 +45,7 @@ An index resource without an independently declared content CKey must not receiv
 
 ## Shared ownership and one action
 
-The minimal new application responsibility is a narrow build-opening use case, tentatively `BuildOpeningService`, rather than an invented generic replacement for all metadata services. Exact port/value names require ownership review before coding. Its input pins the #98 regional build reference, research locale and admitted metadata-scope revision; its output is one immutable exact-build admission result. It exposes staged operation progress with known verified costs where available and indeterminate progress where genuinely unknown.
+The application responsibility is the narrow `BuildOpeningService` use case. `DefaultBuildOpeningService` owns operation lifecycle and delegates authenticated work through `BuildOpeningGateway`; it does not replace the existing metadata services. Its input pins the #98 regional build reference, research locale and admitted metadata-scope revision; its output is one immutable exact-build admission result. It exposes staged operation progress with known verified costs where available and indeterminate progress where genuinely unknown.
 
 The single Open action authorizes only its disclosed metadata operation limits. Progressive resolution may discover previously unknown exact costs, but it must stay inside reviewed wire, decoded-work, time and additional-physical-byte ceilings; crossing a ceiling refuses the stage on the same exact selection. It does not silently schedule an unbounded full EN transfer or introduce a second Prepare/Start workflow. Concrete ceilings and any retry consent are part of the protocol/cost review before implementation.
 
