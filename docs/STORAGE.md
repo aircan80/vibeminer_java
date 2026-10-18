@@ -18,6 +18,9 @@ Closed shared-acquisition slice #32 coordinates source requests over this byte-s
 
 ## Delivered catalog and active publisher ownership
 
+Current development source `492eab1` passed 1,169 Java cases, distribution assembly, all four native targets and eight Linux UI workflows; [central evidence](PLAN.md#delivered-baseline-and-current-work) separates this from published alpha.5. Later accepted `c0292c3` adds schema-12 shared name-artifact/context persistence, with 15 cases and 53 independent checks; it has no inherited native claim and does not enable names runtime/UI. The accepted `5d46283` repaired-reader correction preserves immutable historical capabilities while strict strong-reuse validation remains separate. #83/#17/#19 acceptance remains open; no GC or new release follows.
+
+
 Current verified release is [alpha.5](releases/v0.1.0-alpha.5.md), exact `f3c4d46`, including explicit retained-metadata reuse and offline association inspection. Later read-only/repair-integration foundations are unreleased; no repair execution or GC is enabled. Historical source checkpoints below retain their original validation scope.
 
 `BuildObjectCatalog`/`SqliteBuildObjectCatalog` share schema ownership with canonical selected-file and metadata repositories through `SqliteCatalog`. Actual source aliases, verification receipts and immutable exact-build memberships follow verified CAS publication. Filesystem promotion and SQLite commits remain separate resources.

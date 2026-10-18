@@ -3,6 +3,8 @@
 **Status: publisher fencing and explicit local retained-metadata reuse are published in verified [alpha.5](releases/v0.1.0-alpha.5.md), exact `f3c4d46`.** See [central validation](PLAN.md#delivered-baseline-and-current-work) for 1,113 Java cases, four native targets, eight Linux UI workflows and final-asset proof. Explicit local reuse preserves declared B separately from actual A; ordinary B acquisition still refuses. No source fallback, repair execution, replacement or GC is enabled. Exact-descriptor legacy reads preserve original proofs despite conflicts. Later read-only and repair-integration source is outside this release.
 
 
+Development `492eab1` separately passed 1,169 Java cases, distribution assembly and [four-platform/eight-workflow CI](https://github.com/aircan80/vibeminer/actions/runs/39120022411). Scoped #80 is closed after independent criterion review; this does not close broad storage stories #17/#19 or repair #83. Later `5d46283` repair-reader and `c0292c3` schema-12 name-persistence foundations are accepted local source, not part of alpha.5 or that native checkpoint. Names runtime/UI is not enabled and no new release is claimed.
+
 ## Original gap and current guard boundary
 
 Physical CAS deduplication is correct: identical SHA-256 bytes are stored once across build memberships and retention policies. Different valid BLTE encodings of the same decoded content can have different physical SHA values.
